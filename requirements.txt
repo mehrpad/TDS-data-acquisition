@@ -1,0 +1,8 @@
+pyqt6
+pyvisa
+pyvisa-py
+pandas
+openpyxl
+h5py
+scipy
+pyqtgraph
