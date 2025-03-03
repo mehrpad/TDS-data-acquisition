@@ -7,17 +7,17 @@
     <x>0</x>
     <y>0</y>
     <width>820</width>
-    <height>409</height>
+    <height>465</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>MainWindow</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QGridLayout" name="gridLayout_3">
+   <layout class="QGridLayout" name="gridLayout_6">
     <item row="0" column="0">
-     <layout class="QGridLayout" name="gridLayout_2">
-      <item row="0" column="0" rowspan="2">
+     <layout class="QGridLayout" name="gridLayout_5">
+      <item row="0" column="0">
        <layout class="QGridLayout" name="gridLayout">
         <item row="0" column="0">
          <widget class="QLabel" name="label_183">
@@ -32,7 +32,7 @@
           </property>
          </widget>
         </item>
-        <item row="0" column="2" colspan="2">
+        <item row="0" column="1">
          <widget class="QLineEdit" name="ex_number">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
@@ -70,7 +70,7 @@
           </property>
          </widget>
         </item>
-        <item row="1" column="2" colspan="2">
+        <item row="1" column="1">
          <widget class="QLineEdit" name="ex_name">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
@@ -101,7 +101,7 @@
           </property>
          </widget>
         </item>
-        <item row="2" column="0" colspan="2">
+        <item row="2" column="0">
          <widget class="QLabel" name="label_176">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
@@ -110,11 +110,11 @@
            </sizepolicy>
           </property>
           <property name="text">
-           <string>Zero Temperature °C</string>
+           <string>Zero Temperature (°C)</string>
           </property>
          </widget>
         </item>
-        <item row="2" column="2" colspan="2">
+        <item row="2" column="1">
          <widget class="QLineEdit" name="calib_temperature">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
@@ -140,6 +140,146 @@
          </widget>
         </item>
         <item row="3" column="0">
+         <widget class="QLabel" name="label_177">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="text">
+           <string>Max Voltage (V)</string>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="1">
+         <widget class="QLineEdit" name="max_voltage">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>100</width>
+            <height>20</height>
+           </size>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">QLineEdit{
+                                                background: rgb(223,223,233)
+                                                }
+                                            </string>
+          </property>
+          <property name="text">
+           <string>10</string>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="0">
+         <widget class="QLabel" name="label_178">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="text">
+           <string>Max Current (A)</string>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="1">
+         <widget class="QLineEdit" name="max_current">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>100</width>
+            <height>20</height>
+           </size>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">QLineEdit{
+                                                background: rgb(223,223,233)
+                                                }
+                                            </string>
+          </property>
+          <property name="text">
+           <string>5</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="0" column="1" rowspan="2">
+       <layout class="QGridLayout" name="gridLayout_4">
+        <item row="0" column="0">
+         <widget class="QGraphicsView" name="temperature_vis">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+            <horstretch>1</horstretch>
+            <verstretch>1</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>150</width>
+            <height>150</height>
+           </size>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">QWidget{
+                                            border: 0.5px solid gray;
+                                            }
+                                        </string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QGraphicsView" name="h_flux_vis">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+            <horstretch>1</horstretch>
+            <verstretch>1</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>150</width>
+            <height>150</height>
+           </size>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">QWidget{
+                                            border: 0.5px solid gray;
+                                            }
+                                        </string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="1" column="0">
+       <layout class="QGridLayout" name="gridLayout_3">
+        <item row="0" column="0">
+         <widget class="QLabel" name="label_4">
+          <property name="font">
+           <font>
+            <bold>true</bold>
+           </font>
+          </property>
+          <property name="text">
+           <string>Target Temp. (°C)    </string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
          <widget class="QLabel" name="label_1">
           <property name="font">
            <font>
@@ -147,11 +287,11 @@
            </font>
           </property>
           <property name="text">
-           <string>Temperature °C</string>
+           <string>Measured Temp (°C)</string>
           </property>
          </widget>
         </item>
-        <item row="3" column="1" colspan="2">
+        <item row="0" column="2">
          <widget class="QLabel" name="label_2">
           <property name="font">
            <font>
@@ -159,11 +299,11 @@
            </font>
           </property>
           <property name="text">
-           <string>Voltage (V)</string>
+           <string>Voltage (V)              </string>
           </property>
          </widget>
         </item>
-        <item row="3" column="3">
+        <item row="0" column="3">
          <widget class="QLabel" name="label_3">
           <property name="font">
            <font>
@@ -171,12 +311,12 @@
            </font>
           </property>
           <property name="text">
-           <string>Curent (A)</string>
+           <string>Current (A)                </string>
           </property>
          </widget>
         </item>
-        <item row="4" column="0">
-         <widget class="QLCDNumber" name="temperature_lcd">
+        <item row="1" column="0">
+         <widget class="QLCDNumber" name="temperature_target_lcd">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
             <horstretch>0</horstretch>
@@ -204,7 +344,36 @@
           </property>
          </widget>
         </item>
-        <item row="4" column="1" colspan="2">
+        <item row="1" column="1">
+         <widget class="QLCDNumber" name="temperature_lcd_2">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>100</width>
+            <height>50</height>
+           </size>
+          </property>
+          <property name="font">
+           <font>
+            <pointsize>8</pointsize>
+           </font>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">QLCDNumber{
+                                            border: 2px solid red;
+                                                            border-radius: 10px;
+                                                            padding: 0 8px;
+                                                            }
+                                                        </string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="2">
          <widget class="QLCDNumber" name="voltage_lcd">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
@@ -228,7 +397,7 @@
           </property>
          </widget>
         </item>
-        <item row="4" column="3">
+        <item row="1" column="3">
          <widget class="QLCDNumber" name="current_lcd">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
@@ -252,7 +421,7 @@
           </property>
          </widget>
         </item>
-        <item row="5" column="0" colspan="4">
+        <item row="2" column="0" colspan="4">
          <widget class="QTextEdit" name="parameters_text">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
@@ -279,184 +448,144 @@ p, li { white-space: pre-wrap; }
           </property>
          </widget>
         </item>
-        <item row="6" column="0">
-         <widget class="QPushButton" name="start_botton">
-          <property name="minimumSize">
-           <size>
-            <width>100</width>
-            <height>20</height>
-           </size>
-          </property>
-          <property name="maximumSize">
-           <size>
-            <width>60</width>
-            <height>16777215</height>
-           </size>
-          </property>
-          <property name="styleSheet">
-           <string notr="true">QPushButton{background: rgb(193, 193, 193)}</string>
-          </property>
-          <property name="text">
-           <string>Start</string>
-          </property>
-         </widget>
-        </item>
-        <item row="6" column="1" colspan="2">
-         <widget class="QPushButton" name="find_csv_botton">
-          <property name="minimumSize">
-           <size>
-            <width>100</width>
-            <height>20</height>
-           </size>
-          </property>
-          <property name="maximumSize">
-           <size>
-            <width>100</width>
-            <height>16777215</height>
-           </size>
-          </property>
-          <property name="styleSheet">
-           <string notr="true">QPushButton{background: rgb(193, 193, 193)}
+        <item row="3" column="0" colspan="3">
+         <layout class="QGridLayout" name="gridLayout_2">
+          <item row="0" column="0">
+           <widget class="QPushButton" name="start_botton">
+            <property name="minimumSize">
+             <size>
+              <width>100</width>
+              <height>20</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>60</width>
+              <height>16777215</height>
+             </size>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">QPushButton{background: rgb(193, 193, 193)}</string>
+            </property>
+            <property name="text">
+             <string>Start</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QPushButton" name="find_csv_botton">
+            <property name="minimumSize">
+             <size>
+              <width>100</width>
+              <height>20</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>100</width>
+              <height>16777215</height>
+             </size>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">QPushButton{background: rgb(193, 193, 193)}
                                             </string>
-          </property>
-          <property name="text">
-           <string>Find R vs. T</string>
-          </property>
-         </widget>
-        </item>
-        <item row="6" column="3">
-         <widget class="QPushButton" name="calibrate_botton_base_t">
-          <property name="minimumSize">
-           <size>
-            <width>100</width>
-            <height>20</height>
-           </size>
-          </property>
-          <property name="maximumSize">
-           <size>
-            <width>100</width>
-            <height>16777215</height>
-           </size>
-          </property>
-          <property name="styleSheet">
-           <string notr="true">QPushButton{background: rgb(193, 193, 193)}</string>
-          </property>
-          <property name="text">
-           <string>Calibrate T. Zero</string>
-          </property>
-         </widget>
-        </item>
-        <item row="7" column="0">
-         <widget class="QPushButton" name="stop_botton">
-          <property name="minimumSize">
-           <size>
-            <width>100</width>
-            <height>20</height>
-           </size>
-          </property>
-          <property name="maximumSize">
-           <size>
-            <width>60</width>
-            <height>16777215</height>
-           </size>
-          </property>
-          <property name="styleSheet">
-           <string notr="true">QPushButton{background: rgb(193, 193, 193)}</string>
-          </property>
-          <property name="text">
-           <string>Stop</string>
-          </property>
-         </widget>
-        </item>
-        <item row="7" column="1" colspan="2">
-         <widget class="QPushButton" name="load_csv_botton">
-          <property name="minimumSize">
-           <size>
-            <width>100</width>
-            <height>20</height>
-           </size>
-          </property>
-          <property name="maximumSize">
-           <size>
-            <width>100</width>
-            <height>16777215</height>
-           </size>
-          </property>
-          <property name="styleSheet">
-           <string notr="true">QPushButton{background: rgb(193, 193, 193)}</string>
-          </property>
-          <property name="text">
-           <string>Load</string>
-          </property>
-         </widget>
-        </item>
-        <item row="7" column="3">
-         <widget class="QPushButton" name="calibrate_botton_pid">
-          <property name="minimumSize">
-           <size>
-            <width>100</width>
-            <height>20</height>
-           </size>
-          </property>
-          <property name="maximumSize">
-           <size>
-            <width>100</width>
-            <height>16777215</height>
-           </size>
-          </property>
-          <property name="styleSheet">
-           <string notr="true">QPushButton{background: rgb(193, 193, 193)}</string>
-          </property>
-          <property name="text">
-           <string>Tune PID</string>
-          </property>
-         </widget>
+            </property>
+            <property name="text">
+             <string>Find R vs. T</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="2">
+           <widget class="QPushButton" name="calibrate_botton_base_t">
+            <property name="minimumSize">
+             <size>
+              <width>100</width>
+              <height>20</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>100</width>
+              <height>16777215</height>
+             </size>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">QPushButton{background: rgb(193, 193, 193)}</string>
+            </property>
+            <property name="text">
+             <string>Calibrate T. Zero</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QPushButton" name="stop_botton">
+            <property name="minimumSize">
+             <size>
+              <width>100</width>
+              <height>20</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>60</width>
+              <height>16777215</height>
+             </size>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">QPushButton{background: rgb(193, 193, 193)}</string>
+            </property>
+            <property name="text">
+             <string>Stop</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QPushButton" name="load_csv_botton">
+            <property name="minimumSize">
+             <size>
+              <width>100</width>
+              <height>20</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>100</width>
+              <height>16777215</height>
+             </size>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">QPushButton{background: rgb(193, 193, 193)}</string>
+            </property>
+            <property name="text">
+             <string>Load</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="2">
+           <widget class="QPushButton" name="calibrate_botton_pid">
+            <property name="minimumSize">
+             <size>
+              <width>100</width>
+              <height>20</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>100</width>
+              <height>16777215</height>
+             </size>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">QPushButton{background: rgb(193, 193, 193)}</string>
+            </property>
+            <property name="text">
+             <string>Tune PID</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
         </item>
        </layout>
-      </item>
-      <item row="0" column="1">
-       <widget class="QGraphicsView" name="temperature_vis">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-          <horstretch>1</horstretch>
-          <verstretch>1</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="minimumSize">
-         <size>
-          <width>150</width>
-          <height>150</height>
-         </size>
-        </property>
-        <property name="styleSheet">
-         <string notr="true">QWidget{
-                                            border: 0.5px solid gray;
-                                            }
-                                        </string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <widget class="QGraphicsView" name="h_flux_vis">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-          <horstretch>1</horstretch>
-          <verstretch>1</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="minimumSize">
-         <size>
-          <width>150</width>
-          <height>150</height>
-         </size>
-        </property>
-        <property name="styleSheet">
-         <string notr="true">QWidget{
-                                            border: 0.5px solid gray;
-                                            }
-                                        </string>
-        </property>
-       </widget>
       </item>
       <item row="2" column="0" colspan="2">
        <widget class="QLabel" name="Error">
@@ -522,6 +651,8 @@ p, li { white-space: pre-wrap; }
   <tabstop>ex_number</tabstop>
   <tabstop>ex_name</tabstop>
   <tabstop>calib_temperature</tabstop>
+  <tabstop>max_voltage</tabstop>
+  <tabstop>max_current</tabstop>
   <tabstop>parameters_text</tabstop>
   <tabstop>start_botton</tabstop>
   <tabstop>stop_botton</tabstop>

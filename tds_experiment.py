@@ -8,6 +8,17 @@ from scipy.interpolate import interp1d
 import siglent, pid  # Assuming your custom module for SDM3055 functions
 
 def tds(emitter, experiment_params, r_vs_t, config):
+
+    def update_max_current(max_current):
+        config['max_current'] = max_current
+
+    def update_max_voltage(max_voltage):
+        config['max_voltage'] = max_voltage
+
+    # Connect the signal to the slot
+    emitter.max_current_signal.connect(update_max_current)
+    emitter.max_voltage_signal.connect(update_max_voltage)
+
     # Initialize Resource Manager and Devices
     rm = pyvisa.ResourceManager()
     DMM_v = rm.open_resource(config['DMM_v'])  # Digital Multimeter for voltage
