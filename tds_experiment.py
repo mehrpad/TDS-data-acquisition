@@ -7,7 +7,7 @@ from scipy.interpolate import interp1d
 
 import siglent, pid  # Assuming your custom module for SDM3055 functions
 
-def tds(emitter, experiment_params, r_vs_t, config):
+def tds(emitter, experiment_params, r_vs_t, config, t_zero):
 
     def update_max_current(max_current):
         config['max_current'] = max_current
@@ -53,14 +53,17 @@ def tds(emitter, experiment_params, r_vs_t, config):
         time.sleep(3)
         measured_voltage, measured_current, temperature = measure_resistivity(DMM_v, DMM_i, siglent,
                                                                               temperature_interp)
-        print(f"The initial temperature is {temperature}")
+        print(f"The initial measured temperature is {temperature} - T zero is {t_zero}")
         target_T_temp = start_T + step_T * hold_step_counter
         # Initialize PID controller for incremental PID control
         # New Input = Old Input + PID Output
-        pid_controller = pid.PIDController(kp=0.01, ki=0.0, kd=0.0, setpoint=temperature)
-        step_start_temp = (target_T_temp - temperature) / 10
+        pid_controller = pid.PIDController(kp=0.01, ki=0.0, kd=0.0, setpoint=t_zero)
+        step_start_temp = (target_T_temp - temperature) / 100
         while temperature < start_T and not emitter.stopped:
-            pid_voltage += pid_controller.compute(temperature, setpoint=step_start_temp + temperature)
+            pid_voltage_dz = pid_controller.compute(temperature, setpoint=t_zero + step_start_temp)
+            pid_voltage_dz = max(0.0, min(pid_voltage_dz, 0.1))
+            pid_voltage += pid_voltage_dz
+            pid_voltage = max(0.0, min(pid_voltage, config['max_voltage']))
             if step_start_temp < target_T_temp:
                 step_start_temp += step_start_temp
             print("step_start_temp: ", step_start_temp)
