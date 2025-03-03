@@ -696,7 +696,7 @@ class Ui_TDS(object):
 
         self.worker_thread = WorkerThread(tds_experiment.tds, emitter=self.emitter,
                                           experiment_params=self.experiment_params, r_vs_t=self.r_vs_t,
-                                          config=self.config)
+                                          config=self.config, t_zero=float(self.calib_temperature.text()))
         self.worker_thread.finished.connect(self.thread_finished)
         self.worker_thread.start()
         self.update_timer.start(500)
