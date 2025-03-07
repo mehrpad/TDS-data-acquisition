@@ -40,8 +40,8 @@ def calibrate_temperature_curve(r_vs_t, room_temp):
     siglent.set_voltage(PS, voltage=0.01)
     time.sleep(3)
     # Set the speed and mode of the DMMs
-    siglent.set_mode_speed(DMM_i, 'CURR', 10)
-    siglent.set_mode_speed(DMM_v, 'VOLT', 10)
+    siglent.set_mode_speed(DMM_i, 'CURR', 1)
+    siglent.set_mode_speed(DMM_v, 'VOLT', 1)
     time.sleep(1)
     # To be accurate, we measure the resistivity at room temperature 3 times and take the average
     measured_current = []
@@ -62,19 +62,24 @@ def calibrate_temperature_curve(r_vs_t, room_temp):
     temperature = np.mean(np.array(temperature))
     print(f"The Temperature:{temperature}, Voltage:{measured_voltage}, Current:{measured_current}")
     measured_resistivity = measured_voltage / measured_current
-    # Calculate the resistivity at room temperature
-    resistivity_room_temp = resistivity_interp(room_temp).item()
+    if measured_resistivity > 0:
+        # Calculate the resistivity at room temperature
+        resistivity_room_temp = resistivity_interp(room_temp).item()
 
-    # Calculate the shift in resistivity
-    delta_resistivity = measured_resistivity - resistivity_room_temp
-    print(f"Measured resistivity: {measured_resistivity:.4f} Ohm")
-    print(f"Resistivity at zero temperature: {resistivity_room_temp:.4f} Ohm")
-    print(f"Shift in resistivity: {delta_resistivity:.4f} Ohm")
+        # Calculate the shift in resistivity
+        delta_resistivity = measured_resistivity - resistivity_room_temp
+        print(f"Measured resistivity: {measured_resistivity:.4f} Ohm")
+        print(f"Resistivity at zero temperature: {resistivity_room_temp:.4f} Ohm")
+        print(f"Shift in resistivity: {delta_resistivity:.4f} Ohm")
 
-    # Apply the shift to resistivity values
-    r_vs_t_calibrated = r_vs_t.copy()
-    # r_vs_t_calibrated[0, :] += delta_resistivity  # Adjust resistivity values
-    r_vs_t_calibrated[0, :] *= measured_resistivity / resistivity_room_temp
+        # Apply the shift to resistivity values
+        r_vs_t_calibrated = r_vs_t.copy()
+        # r_vs_t_calibrated[0, :] += delta_resistivity  # Adjust resistivity values
+        r_vs_t_calibrated[0, :] *= measured_resistivity / resistivity_room_temp
+    else:
+        print(f"Measured resistivity: {measured_resistivity:.4f} Ohm")
+        print(f"The calibration failed")
+        r_vs_t_calibrated = None
 
     siglent.set_voltage(PS, voltage=0.0)
     time.sleep(0.01)

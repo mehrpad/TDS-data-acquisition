@@ -59,6 +59,7 @@ if __name__ == "__main__":
         measured_current = float(read_DMM(DMM_i))
         print(measured_voltage/measured_current)
         print(f"Voltage: {measured_voltage} V, Current: {measured_current} A, Applied Voltage: {0.5+0.1*i} V")
+        time.sleep(2)
     print(f"Time taken: {time.time() - start_time}")
 
     # print(float(read_current(PS)))

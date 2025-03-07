@@ -57,16 +57,16 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero):
         target_T_temp = start_T + step_T * hold_step_counter
         # Initialize PID controller for incremental PID control
         # New Input = Old Input + PID Output
-        pid_controller = pid.PIDController(kp=0.01, ki=0.0, kd=0.0, setpoint=t_zero)
+        pid_controller = pid.PIDController(kp=0.001, ki=0.0, kd=0.0, setpoint=t_zero)
         step_start_temp = (target_T_temp - temperature) / 100
+        ini_start_temp = 0
         while temperature < start_T and not emitter.stopped:
-            pid_voltage_dz = pid_controller.compute(temperature, setpoint=t_zero + step_start_temp)
+            pid_voltage_dz = pid_controller.compute(temperature, setpoint=t_zero + ini_start_temp)
             pid_voltage_dz = max(0.0, min(pid_voltage_dz, 0.1))
             pid_voltage += pid_voltage_dz
             pid_voltage = max(0.0, min(pid_voltage, config['max_voltage']))
-            if step_start_temp < target_T_temp:
-                step_start_temp += step_start_temp
-            print("step_start_temp: ", step_start_temp)
+            if ini_start_temp < target_T_temp:
+                ini_start_temp += step_start_temp
             pid_voltage = max(0.0, min(pid_voltage, config['max_voltage']))
             siglent.set_voltage(PS, voltage=pid_voltage)
             time.sleep(0.9)
@@ -92,7 +92,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero):
             if target_T_temp >= start_T + step_T * hold_step_counter:
                 hold_step__time_counter += 1
                 # print(f"Hold step time counter: {hold_step__time_counter}")
-                pid_voltage += pid_controller.compute(temperature)
+                pid_voltage += pid_controller.compute(temperature, setpoint=target_T_temp)
                 pid_voltage = max(0.0, min(pid_voltage, config['max_voltage']))
 
                 if hold_step__time_counter * config['experiment_frequency'] >= hold_step_min * 60:
@@ -104,7 +104,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero):
                 target_T_temp = start_T + step_T * (hold_step_counter - 1) + ramp_speed * loop_counter
                 pid_voltage += pid_controller.compute(temperature, setpoint=target_T_temp)
                 pid_voltage = max(0.0, min(pid_voltage, config['max_voltage']))
-
+            print("target temp", target_T_temp)
             # Apply the calculated voltage if it is different from the previous value
             if pid_voltage != old_pid_voltage:
                 try:
@@ -163,5 +163,6 @@ def measure_resistivity(DMM_v, DMM_i, siglent, temperature_interp):
         temperature = np.nan
 
     if temperature < 0:
+        print(f"Calculated temperature is : {temperature} - put temperature to 0")
         temperature = 0
     return measured_voltage, measured_current, temperature
