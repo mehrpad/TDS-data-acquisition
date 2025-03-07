@@ -460,6 +460,7 @@ class Ui_TDS(object):
         self.max_voltage.setText(str(self.config['max_voltage']))
         self.max_current.setText(str(self.config['max_current']))
 
+        self.calibrate_botton_pid.setEnabled(False)
     def retranslateUi(self, TDS):
         _translate = QtCore.QCoreApplication.translate
         TDS.setWindowTitle(_translate("TDS", "TDS"))

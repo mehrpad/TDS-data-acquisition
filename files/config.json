@@ -1,6 +1,6 @@
 {
   "experiment_frequency": 1,
-  "max_voltage": 12,
+  "max_voltage": 30,
   "max_current": 5,
   "DMM_speed": 1,
   "DMM_v": "USB0::0xF4EC::0xEE38::SDM35FAC4R0253::INSTR",
