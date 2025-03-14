@@ -58,7 +58,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero):
         target_T_temp = start_T + step_T * hold_step_counter
         # Initialize PID controller for incremental PID control
         # New Input = Old Input + PID Output
-        pid_controller = pid.PIDController(kp=0.001, ki=0.0, kd=0.0, setpoint=t_zero)
+        pid_controller = pid.PIDController(kp=0.002, ki=0.0, kd=0.0, setpoint=t_zero)
         step_start_temp = (target_T_temp - temperature) / 100
         ini_start_temp = 0
         while temperature < start_T and not emitter.stopped:
@@ -149,7 +149,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero):
     rm.close()
     print('TDS experiment thread finished.')
 
-def measure_resistivity(DMM_v, DMM_i, siglent, temperature_interp):
+def measure_resistivity(DMM_v, DMM_i, siglent, temperature_interp, calibration=False):
     try:
         measured_voltage = float(siglent.read_DMM(DMM_v))
     except Exception as e:
@@ -165,7 +165,7 @@ def measure_resistivity(DMM_v, DMM_i, siglent, temperature_interp):
         temperature = temperature_interp(resistance).item()
     else:
         temperature = np.nan
-    if temperature < 0:
+    if temperature < 0 and not calibration:
         print(f"Calculated temperature is : {temperature} - put temperature to 0")
         temperature = 0
     return measured_voltage, measured_current, temperature

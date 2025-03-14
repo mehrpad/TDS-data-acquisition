@@ -641,9 +641,7 @@ class Ui_TDS(object):
             self.error_message(f'Calibration failed: {result}', color='red')
         else:
             if result is not None:
-                print(self.r_vs_t)
                 self.r_vs_t = result  # Update r_vs_t with the calibrated values
-                print(self.r_vs_t)
                 self.error_message('Calibration successful!', color='green')
             else:
                 self.error_message('Calibration failed and returned None', color='red')

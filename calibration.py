@@ -49,7 +49,11 @@ def calibrate_temperature_curve(r_vs_t, room_temp):
     temperature = []
     success_num = 0
     while success_num < 3:
-        measured_voltage_c, measured_current_c, temperature_c = tds_experiment.measure_resistivity(DMM_v, DMM_i, siglent, temperature_interp)
+        measured_voltage_c, measured_current_c, temperature_c = tds_experiment.measure_resistivity(DMM_v, DMM_i,
+                                                                                                   siglent,
+                                                                                                   temperature_interp,
+                                                                                                   calibration=True)
+        print(f"The Temperature:{temperature_c}, Voltage:{measured_voltage_c}, Current:{measured_current_c}")
         if measured_current != 0 and measured_voltage != 0 and temperature != 0:
             success_num += 1
             measured_current.append(measured_current_c)
@@ -60,7 +64,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp):
     measured_current = np.mean(np.array(measured_current))
     measured_voltage = np.mean(np.array(measured_voltage))
     temperature = np.mean(np.array(temperature))
-    print(f"The Temperature:{temperature}, Voltage:{measured_voltage}, Current:{measured_current}")
+    print(f"The Final Temperature:{temperature}, Voltage:{measured_voltage}, Current:{measured_current}")
     measured_resistivity = measured_voltage / measured_current
     if measured_resistivity > 0:
         # Calculate the resistivity at room temperature
