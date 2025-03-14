@@ -629,18 +629,24 @@ class Ui_TDS(object):
 
     def calibration_finished(self, result):
         """
-        Handle the completion of the calibration process
+        Handles the result of the calibration worker thread.
         """
-        if result is None:
-            self.error_message('Zero temperature calibrated', color='black')
-        else:
-            self.error_message('Error calibrating temperature', color='red')
         self.calibrate_botton_base_t.setEnabled(True)
-        self.calibrate_botton_pid.setEnabled(True)
         self.find_csv_botton.setEnabled(True)
         self.load_csv_botton.setEnabled(True)
         self.start_botton.setEnabled(True)
         self.stop_botton.setEnabled(True)
+
+        if isinstance(result, Exception):
+            self.error_message(f'Calibration failed: {result}', color='red')
+        else:
+            if result is not None:
+                print(self.r_vs_t)
+                self.r_vs_t = result  # Update r_vs_t with the calibrated values
+                print(self.r_vs_t)
+                self.error_message('Calibration successful!', color='green')
+            else:
+                self.error_message('Calibration failed and returned None', color='red')
 
     def calibrate_pid(self):
         """
@@ -836,7 +842,7 @@ class WorkerThread(QThread):
             self.finished.emit(e)  # Emit the exception if any error occurs
 
 class CalibrationWorkerThread(QThread):
-    finished = pyqtSignal(object)  # Signal emitted when the function is done
+    finished = pyqtSignal(object)  # Signal emitted when the function is done (can be result or error)
 
     def __init__(self, func, *args, **kwargs):
         super().__init__()
@@ -846,9 +852,9 @@ class CalibrationWorkerThread(QThread):
 
     def run(self):
         try:
-            # Execute the function
-            self.func(*self.args, **self.kwargs)
-            self.finished.emit(None)  # Emit when finished without exception
+            # Execute the function and get the return value
+            result = self.func(*self.args, **self.kwargs)
+            self.finished.emit(result)  # Emit the result when finished successfully
         except Exception as e:
             self.finished.emit(e)  # Emit the exception if any error occurs
 
