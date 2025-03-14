@@ -75,6 +75,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp):
         # Apply the shift to resistivity values
         r_vs_t_calibrated = r_vs_t.copy()
         # r_vs_t_calibrated[0, :] += delta_resistivity  # Adjust resistivity values
+        print(f"Resistivity ratio: {measured_resistivity / resistivity_room_temp:.4f}")
         r_vs_t_calibrated[0, :] *= measured_resistivity / resistivity_room_temp
     else:
         print(f"Measured resistivity: {measured_resistivity:.4f} Ohm")
