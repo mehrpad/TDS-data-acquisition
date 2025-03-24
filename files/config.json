@@ -1,5 +1,5 @@
 {
-  "experiment_frequency": 1,
+  "experiment_frequency": 0.5,
   "max_voltage": 30,
   "max_current": 5,
   "DMM_speed": 10,
