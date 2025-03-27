@@ -462,10 +462,10 @@ class Ui_TDS(object):
 
         self.calibrate_botton_pid.setEnabled(False)
 
-        self.temperature_target_lcd.setDigitCount(4)
-        self.temperature_lcd.setDigitCount(4)
-        self.voltage_lcd.setDigitCount(4)
-        self.current_lcd.setDigitCount(4)
+        self.voltage_lcd.setDigitCount(8)
+        self.current_lcd.setDigitCount(8)
+        self.temperature_lcd.setDigitCount(6)
+        self.temperature_target_lcd.setDigitCount(6)
 
     def retranslateUi(self, TDS):
         _translate = QtCore.QCoreApplication.translate
@@ -489,7 +489,7 @@ class Ui_TDS(object):
                                                 "<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\n"
                                                 "p, li { white-space: pre-wrap; }\n"
                                                 "</style></head><body style=\" font-family:\'Segoe UI\'; font-size:9pt; font-weight:400; font-style:normal;\">\n"
-                                                "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-family:\'JetBrains Mono,monospace\'; font-size:8pt; color:#000000;\">{start_T=200;step_T</span><span style=\" font-family:\'MS Shell Dlg 2\'; font-size:7.875pt;\">=40;target_T=800;ramp_speed_c_min=20;hold_step_time_min=1</span><span style=\" font-family:\'JetBrains Mono,monospace\'; font-size:8pt; color:#000000;\">}</span>                                                                              </p></body></html>"))
+                                                "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-family:\'JetBrains Mono,monospace\'; font-size:8pt; color:#000000;\">{start_T=23;step_T</span><span style=\" font-family:\'MS Shell Dlg 2\'; font-size:7.875pt;\">=600;target_T=600;ramp_speed_c_min=10;hold_step_time_min=1</span><span style=\" font-family:\'JetBrains Mono,monospace\'; font-size:8pt; color:#000000;\">}</span>                                                                              </p></body></html>"))
         self.start_botton.setText(_translate("TDS", "Start"))
         self.find_csv_botton.setText(_translate("TDS", "Find R vs. T"))
         self.calibrate_botton_base_t.setText(_translate("TDS", "Calibrate T. Zero"))
@@ -556,10 +556,10 @@ class Ui_TDS(object):
         self.voltage = data[4]
         self.current = data[5]
         self.temperature = data[2]
-        self.voltage_lcd.display(self.voltage)
-        self.current_lcd.display(self.current)
-        self.temperature_lcd.display(self.temperature)
-        self.temperature_target_lcd.display(self.target_temperature)
+        self.voltage_lcd.display("{:.1e}".format(self.voltage))
+        self.current_lcd.display("{:.1e}".format(self.current))
+        self.temperature_lcd.display(round(self.temperature, 2))
+        self.temperature_target_lcd.display(round(self.target_temperature, 2))
 
         # "time",  # Time in UNIX-readable format
         # "set_T",  # Set temperature
