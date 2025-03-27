@@ -461,6 +461,12 @@ class Ui_TDS(object):
         self.max_current.setText(str(self.config['max_current']))
 
         self.calibrate_botton_pid.setEnabled(False)
+
+        self.temperature_target_lcd.setDigitCount(4)
+        self.temperature_lcd.setDigitCount(4)
+        self.voltage_lcd.setDigitCount(4)
+        self.current_lcd.setDigitCount(4)
+
     def retranslateUi(self, TDS):
         _translate = QtCore.QCoreApplication.translate
         TDS.setWindowTitle(_translate("TDS", "TDS"))
@@ -769,6 +775,10 @@ class Ui_TDS(object):
                 f.create_dataset("voltage", data=dataset[4], dtype='f8')
                 f.create_dataset("current", data=dataset[5], dtype='f8')
                 f.create_dataset("calculated_voltage", data=dataset[6], dtype='f8')
+
+            # save the temperature vs resistivity data to a csv file
+            df = pd.DataFrame(self.r_vs_t.T, columns=['resistivity', 'temperature'])
+            df.to_csv(path + '/r_vs_t.csv', index=False)
 
     def error_message(self, message, color='red'):
         """

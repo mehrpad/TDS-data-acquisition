@@ -8,12 +8,13 @@ from scipy.interpolate import interp1d
 import siglent, pid  # Assuming your custom module for SDM3055 functions
 
 def tds(emitter, experiment_params, r_vs_t, config, t_zero):
-
+    constant_voltage_ramp = False
     def update_max_current(max_current):
         config['max_current'] = max_current
 
     def update_max_voltage(max_voltage):
         config['max_voltage'] = max_voltage
+
 
     # Connect the signal to the slot
     emitter.max_current_signal.connect(update_max_current)
@@ -61,85 +62,83 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero):
         pid_controller = pid.PIDController(kp=0.01, ki=0.0, kd=0.0, setpoint=t_zero)
         step_start_temp = (target_T_temp - temperature) / 100
         ini_start_temp = 0
-        #while temperature < start_T and not emitter.stopped:
-        # pid_voltage_dz = pid_controller.compute(temperature, setpoint=t_zero + ini_start_temp)
-            #pid_voltage_dz = max(0.005, min(pid_voltage_dz, 0.1))
-            #pid_voltage += pid_voltage_dz
-            #pid_voltage = max(0.0, min(pid_voltage, config['max_voltage']))
-            #if ini_start_temp < target_T_temp:
-        #    if t_zero + ini_start_temp < temperature:
-            #        ini_start_temp = temperature - t_zero
-                    #    else:
-            #        ini_start_temp += step_start_temp
-            #pid_voltage = max(0.005, min(pid_voltage, config['max_voltage']))
-            # siglent.set_voltage(PS, voltage=pid_voltage)
-            #time.sleep(0.9)
-            #measured_voltage, measured_current, temperature = measure_resistivity(DMM_v, DMM_i, siglent,
-                                                                                  #                                                                      temperature_interp)
+        while temperature < start_T and not emitter.stopped and not constant_voltage_ramp:
+            pid_voltage_dz = pid_controller.compute(temperature, setpoint=t_zero + ini_start_temp)
+            pid_voltage_dz = min(pid_voltage_dz, 0.1)
+            pid_voltage += pid_voltage_dz
+            pid_voltage = max(0.01, min(pid_voltage, config['max_voltage']))
+            siglent.set_voltage(PS, voltage=pid_voltage)
+            time.sleep(0.9)
+            if t_zero + ini_start_temp < target_T_temp:
+                ini_start_temp += step_start_temp
 
-            #current_time = datetime.datetime.now()
-            #current_time_with_microseconds = current_time.strftime(
-                #    "%Y-%m-%d %H:%M:%S.%f")  # Format with microseconds
-            #current_time_unix = datetime.datetime.strptime(current_time_with_microseconds,
-            #                                               "%Y-%m-%d %H:%M:%S.%f").timestamp()
-            #emitter.experiment_signal.emit([current_time_unix, target_T_temp, temperature,
-            # 0, measured_voltage, measured_current, pid_voltage])
-            # print(f"Start phase: Temperature: {temperature}, Voltage: {pid_voltage}")
-        print(f"The start temperature is reached: {temperature}")
-        hold_step_counter = 1
-        while not emitter.stopped:
-            start_time_loop = time.time()
-            # print(f"Temperature: {temperature}, Voltage: {pid_voltage}, Target temperature: {target_T_temp}")
-            if target_T_temp > target_T:
-                print('The temperature is higher than the target temperature. The experiment is finished.')
-                break
-            pid_voltage = pid_voltage + 0.001
-            #if target_T_temp >= start_T + step_T * hold_step_counter:
-                #vhold_step__time_counter += 1
-                # print(f"Hold step time counter: {hold_step__time_counter}")
-                # pid_voltage_dz = pid_controller.compute(temperature, setpoint=target_T_temp)
-                #pid_voltage_dz = max(0.005, min(pid_voltage_dz, 0.1))
-                #pid_voltage += pid_voltage_dz
-                #pid_voltage = max(0.005, min(pid_voltage, config['max_voltage']))
-
-                #if hold_step__time_counter * config['experiment_frequency'] >= hold_step_min * 60:
-                    #hold_step_counter += 1
-                    #hold_step__time_counter = 0
-                    #loop_counter = 0
-                    #else:
-                # print(f"Ramp speed: {ramp_speed}, Loop counter: {loop_counter}")
-                #target_T_temp = start_T + step_T * (hold_step_counter - 1) + ramp_speed * loop_counter
-                #pid_voltage_dz = pid_controller.compute(temperature, setpoint=target_T_temp)
-                #pid_voltage_dz = max(0.005, min(pid_voltage_dz, 0.1))
-                #pid_voltage += pid_voltage_dz
-                #pid_voltage = max(0.005, min(pid_voltage, config['max_voltage']))
-
-            # Apply the calculated voltage if it is different from the previous value
-            if pid_voltage != old_pid_voltage:
-                try:
-                    old_pid_voltage = pid_voltage
-                    siglent.set_voltage(PS, voltage=pid_voltage)
-                except Exception as e:
-                    print(f"An error occurred in setting voltage: {e}")
-            time.sleep(0.1)
-            # Measure resistivity and update temperature
             measured_voltage, measured_current, temperature = measure_resistivity(DMM_v, DMM_i, siglent,
-                                                                                  temperature_interp)
+                                                                            temperature_interp)
+
             current_time = datetime.datetime.now()
-            current_time_with_microseconds = current_time.strftime(
-                "%Y-%m-%d %H:%M:%S.%f")  # Format with microseconds
+            current_time_with_microseconds = current_time.strftime("%Y-%m-%d %H:%M:%S.%f")  # Format with microseconds
             current_time_unix = datetime.datetime.strptime(current_time_with_microseconds,
                                                            "%Y-%m-%d %H:%M:%S.%f").timestamp()
-            emitter.experiment_signal.emit([current_time_unix, target_T_temp, temperature,
-                                            0, measured_voltage, measured_current, pid_voltage])
+            emitter.experiment_signal.emit([current_time_unix, target_T_temp, temperature, 0,
+                                            measured_voltage, measured_current, pid_voltage])
+            print(f"Start phase: Temperature: {temperature}, Voltage: {pid_voltage}")
+        print(f"The start temperature is reached: {temperature}")
+        hold_step_counter += 1
+        while not emitter.stopped:
+            if constant_voltage_ramp:
+                pid_voltage = pid_voltage + 0.001
+            else:
+                start_time_loop = time.time()
+                print(f"Temperature: {temperature}, Voltage: {pid_voltage}, Target temperature: {target_T_temp}")
+                if target_T_temp > target_T:
+                    print('The temperature is higher than the target temperature. The experiment is finished.')
+                    break
+                elif target_T_temp >= start_T + step_T * hold_step_counter:
+                    hold_step__time_counter += 1
+                    print(f"Hold step time counter: {hold_step__time_counter}")
+                    pid_voltage_dz = pid_controller.compute(temperature, setpoint=target_T_temp)
+                    pid_voltage_dz = min(pid_voltage_dz, 0.1)
+                    pid_voltage += pid_voltage_dz
+                    pid_voltage = max(0.01, min(pid_voltage, config['max_voltage']))
 
-            loop_elapsed_time = time.time() - start_time_loop
-            if loop_elapsed_time < loop_time:
-                time.sleep(loop_time - loop_elapsed_time)
-            elif loop_elapsed_time > loop_time:
-                print(f"Loop time exceeded: {loop_elapsed_time}")
+                    if hold_step__time_counter * config['experiment_frequency'] >= hold_step_min * 60:
+                        hold_step_counter += 1
+                        hold_step__time_counter = 0
+                        loop_counter = 0
+                    else:
+                        print(f"Ramp speed: {ramp_speed}, Loop counter: {loop_counter}")
+                        target_T_temp = start_T + step_T * (hold_step_counter - 1) + ramp_speed * loop_counter
+                        pid_voltage_dz = pid_controller.compute(temperature, setpoint=target_T_temp)
+                        pid_voltage_dz = min(pid_voltage_dz, 0.1)
+                        pid_voltage += pid_voltage_dz
+                        pid_voltage = max(0.01, min(pid_voltage, config['max_voltage']))
 
-            loop_counter += 1
+                # Apply the calculated voltage if it is different from the previous value
+                if pid_voltage != old_pid_voltage:
+                    try:
+                        old_pid_voltage = pid_voltage
+                        siglent.set_voltage(PS, voltage=pid_voltage)
+                    except Exception as e:
+                        print(f"An error occurred in setting voltage: {e}")
+                time.sleep(0.1)
+                # Measure resistivity and update temperature
+                measured_voltage, measured_current, temperature = measure_resistivity(DMM_v, DMM_i, siglent,
+                                                                                      temperature_interp)
+                current_time = datetime.datetime.now()
+                current_time_with_microseconds = current_time.strftime(
+                    "%Y-%m-%d %H:%M:%S.%f")  # Format with microseconds
+                current_time_unix = datetime.datetime.strptime(current_time_with_microseconds,
+                                                               "%Y-%m-%d %H:%M:%S.%f").timestamp()
+                emitter.experiment_signal.emit([current_time_unix, target_T_temp, temperature,
+                                                0, measured_voltage, measured_current, pid_voltage])
+
+                loop_elapsed_time = time.time() - start_time_loop
+                if loop_elapsed_time < loop_time:
+                    time.sleep(loop_time - loop_elapsed_time)
+                elif loop_elapsed_time > loop_time:
+                    print(f"Loop time exceeded: {loop_elapsed_time}")
+
+                loop_counter += 1
 
     try:
         siglent.set_voltage(PS, voltage=0.0)
