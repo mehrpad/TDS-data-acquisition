@@ -5,7 +5,30 @@
   "DMM_speed": 10,
   "DMM_v": "USB0::0xF4EC::0xEE38::SDM35FAC4R0253::INSTR",
   "DMM_i": "USB0::0xF4EC::0x1201::SDM35HBQ803105::INSTR",
-  "PS": "USB0::0xF4EC::0x1410::SPD13DCC4R0058::INSTR"
-
+  "PS": "USB0::0xF4EC::0x1410::SPD13DCC4R0058::INSTR",
+  "pid_kp": 0.008,
+  "pid_ki": 0.0004,
+  "pid_kd": 0.0,
+  "pid_integral_limit": 400.0,
+  "pid_derivative_filter": 0.6,
+  "startup_voltage": 0.01,
+  "min_voltage": 0.0,
+  "max_voltage_step_up": 0.02,
+  "max_voltage_step_down": 0.08,
+  "temperature_tolerance_c": 2.0,
+  "hold_entry_tolerance_c": 3.0,
+  "safety_temp_margin_c": 15.0,
+  "soft_temp_rate_margin_c_min": 1.0,
+  "hard_temp_rate_margin_c_min": 4.0,
+  "measurement_fail_limit": 3,
+  "minimum_current_a": 1e-09,
+  "minimum_voltage_change": 0.0001,
+  "autosave_flush_interval_s": 5.0,
+  "autosave_batch_size": 10,
+  "tuning_voltage_step": 0.01,
+  "tuning_max_duration_s": 180.0,
+  "tuning_baseline_samples": 5,
+  "tuning_target_rise_c": 3.0,
+  "tuning_min_temperature_rise_c": 1.5
 }
 
