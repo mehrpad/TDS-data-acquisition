@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tds-control"
+version = "0.1.0"
+description = "Temperature-programmed resistivity experiment control software"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "PyQt6",
+  "PyVISA",
+  "PyVISA-py",
+  "pandas",
+  "openpyxl",
+  "h5py",
+  "scipy",
+  "pyqtgraph",
+]
+
+[project.scripts]
+tds-control = "tds_control.app:main"
+
+[tool.setuptools]
+packages = ["tds_control"]
