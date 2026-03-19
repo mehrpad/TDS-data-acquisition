@@ -1,4 +1,3 @@
-import json
 import os
 import re
 import sys
@@ -10,9 +9,10 @@ import pandas as pd
 import pyqtgraph as pg
 
 from . import calibration
+from . import config_io
 from . import tds_experiment
 from .data_saver import ExperimentDataSaver
-from .paths import CONFIG_PATH, DATA_DIR, EXPERIMENT_COUNTER_PATH, ensure_runtime_dirs
+from .paths import DATA_DIR, EXPERIMENT_COUNTER_PATH, ensure_runtime_dirs
 
 
 class Ui_TDS(object):
@@ -671,8 +671,7 @@ class Ui_TDS(object):
         """
         Persist updated safety and PID settings to the local config file.
         """
-        with CONFIG_PATH.open('w') as file:
-            json.dump(self.config, file, indent=2)
+        config_io.save_config(self.config)
 
     def invalidate_t_zero_calibration(self):
         """
@@ -1301,8 +1300,7 @@ def main():
     TDS = TDSMainWindow()
     try:
         ensure_runtime_dirs()
-        with CONFIG_PATH.open() as file:
-            data = json.load(file)
+        data = config_io.load_config()
     except Exception as e:
         print('Cannot load the configuration file')
         print(e)

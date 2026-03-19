@@ -1,0 +1,239 @@
+# TDS control configuration
+#
+# This file uses TOML so you can keep comments next to the settings.
+# The GUI will rewrite this file with comments preserved whenever it saves settings.
+#
+
+# Controller mode and hardware
+# Choose "PI" or "PID". PI is the default and recommended starting mode.
+controller_mode = "PI"
+
+# Control loop frequency in Hz.
+experiment_frequency = 1
+
+# Absolute software voltage limit for the power supply.
+max_voltage = 30
+
+# Absolute software current limit in amps.
+max_current = 5
+
+# Measurement speed setting sent to both DMMs.
+DMM_speed = 10
+
+# VISA address of the voltage DMM.
+DMM_v = "USB0::0xF4EC::0xEE38::SDM35FAC4R0253::INSTR"
+
+# VISA address of the current DMM.
+DMM_i = "USB0::0xF4EC::0x1201::SDM35HBQ803105::INSTR"
+
+# VISA address of the power supply.
+PS = "USB0::0xF4EC::0x1410::SPD13DCC4R0058::INSTR"
+
+# Controller gains and output shaping
+# Proportional gain used by the live controller.
+pid_kp = 0.008
+
+# Integral gain used by the live controller.
+pid_ki = 0.0004
+
+# Derivative gain used only when controller_mode = "PID".
+pid_kd = 0
+
+# Clamp for the internal integral state.
+pid_integral_limit = 400
+
+# Low-pass filter factor for derivative smoothing.
+pid_derivative_filter = 0.6
+
+# Initial PSU voltage at the start of an experiment.
+startup_voltage = 0.01
+
+# Lowest voltage the controller may request.
+min_voltage = 0
+
+# Largest normal upward voltage step per loop.
+max_voltage_step_up = 0.01
+
+# Largest downward voltage step per loop.
+max_voltage_step_down = 0.04
+
+# Larger upward step allowed when the sample is far below the setpoint.
+max_voltage_step_up_far = 0.04
+
+# Temperature gap below the setpoint that enables aggressive catch-up.
+aggressive_step_band_c = 4
+
+# Band around the setpoint where heating-rate limiting becomes active.
+rate_limit_activation_band_c = 2
+
+# Below this band the controller avoids decreasing voltage.
+under_target_no_decrease_band_c = 1.5
+
+# Safety, filtering, and invalid-reading handling
+# Main temperature tolerance around the setpoint.
+temperature_tolerance_c = 2
+
+# Tolerance allowed when entering a hold plateau.
+hold_entry_tolerance_c = 3
+
+# Extra safety margin above the final target temperature.
+safety_temp_margin_c = 15
+
+# Extra ramp-rate margin before soft limiting starts.
+soft_temp_rate_margin_c_min = 1
+
+# Extra ramp-rate margin before hard backoff starts.
+hard_temp_rate_margin_c_min = 4
+
+# How many consecutive invalid measurements are tolerated before stopping.
+measurement_fail_limit = 20
+
+# Smallest current treated as a valid reading.
+minimum_current_a = 0.0005
+
+# Smallest PSU change worth sending to the instrument.
+minimum_voltage_change = 0.0001
+
+# Minimum allowed PSU voltage during active control.
+measurement_voltage_floor = 0.01
+
+# Median filter window for accepted temperature readings.
+measurement_filter_samples = 3
+
+# Extra fractional margin allowed outside the loaded R-vs-T range.
+resistance_range_margin_ratio = 0
+
+# Extra absolute resistance margin allowed outside the loaded R-vs-T range.
+resistance_range_margin_ohm = 0.01
+
+# How many stable warmup samples are needed before the main ramp starts.
+warmup_stable_samples = 3
+
+# Base resistance-jump threshold before a retry is triggered.
+resistance_glitch_jump_ohm = 0.03
+
+# Additional relative resistance-jump threshold used at higher resistance.
+resistance_glitch_jump_ratio = 0.015
+
+# How many extra measurements are taken after a resistance jump.
+measurement_retry_attempts = 2
+
+# Delay between retry measurements after a resistance jump.
+measurement_retry_delay_s = 0.15
+
+# Allowed spread for stable retry consensus.
+measurement_retry_consensus_ohm = 0.015
+
+# Legacy symmetric temperature-jump threshold kept for compatibility.
+measurement_temp_jump_c = 8
+
+# Upward temperature jump threshold before a reading is questioned.
+measurement_temp_jump_up_c = 20
+
+# Downward temperature jump threshold before a reading is questioned.
+measurement_temp_jump_down_c = 8
+
+# Largest upward jump that may still be accepted as physically plausible.
+measurement_temp_jump_accept_up_c = 35
+
+# How far above the live setpoint an accepted upward jump may land.
+measurement_temp_jump_accept_setpoint_margin_c = 15
+
+# How many downward jump confirmations are required before accepting cooldown.
+measurement_cooldown_confirm_samples = 1
+
+# Below this PSU voltage, invalid readings are treated more leniently.
+ignore_invalid_below_voltage = 0.05
+
+# Backoff step used when an invalid reading appears too hot.
+invalid_voltage_step_down = 0.02
+
+# Autosave
+# How often buffered data is flushed to disk.
+autosave_flush_interval_s = 5
+
+# How many samples are batched before a forced autosave write.
+autosave_batch_size = 10
+
+# Controller tuning
+# Voltage increment while searching for the safe tuning baseline.
+tuning_voltage_step = 0.01
+
+# Starting PSU voltage for controller tuning.
+tuning_start_voltage = 0.1
+
+# Maximum PSU voltage allowed during controller tuning.
+tuning_search_max_voltage = 0.5
+
+# Settling delay before a tuning search sample is judged.
+tuning_settle_time_s = 0.3
+
+# Step added above the baseline during each tuning attempt.
+tuning_response_voltage_step = 0.05
+
+# Pause between tuning attempts.
+tuning_between_attempts_s = 0.5
+
+# Maximum duration of one tuning response measurement.
+tuning_max_duration_s = 180
+
+# How many baseline samples are required before a tuning step.
+tuning_baseline_samples = 2
+
+# How many stable-current samples define the tuning baseline.
+tuning_stable_current_samples = 3
+
+# Minimum stable current for the tuning baseline.
+tuning_stable_current_a = 0.0001
+
+# Allowed temperature window around the hinted base temperature during tuning.
+tuning_temperature_window_c = 40
+
+# Preferred temperature rise for the tuning step response.
+tuning_target_rise_c = 1.2
+
+# Minimum temperature rise needed for a usable tuning result.
+tuning_min_temperature_rise_c = 0.8
+
+# How long tuning waits before concluding that nothing is happening.
+tuning_no_response_timeout_s = 25
+
+# Minimum smoothed rise considered observable during tuning.
+tuning_min_observable_rise_c = 0.25
+
+# Maximum time allowed once the tuning response has plateaued.
+tuning_plateau_timeout_s = 15
+
+# Idle timeout once the smoothed rise stops improving.
+tuning_plateau_idle_timeout_s = 6
+
+# Rise improvement required to count as continued growth during tuning.
+tuning_plateau_growth_c = 0.08
+
+# T0 calibration
+# Highest voltage allowed during T0 calibration.
+t0_calibration_voltage = 0.1
+
+# Starting PSU voltage for the T0 stable-current search.
+t0_voltage_search_start = 0.01
+
+# Voltage increment used during the T0 stable-current search.
+t0_voltage_step = 0.01
+
+# How long the sample is allowed to settle before T0 sampling.
+t0_settle_time_s = 3
+
+# How many T0 samples are used for the final calibration point.
+t0_calibration_samples = 5
+
+# How many initial T0 samples are discarded as warmup.
+t0_warmup_samples = 1
+
+# How many stable-current samples define the T0 baseline.
+t0_stable_current_samples = 3
+
+# Minimum stable current for the T0 baseline.
+t0_stable_current_a = 0.0001
+
+# Largest allowed mismatch from the entered base temperature during T0 calibration.
+t0_max_temp_error_c = 80

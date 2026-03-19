@@ -579,7 +579,7 @@ p, li { white-space: pre-wrap; }
              <string notr="true">QPushButton{background: rgb(193, 193, 193)}</string>
             </property>
             <property name="text">
-             <string>Tune PID</string>
+             <string>Tune PI/PID</string>
             </property>
            </widget>
           </item>

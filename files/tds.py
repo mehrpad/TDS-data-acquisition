@@ -1,4 +1,7 @@
-import json
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
 
 import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
@@ -472,7 +475,7 @@ class Ui_TDS(object):
         self.calibrate_botton_base_t.setText(_translate("TDS", "Calibrate T. Zero"))
         self.stop_botton.setText(_translate("TDS", "Stop"))
         self.load_csv_botton.setText(_translate("TDS", "Load"))
-        self.calibrate_botton_pid.setText(_translate("TDS", "Tune PID"))
+        self.calibrate_botton_pid.setText(_translate("TDS", "Tune PI/PID"))
         self.Error.setText(_translate("TDS", "<html><head/><body><p><br/></p></body></html>"))
         self.menuFile.setTitle(_translate("TDS", "File"))
         self.menuHelp.setTitle(_translate("TDS", "Help"))
@@ -616,9 +619,9 @@ class Ui_TDS(object):
 
         try:
             calibration.tune_pid(self.experiment_params[0], self.config, self.r_vs_t)
-            self.error_message('PID calibrated', color='black')
+            self.error_message('PI/PID calibrated', color='black')
         except ValueError:
-            self.error_message('Error calibrating PID', color='red')
+            self.error_message('Error calibrating PI/PID', color='red')
         self.calibrate_botton_base_t.setEnabled(True)
         self.calibrate_botton_pid.setEnabled(True)
         self.find_csv_botton.setEnabled(True)
@@ -796,10 +799,10 @@ if __name__ == "__main__":
     app.setStyle('Fusion')
     TDS = QtWidgets.QMainWindow()
     try:
-        # Load the JSON file
-        config_file = './files/config.json'
-        with open(config_file) as file:
-            data = json.load(file)
+        # Load the TOML file
+        config_file = './files/config.toml'
+        with open(config_file, 'rb') as file:
+            data = tomllib.load(file)
     except Exception as e:
         print('Cannot load the configuration file')
         print(e)

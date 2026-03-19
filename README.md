@@ -39,7 +39,7 @@ Do not connect the current meter in parallel across the sample, because that can
 - Auto-load the selected file immediately after `Find R vs. T`
 - Reload the same file later with `Reload R vs. T`
 - Calibrate the room-temperature `T0` reference against the loaded curve
-- Tune a conservative PID from a low-rise step test before the experiment
+- Tune conservative PI/PID gains from a low-rise step test before the experiment
 - Run stepped ramps or a simple continuous ramp
 - Live plots for temperature and flux placeholder
 - Continuous background autosave to:
@@ -71,10 +71,15 @@ You also need working VISA access for the connected instruments.
 
 ## Configuration
 
-The instrument addresses and control defaults live in [files/config.json](files/config.json).
+The instrument addresses and control defaults now live in [files/config.toml](files/config.toml).
+
+This file uses TOML instead of JSON so comments can be kept directly in the file.
+Each setting has a short explanation above it to make hand-editing easier for normal users.
+If you still have an older `files/config.json`, the app will import it automatically the first time and write a new `config.toml`.
 
 Important fields:
 
+- `controller_mode`: choose `"PI"` or `"PID"`
 - `DMM_v`: VISA address for the voltage DMM
 - `DMM_i`: VISA address for the current DMM
 - `PS`: VISA address for the power supply
@@ -84,11 +89,17 @@ Important fields:
 - `t0_voltage_search_start`: starting voltage for the `T0` search
 - `t0_calibration_voltage`: highest voltage the `T0` search is allowed to use
 - `t0_settle_time_s`: how long the wire is allowed to settle before `T0` samples are accepted
-- `tuning_start_voltage`: starting voltage for the PID tuning search
-- `tuning_search_max_voltage`: highest voltage the PID tuning search is allowed to use
-- `tuning_response_voltage_step`: how much each PID tuning attempt increases above the safe baseline voltage
+- `tuning_start_voltage`: starting voltage for the PI/PID tuning search
+- `tuning_search_max_voltage`: highest voltage the PI/PID tuning search is allowed to use
+- `tuning_response_voltage_step`: how much each PI/PID tuning attempt increases above the safe baseline voltage
 
-The software also stores PID and autosave defaults in this file after you run the GUI.
+Controller mode notes:
+
+- `controller_mode = "PI"` is the default and recommended starting point
+- set `controller_mode = "PID"` if you want derivative action enabled
+- the `Tune PI/PID` button uses the selected mode from `config.toml`
+
+The software also stores tuned controller gains and autosave defaults in this file after you run the GUI.
 
 ## R vs. T File Format
 
@@ -128,8 +139,9 @@ python TDS.py
    This should be the actual room or base temperature.
 3. Optional: click `Calibrate T. Zero`.
    This rescales the loaded resistivity curve so the measured low-voltage room-temperature resistance matches the entered `Zero Temperature`.
-4. Optional: click `Tune PID`.
-   The software performs a guarded low-voltage step test with a small temperature rise and stores the tuned PID gains in `files/config.json`.
+4. Optional: click `Tune PI/PID`.
+   The software performs a guarded low-voltage step test with a small temperature rise and stores the tuned gains in `files/config.toml`.
+   By default this tunes a PI controller because `controller_mode = "PI"` is the default.
 5. Enter the experiment program in the text box.
 6. Set software limits for `Max Voltage` and `Max Current`.
 7. Click `Start`.
@@ -201,16 +213,21 @@ During this step the software now:
 - discards warmup readings,
 - rejects obviously wrong outliers before calculating the final scale.
 
-### `Tune PID`
+### `Tune PI/PID`
 
-PID tuning uses a guarded low-rise step response:
+PI/PID tuning uses a guarded low-rise step response:
 
 - it starts at `tuning_start_voltage` and increases only until a stable positive current is found,
 - it uses that lowest stable-current voltage as a safe baseline voltage,
 - it then applies a real step above that baseline and only increases the response voltage in bounded attempts up to `tuning_search_max_voltage`,
 - it measures the baseline temperature before each response attempt,
 - stops once the requested small temperature rise is reached,
-- estimates conservative PI gains for the current setup.
+- estimates conservative gains for the selected controller mode.
+
+Mode details:
+
+- `PI` mode is the default and leaves `Kd = 0`
+- `PID` mode also estimates a conservative derivative term and uses it during the real experiment
 
 This is intended to reduce aggressive heating before the real experiment starts.
 
@@ -226,7 +243,7 @@ Key modules:
 
 - `tds_control/app.py`: GUI and application entry point
 - `tds_control/tds_experiment.py`: experiment loop and safety logic
-- `tds_control/calibration.py`: `T0` calibration and PID tuning
+- `tds_control/calibration.py`: `T0` calibration and PI/PID tuning
 - `tds_control/data_saver.py`: background CSV/HDF5 autosave
 - `tds_control/pid.py`: PID controller
 - `tds_control/siglent.py`: instrument SCPI helpers
