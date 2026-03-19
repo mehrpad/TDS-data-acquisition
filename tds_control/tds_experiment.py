@@ -38,6 +38,7 @@ CONTROL_DEFAULTS = {
     "measurement_retry_attempts": 2,
     "measurement_retry_delay_s": 0.15,
     "measurement_retry_consensus_ohm": 0.015,
+    "stable_current_invalid_advance_count": 5,
     "measurement_temp_jump_c": 8.0,
     "measurement_temp_jump_up_c": 20.0,
     "measurement_temp_jump_down_c": 8.0,
