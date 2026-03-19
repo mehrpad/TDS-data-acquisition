@@ -24,7 +24,7 @@ CONTROL_DEFAULTS = {
     "safety_temp_margin_c": 15.0,
     "soft_temp_rate_margin_c_min": 1.0,
     "hard_temp_rate_margin_c_min": 4.0,
-    "measurement_fail_limit": 5,
+    "measurement_fail_limit": 20,
     "minimum_current_a": 5e-4,
     "minimum_voltage_change": 1e-4,
     "measurement_voltage_floor": 0.01,
@@ -40,6 +40,7 @@ CONTROL_DEFAULTS = {
     "ignore_invalid_below_voltage": 0.05,
     "invalid_voltage_step_down": 0.02,
     "rate_limit_activation_band_c": 5.0,
+    "under_target_no_decrease_band_c": 1.5,
     "autosave_flush_interval_s": 5.0,
     "autosave_batch_size": 10,
     "tuning_voltage_step": 0.01,
@@ -59,8 +60,8 @@ CONTROL_DEFAULTS = {
     "tuning_min_observable_rise_c": 0.25,
     "tuning_plateau_timeout_s": 15.0,
     "tuning_plateau_idle_timeout_s": 6.0,
-    "max_voltage_step_up_far": 0.03,
-    "aggressive_step_band_c": 6.0,
+    "max_voltage_step_up_far": 0.04,
+    "aggressive_step_band_c": 4.0,
     "tuning_plateau_growth_c": 0.08,
     "t0_calibration_voltage": 0.1,
     "t0_voltage_search_start": 0.01,
@@ -411,17 +412,28 @@ def _compute_next_voltage(
     if not np.isfinite(delta_voltage):
         raise ExperimentSafetyError("PID requested a non-finite voltage change.")
 
-    far_below_setpoint = temperature <= setpoint - config.get("aggressive_step_band_c", 6.0)
-    if far_below_setpoint and delta_voltage > 0.0:
-        aggressive_step = float(config.get("max_voltage_step_up_far", config["max_voltage_step_up"]))
-        delta_voltage = min(
-            aggressive_step,
-            max(delta_voltage * 2.0, config["max_voltage_step_up"] * 2.0),
-        )
+    under_target_band = float(
+        config.get("under_target_no_decrease_band_c", config.get("temperature_tolerance_c", 2.0))
+    )
+    if temperature <= setpoint - under_target_band and delta_voltage < 0.0:
+        delta_voltage = 0.0
+
+    aggressive_step = float(config.get("max_voltage_step_up_far", config["max_voltage_step_up"]))
+    far_below_setpoint = temperature <= setpoint - config.get("aggressive_step_band_c", 4.0)
+    catchup_rate_c_min = max(ramp_speed_c_min * 0.6, ramp_speed_c_min - 3.0, 1.0)
+    if far_below_setpoint:
+        if temp_rate_c_min is None or not np.isfinite(temp_rate_c_min) or temp_rate_c_min < catchup_rate_c_min:
+            delta_voltage = max(delta_voltage, aggressive_step)
+        elif delta_voltage > 0.0:
+            delta_voltage = min(
+                aggressive_step,
+                max(delta_voltage * 2.0, config["max_voltage_step_up"] * 2.0),
+            )
 
     if temperature >= setpoint + config["temperature_tolerance_c"]:
         delta_voltage = min(delta_voltage, 0.0)
 
+    near_setpoint = temperature >= setpoint - config.get("rate_limit_activation_band_c", 5.0)
     soft_rate_limit = max(
         ramp_speed_c_min + config["soft_temp_rate_margin_c_min"],
         config["soft_temp_rate_margin_c_min"],
@@ -432,8 +444,7 @@ def _compute_next_voltage(
     )
 
     if temp_rate_c_min is not None and np.isfinite(temp_rate_c_min):
-        near_setpoint = temperature >= setpoint - config.get("rate_limit_activation_band_c", 5.0)
-        if temp_rate_c_min > soft_rate_limit and delta_voltage > 0.0:
+        if near_setpoint and temp_rate_c_min > soft_rate_limit and delta_voltage > 0.0:
             delta_voltage = 0.0
         if (
             near_setpoint
@@ -541,12 +552,26 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
             previous_voltage = _set_voltage_if_needed(power_supply, pid_voltage, previous_voltage, config)
             time.sleep(max(2.0, loop_time))
 
-            measured_voltage, measured_current, temperature = measure_resistivity(
-                dmm_v, dmm_i, siglent, temperature_interp, config=config
-            )
+            measured_voltage = np.nan
+            measured_current = np.nan
+            temperature = np.nan
+            for initial_attempt in range(int(config["measurement_fail_limit"])):
+                measured_voltage, measured_current, temperature = measure_resistivity(
+                    dmm_v, dmm_i, siglent, temperature_interp, config=config
+                )
+                if _is_valid_measurement(measured_voltage, measured_current, temperature, config):
+                    break
+                print(
+                    "Invalid initial measurement received. "
+                    f"Measured Vsample={measured_voltage}, I={measured_current} at PSU {pid_voltage:.4f} V "
+                    f"(attempt {initial_attempt + 1}/{config['measurement_fail_limit']})."
+                )
+                time.sleep(loop_time)
             initial_resistance = _calculate_resistance(measured_voltage, measured_current)
             if not _is_valid_measurement(measured_voltage, measured_current, temperature, config):
-                raise ExperimentSafetyError("Unable to acquire a valid initial measurement.")
+                raise ExperimentSafetyError(
+                    "Unable to acquire a valid initial measurement after repeated attempts."
+                )
 
             print(
                 f"Initial temperature {temperature:.2f} C, start temperature {program.start_T:.2f} C, "
