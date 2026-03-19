@@ -577,6 +577,7 @@ def _confirmed_downward_temperature_jump(
     measured_current,
     applied_voltage,
     resistance_confirmed,
+    setpoint,
     config,
 ):
     if not all(
@@ -588,10 +589,16 @@ def _confirmed_downward_temperature_jump(
             previous_resistance,
             measured_current,
             applied_voltage,
+            setpoint,
         )
     ):
         return False
     if temperature >= previous_temperature or measured_resistance >= previous_resistance:
+        return False
+
+    # Do not accept cooldown jumps when we are still far below the heating setpoint.
+    # In this regime large downward jumps are almost always measurement artifacts.
+    if previous_temperature < setpoint - float(config.get("temperature_tolerance_c", 2.0)):
         return False
 
     minimum_confirm_current = max(
@@ -766,6 +773,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     measured_current=measured_current,
                     applied_voltage=applied_voltage,
                     resistance_confirmed=resistance_confirmed,
+                    setpoint=float(program.scheduled_target),
                     config=config,
                 )
                 reset_temperature_reference = False
@@ -1144,7 +1152,7 @@ def measure_resistivity(dmm_v, dmm_i, siglent_module, temperature_interp, calibr
         temperature = np.nan
 
     if np.isfinite(temperature) and temperature < 0 and not calibration:
-        print(f"Calculated temperature is {temperature}; clamping it to 0 C.")
-        temperature = 0.0
+        print(f"Calculated temperature is {temperature}; treating it as invalid.")
+        temperature = np.nan
 
     return measured_voltage, measured_current, temperature
