@@ -78,6 +78,29 @@ def _check_stop(emitter):
         raise CalibrationCancelled("Stopped by user.")
 
 
+def _emit_live_measurement(
+    emitter,
+    *,
+    target_temperature,
+    temperature,
+    measured_voltage,
+    measured_current,
+    applied_voltage,
+):
+    if emitter is None or not hasattr(emitter, "live_measurement_signal"):
+        return
+
+    emitter.live_measurement_signal.emit(
+        {
+            "target_temperature": target_temperature,
+            "temperature": temperature,
+            "measured_voltage": measured_voltage,
+            "measured_current": measured_current,
+            "applied_voltage": applied_voltage,
+        }
+    )
+
+
 def _sleep_with_stop(duration_s, emitter):
     remaining = max(float(duration_s), 0.0)
     while remaining > 0:
@@ -129,6 +152,7 @@ def _find_stable_current_voltage(
     label,
     temperature_lower_bound=None,
     temperature_upper_bound=None,
+    display_target_temperature=None,
 ):
     sample_interval_s = max(0.5, 1.0 / config["experiment_frequency"])
     voltage = max(start_voltage, config["min_voltage"], 0.005)
@@ -155,6 +179,14 @@ def _find_stable_current_voltage(
                 calibration=True,
             )
             resistance = _calculate_resistance(measured_voltage, measured_current)
+            _emit_live_measurement(
+                emitter,
+                target_temperature=display_target_temperature,
+                temperature=temperature,
+                measured_voltage=measured_voltage,
+                measured_current=measured_current,
+                applied_voltage=voltage,
+            )
             print(
                 f"{label} sample: T={temperature}, V={measured_voltage}, "
                 f"I={measured_current}, R={resistance}"
@@ -248,6 +280,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
             label="T0 search",
             temperature_lower_bound=room_temp - config["t0_max_temp_error_c"],
             temperature_upper_bound=room_temp + config["t0_max_temp_error_c"],
+            display_target_temperature=room_temp,
         )
         print(f"Using T0 calibration voltage: {calibration_voltage:.4f} V")
 
@@ -270,6 +303,14 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
                 siglent,
                 temperature_interp,
                 calibration=True,
+            )
+            _emit_live_measurement(
+                emitter,
+                target_temperature=room_temp,
+                temperature=temperature,
+                measured_voltage=measured_voltage,
+                measured_current=measured_current,
+                applied_voltage=calibration_voltage,
             )
             print(
                 f"Room-temperature calibration sample: T={temperature}, V={measured_voltage}, I={measured_current}"
@@ -460,6 +501,7 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
             label="PID tuning search",
             temperature_lower_bound=temperature_lower_bound,
             temperature_upper_bound=temperature_upper_bound,
+            display_target_temperature=base_temperature_hint,
         )
         print(f"Using PID tuning voltage: {step_voltage:.4f} V")
 
@@ -482,6 +524,14 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
                 siglent,
                 temperature_interp,
                 calibration=True,
+            )
+            _emit_live_measurement(
+                emitter,
+                target_temperature=base_temperature_hint,
+                temperature=temperature,
+                measured_voltage=measured_voltage,
+                measured_current=measured_current,
+                applied_voltage=step_voltage,
             )
             valid_baseline = (
                 tds_experiment._is_valid_measurement(measured_voltage, measured_current, temperature, config)
@@ -526,6 +576,14 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
                 siglent,
                 temperature_interp,
                 calibration=True,
+            )
+            _emit_live_measurement(
+                emitter,
+                target_temperature=base_temperature + desired_rise,
+                temperature=temperature,
+                measured_voltage=measured_voltage,
+                measured_current=measured_current,
+                applied_voltage=step_voltage,
             )
 
             if np.isfinite(temperature) and temperature > safe_temperature_limit:

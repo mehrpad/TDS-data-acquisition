@@ -415,6 +415,7 @@ class Ui_TDS(object):
         self.timer_error.timeout.connect(self.hideMessage)
 
         self.emitter.experiment_signal.connect(self.update_experiment_signal)
+        self.emitter.live_measurement_signal.connect(self.update_live_measurement)
 
         self.find_csv_botton.clicked.connect(self.find_csv_clicked)
         self.load_csv_botton.clicked.connect(self.load_csv_clicked)
@@ -707,16 +708,12 @@ class Ui_TDS(object):
         Return:
             None
         """
-        # print(f"Received data: time: {data[0]}, set_T: {data[1]}, T: {data[2]}, h_f: {data[3]}, V: {data[4]}, "
-        #       f"I: {data[5]}, C_V: {data[6]}")
-        self.target_temperature = data[1]
-        self.voltage = data[4]
-        self.current = data[5]
-        self.temperature = data[2]
-        self.voltage_lcd.display("{:.1e}".format(self.voltage))
-        self.current_lcd.display("{:.1e}".format(self.current))
-        self.temperature_lcd.display(round(self.temperature, 2))
-        self.temperature_target_lcd.display(round(self.target_temperature, 2))
+        self._apply_measurement_to_displays(
+            target_temperature=data[1],
+            temperature=data[2],
+            voltage=data[4],
+            current=data[5],
+        )
 
         # "time",  # Time in UNIX-readable format
         # "set_T",  # Set temperature
@@ -726,6 +723,56 @@ class Ui_TDS(object):
         # "I",  # Current
         # "C_V",  # Calculated Power supply voltage
         self.data_list.append([data[0], data[1], data[2], data[3], data[4], data[5], data[6]])
+
+    def _is_finite_number(self, value):
+        try:
+            return bool(np.isfinite(value))
+        except (TypeError, ValueError):
+            return False
+
+    def _apply_measurement_to_displays(self, *, target_temperature=None, temperature=None, voltage=None, current=None):
+        if self._is_finite_number(target_temperature):
+            self.target_temperature = float(target_temperature)
+        if self._is_finite_number(temperature):
+            self.temperature = float(temperature)
+        if self._is_finite_number(voltage):
+            self.voltage = float(voltage)
+        if self._is_finite_number(current):
+            self.current = float(current)
+
+        if self._is_finite_number(self.voltage):
+            self.voltage_lcd.display("{:.1e}".format(self.voltage))
+        else:
+            self.voltage_lcd.display(0)
+
+        if self._is_finite_number(self.current):
+            self.current_lcd.display("{:.1e}".format(self.current))
+        else:
+            self.current_lcd.display(0)
+
+        if self._is_finite_number(self.temperature):
+            self.temperature_lcd.display(round(self.temperature, 2))
+        else:
+            self.temperature_lcd.display(0)
+
+        if self._is_finite_number(self.target_temperature):
+            self.temperature_target_lcd.display(round(self.target_temperature, 2))
+        else:
+            self.temperature_target_lcd.display(0)
+
+    def update_live_measurement(self, measurement):
+        """
+        Update the LCDs with live readings from T0 calibration and PID tuning.
+        """
+        if not isinstance(measurement, dict):
+            return
+
+        self._apply_measurement_to_displays(
+            target_temperature=measurement.get("target_temperature"),
+            temperature=measurement.get("temperature"),
+            voltage=measurement.get("measured_voltage"),
+            current=measurement.get("measured_current"),
+        )
 
     def update_graphs(self):
         """
@@ -1081,6 +1128,7 @@ class CalibrationWorkerThread(QThread):
 class SignalEmitter(QtCore.QObject):
     stop_signal = pyqtSignal()  # Signal to stop the thread
     experiment_signal = pyqtSignal(list)  # Signal to emit experiment data
+    live_measurement_signal = pyqtSignal(object)  # Signal for calibration/tuning live readings
     max_voltage_signal = pyqtSignal(float)  # Signal to emit the maximum voltage
     max_current_signal = pyqtSignal(float)  # Signal to emit the maximum current
 
