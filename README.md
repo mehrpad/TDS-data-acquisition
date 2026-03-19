@@ -59,8 +59,11 @@ Important fields:
 - `experiment_frequency`: control loop frequency in Hz
 - `max_voltage`: absolute software voltage limit
 - `max_current`: absolute software current limit
-- `t0_calibration_voltage`: dedicated output voltage used during `Calibrate T. Zero`
+- `t0_voltage_search_start`: starting voltage for the `T0` search
+- `t0_calibration_voltage`: highest voltage the `T0` search is allowed to use
 - `t0_settle_time_s`: how long the wire is allowed to settle before `T0` samples are accepted
+- `tuning_start_voltage`: starting voltage for the PID tuning search
+- `tuning_search_max_voltage`: highest voltage the PID tuning search is allowed to use
 
 The software also stores PID and autosave defaults in this file after you run the GUI.
 
@@ -169,7 +172,8 @@ It measures the sample resistance near room temperature and rescales the loaded 
 
 During this step the software now:
 
-- uses `t0_calibration_voltage` instead of the experiment startup voltage,
+- starts at `t0_voltage_search_start` and increases only until a stable positive current is found,
+- never goes above `t0_calibration_voltage` during that search,
 - waits `t0_settle_time_s` before collecting data,
 - discards warmup readings,
 - rejects obviously wrong outliers before calculating the final scale.
@@ -178,8 +182,9 @@ During this step the software now:
 
 PID tuning uses a guarded low-rise step response:
 
-- it measures the baseline temperature,
-- applies a small voltage step,
+- it starts at `tuning_start_voltage` and increases only until a stable positive current is found,
+- it uses that lowest stable-current voltage as the tuning step,
+- it measures the baseline temperature at that voltage,
 - stops once the requested small temperature rise is reached,
 - estimates conservative PI gains for the current setup.
 
