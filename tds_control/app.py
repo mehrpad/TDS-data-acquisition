@@ -22,6 +22,7 @@ class Ui_TDS(object):
         self.voltage = 0
         self.current = 0
         self.temperature = 0
+        self.resistivity = 0
         self.index_plot_start = 0
         self.config = tds_experiment.build_control_config(data)
         self.experiment_params = []
@@ -58,7 +59,7 @@ class Ui_TDS(object):
 
     def setupUi(self, TDS):
         TDS.setObjectName("TDS")
-        TDS.resize(820, 465)
+        TDS.resize(920, 465)
         self.centralwidget = QtWidgets.QWidget(parent=TDS)
         self.centralwidget.setObjectName("centralwidget")
         self.gridLayout_6 = QtWidgets.QGridLayout(self.centralwidget)
@@ -239,6 +240,12 @@ class Ui_TDS(object):
         self.label_3.setFont(font)
         self.label_3.setObjectName("label_3")
         self.gridLayout_3.addWidget(self.label_3, 0, 3, 1, 1)
+        self.label_5 = QtWidgets.QLabel(parent=self.centralwidget)
+        font = QtGui.QFont()
+        font.setBold(True)
+        self.label_5.setFont(font)
+        self.label_5.setObjectName("label_5")
+        self.gridLayout_3.addWidget(self.label_5, 0, 4, 1, 1)
         self.temperature_target_lcd = QtWidgets.QLCDNumber(parent=self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred,
                                            QtWidgets.QSizePolicy.Policy.Preferred)
@@ -309,6 +316,22 @@ class Ui_TDS(object):
                                        "                                        ")
         self.current_lcd.setObjectName("current_lcd")
         self.gridLayout_3.addWidget(self.current_lcd, 1, 3, 1, 1)
+        self.resistivity_lcd = QtWidgets.QLCDNumber(parent=self.centralwidget)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred,
+                                           QtWidgets.QSizePolicy.Policy.Preferred)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.resistivity_lcd.sizePolicy().hasHeightForWidth())
+        self.resistivity_lcd.setSizePolicy(sizePolicy)
+        self.resistivity_lcd.setMinimumSize(QtCore.QSize(110, 50))
+        self.resistivity_lcd.setStyleSheet("QLCDNumber{\n"
+                                           "                                            border: 2px solid green;\n"
+                                           "                                            border-radius: 10px;\n"
+                                           "                                            padding: 0 8px;\n"
+                                           "                                            }\n"
+                                           "                                        ")
+        self.resistivity_lcd.setObjectName("resistivity_lcd")
+        self.gridLayout_3.addWidget(self.resistivity_lcd, 1, 4, 1, 1)
         self.parameters_text = QtWidgets.QTextEdit(parent=self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred,
                                            QtWidgets.QSizePolicy.Policy.Preferred)
@@ -321,7 +344,7 @@ class Ui_TDS(object):
             "QWidget{border: 2px solid gray; border-radius: 10px;padding: 0 8px; background: rgb(223,223,233)}\n"
             "                                    ")
         self.parameters_text.setObjectName("parameters_text")
-        self.gridLayout_3.addWidget(self.parameters_text, 2, 0, 1, 4)
+        self.gridLayout_3.addWidget(self.parameters_text, 2, 0, 1, 5)
         self.gridLayout_2 = QtWidgets.QGridLayout()
         self.gridLayout_2.setObjectName("gridLayout_2")
         self.start_botton = QtWidgets.QPushButton(parent=self.centralwidget)
@@ -361,10 +384,10 @@ class Ui_TDS(object):
         self.calibrate_botton_pid.setStyleSheet("QPushButton{background: rgb(193, 193, 193)}")
         self.calibrate_botton_pid.setObjectName("calibrate_botton_pid")
         self.gridLayout_2.addWidget(self.calibrate_botton_pid, 1, 2, 1, 1)
-        self.gridLayout_3.addLayout(self.gridLayout_2, 3, 0, 1, 3)
+        self.gridLayout_3.addLayout(self.gridLayout_2, 3, 0, 1, 5)
         self.gridLayout_5.addLayout(self.gridLayout_3, 1, 0, 1, 1)
         self.Error = QtWidgets.QLabel(parent=self.centralwidget)
-        self.Error.setMinimumSize(QtCore.QSize(800, 30))
+        self.Error.setMinimumSize(QtCore.QSize(900, 30))
         font = QtGui.QFont()
         font.setPointSize(10)
         font.setBold(True)
@@ -474,6 +497,7 @@ class Ui_TDS(object):
 
         self.voltage_lcd.setDigitCount(8)
         self.current_lcd.setDigitCount(8)
+        self.resistivity_lcd.setDigitCount(8)
         self.temperature_lcd.setDigitCount(6)
         self.temperature_target_lcd.setDigitCount(6)
 
@@ -494,6 +518,7 @@ class Ui_TDS(object):
         self.label_1.setText(_translate("TDS", "Measured Temp (°C)"))
         self.label_2.setText(_translate("TDS", "Voltage (V)              "))
         self.label_3.setText(_translate("TDS", "Current (A)                "))
+        self.label_5.setText(_translate("TDS", "Resistivity (Ohm)"))
         self.parameters_text.setHtml(_translate("TDS",
                                                 "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
                                                 "<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\n"
@@ -742,7 +767,15 @@ class Ui_TDS(object):
             return f"{numeric_value:.{decimals}f}"
         return f"{numeric_value:.2e}"
 
-    def _apply_measurement_to_displays(self, *, target_temperature=None, temperature=None, voltage=None, current=None):
+    def _apply_measurement_to_displays(
+        self,
+        *,
+        target_temperature=None,
+        temperature=None,
+        voltage=None,
+        current=None,
+        resistivity=None,
+    ):
         if self._is_finite_number(target_temperature):
             self.target_temperature = float(target_temperature)
         if self._is_finite_number(temperature):
@@ -751,6 +784,10 @@ class Ui_TDS(object):
             self.voltage = float(voltage)
         if self._is_finite_number(current):
             self.current = float(current)
+        if self._is_finite_number(resistivity):
+            self.resistivity = float(resistivity)
+        elif self._is_finite_number(self.voltage) and self._is_finite_number(self.current) and abs(self.current) > 1e-12:
+            self.resistivity = float(self.voltage / self.current)
 
         if self._is_finite_number(self.voltage):
             self.voltage_lcd.display(self._format_lcd_value(self.voltage, decimals=4))
@@ -761,6 +798,11 @@ class Ui_TDS(object):
             self.current_lcd.display(self._format_lcd_value(self.current, decimals=4))
         else:
             self.current_lcd.display(0)
+
+        if self._is_finite_number(self.resistivity):
+            self.resistivity_lcd.display(self._format_lcd_value(self.resistivity, decimals=4))
+        else:
+            self.resistivity_lcd.display(0)
 
         if self._is_finite_number(self.temperature):
             self.temperature_lcd.display(round(self.temperature, 2))
@@ -784,6 +826,7 @@ class Ui_TDS(object):
             temperature=measurement.get("temperature"),
             voltage=measurement.get("measured_voltage"),
             current=measurement.get("measured_current"),
+            resistivity=measurement.get("resistance"),
         )
 
     def update_graphs(self):
@@ -1021,6 +1064,7 @@ class Ui_TDS(object):
         self.voltage = 0
         self.current = 0
         self.temperature = 0
+        self.resistivity = 0
         self.start_botton.setEnabled(True)
         self.stop_botton.setEnabled(True)
         self.calibrate_botton_base_t.setEnabled(True)
@@ -1034,6 +1078,7 @@ class Ui_TDS(object):
 
         self.voltage_lcd.display(0)
         self.current_lcd.display(0)
+        self.resistivity_lcd.display(0)
         self.temperature_lcd.display(0)
         self.temperature_target_lcd.display(0)
 
