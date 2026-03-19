@@ -149,7 +149,10 @@ measurement_temp_jump_accept_up_c = 35
 measurement_temp_jump_accept_setpoint_margin_c = 15
 
 # How many downward jump confirmations are required before accepting cooldown.
-measurement_cooldown_confirm_samples = 1
+measurement_cooldown_confirm_samples = 2
+
+# How many upward jump confirmations are required before accepting heatup jumps.
+measurement_heatup_confirm_samples = 2
 
 # Below this PSU voltage, invalid readings are treated more leniently.
 ignore_invalid_below_voltage = 0.05

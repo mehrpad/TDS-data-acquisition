@@ -46,7 +46,8 @@ CONTROL_DEFAULTS = {
     "measurement_jump_confirm_min_voltage": 0.1,
     "measurement_temp_jump_accept_up_c": 35.0,
     "measurement_temp_jump_accept_setpoint_margin_c": 15.0,
-    "measurement_cooldown_confirm_samples": 1,
+    "measurement_cooldown_confirm_samples": 2,
+    "measurement_heatup_confirm_samples": 2,
     "ignore_invalid_below_voltage": 0.05,
     "invalid_voltage_step_down": 0.02,
     "invalid_reuse_hold_after": 8,
@@ -714,6 +715,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
             previous_resistance = initial_resistance
             previous_phase = None
             pending_cooldown_jump_count = 0
+            pending_heatup_jump_count = 0
 
             while not emitter.stopped:
                 loop_started = time.time()
@@ -773,6 +775,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     if temperature_delta < -jump_down_limit:
                         if confirmed_downward_jump:
                             pending_cooldown_jump_count += 1
+                            pending_heatup_jump_count = 0
                             required_cooldown_confirms = max(
                                 int(config.get("measurement_cooldown_confirm_samples", 2)),
                                 1,
@@ -793,6 +796,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                                 temperature = np.nan
                         else:
                             pending_cooldown_jump_count = 0
+                            pending_heatup_jump_count = 0
                             print(
                                 f"Temperature jump detected: previous={previous_temperature:.2f} C, "
                                 f"new={temperature:.2f} C. Treating this reading as invalid."
@@ -800,15 +804,29 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             temperature = np.nan
                     elif temperature_delta > jump_up_limit:
                         if confirmed_upward_jump:
-                            print(
-                                f"Confirmed upward temperature jump: previous={previous_temperature:.2f} C, "
-                                f"new={temperature:.2f} C. Accepting it and resetting the temperature filter."
-                            )
-                            temperature_history[:] = [float(temperature)]
+                            pending_heatup_jump_count += 1
                             pending_cooldown_jump_count = 0
-                            reset_temperature_reference = True
+                            required_heatup_confirms = max(
+                                int(config.get("measurement_heatup_confirm_samples", 2)),
+                                1,
+                            )
+                            if pending_heatup_jump_count >= required_heatup_confirms:
+                                print(
+                                    f"Confirmed upward temperature jump: previous={previous_temperature:.2f} C, "
+                                    f"new={temperature:.2f} C. Accepting it and resetting the temperature filter."
+                                )
+                                temperature_history[:] = [float(temperature)]
+                                pending_heatup_jump_count = 0
+                                reset_temperature_reference = True
+                            else:
+                                print(
+                                    f"Potential upward temperature jump detected: previous={previous_temperature:.2f} C, "
+                                    f"new={temperature:.2f} C. Waiting for confirmation."
+                                )
+                                temperature = np.nan
                         else:
                             pending_cooldown_jump_count = 0
+                            pending_heatup_jump_count = 0
                             print(
                                 f"Temperature jump detected: previous={previous_temperature:.2f} C, "
                                 f"new={temperature:.2f} C. Treating this reading as invalid."
@@ -816,8 +834,10 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             temperature = np.nan
                     else:
                         pending_cooldown_jump_count = 0
+                        pending_heatup_jump_count = 0
                 else:
                     pending_cooldown_jump_count = 0
+                    pending_heatup_jump_count = 0
 
                 if not _is_valid_measurement(measured_voltage, measured_current, temperature, config):
                     can_reuse_last_temperature = (

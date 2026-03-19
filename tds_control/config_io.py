@@ -70,6 +70,7 @@ CONFIG_GROUPS = [
             ("measurement_temp_jump_accept_up_c", "Largest upward jump that may still be accepted as physically plausible."),
             ("measurement_temp_jump_accept_setpoint_margin_c", "How far above the live setpoint an accepted upward jump may land."),
             ("measurement_cooldown_confirm_samples", "How many downward jump confirmations are required before accepting cooldown."),
+            ("measurement_heatup_confirm_samples", "How many upward jump confirmations are required before accepting heatup jumps."),
             ("ignore_invalid_below_voltage", "Below this PSU voltage, invalid readings are treated more leniently."),
             ("invalid_voltage_step_down", "Backoff step used when an invalid reading appears too hot."),
             ("invalid_reuse_hold_after", "After this many reused invalid cycles, stop increasing voltage and hold/back off."),
