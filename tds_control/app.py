@@ -559,7 +559,7 @@ class Ui_TDS(object):
         self.calibrate_botton_base_t.setText(_translate("TDS", "Calibrate T. Zero"))
         self.stop_botton.setText(_translate("TDS", "Stop"))
         self.load_csv_botton.setText(_translate("TDS", "Reload R vs. T"))
-        self.calibrate_botton_pid.setText(_translate("TDS", "Tune PID"))
+        self.calibrate_botton_pid.setText(_translate("TDS", "Tune PI/PID"))
         self.plot_window_button.setText(_translate("TDS", "Last 60 s"))
         self.Error.setText(_translate("TDS", "<html><head/><body><p><br/></p></body></html>"))
         self.menuFile.setTitle(_translate("TDS", "File"))
@@ -628,7 +628,7 @@ class Ui_TDS(object):
             self.r_vs_t = np.vstack((curve_df['resistivity'].to_numpy(), curve_df['temperature'].to_numpy()))
             self.t_zero_calibrated = False
             self.calibrate_botton_pid.setEnabled(True)
-            self.error_message('R vs. T loaded. Run Calibrate T. Zero before Tune PID or Start.', color='black')
+            self.error_message('R vs. T loaded. Run Calibrate T. Zero before Tune PI/PID or Start.', color='black')
         else:
             raise ValueError("Invalid file type")
 
@@ -700,7 +700,7 @@ class Ui_TDS(object):
         Ask the user for confirmation before closing the application.
         """
         if self.calibration_worker is not None and self.calibration_worker.isRunning():
-            self.error_message('Wait until calibration or PID tuning finishes before closing.', color='red')
+            self.error_message('Wait until calibration or PI/PID tuning finishes before closing.', color='red')
             return False
 
         if self.worker_thread is not None and self.worker_thread.isRunning():
@@ -994,6 +994,7 @@ class Ui_TDS(object):
         """
         Handle the result of the guarded PID tuning worker.
         """
+        controller_mode = tds_experiment.get_controller_mode(self.config)
         self.calibrate_botton_base_t.setEnabled(True)
         self.calibrate_botton_pid.setEnabled(True)
         self.find_csv_botton.setEnabled(True)
@@ -1004,13 +1005,13 @@ class Ui_TDS(object):
         self.emitter.reset_stop()
 
         if isinstance(result, calibration.CalibrationCancelled):
-            print("PID tuning stopped by user.")
-            self.error_message('PID tuning stopped.', color='black')
+            print(f"{controller_mode} tuning stopped by user.")
+            self.error_message(f'{controller_mode} tuning stopped.', color='black')
             return
 
         if isinstance(result, Exception):
-            print(f"PID tuning failed: {result}")
-            self.error_message(f'PID tuning failed: {result}', color='red')
+            print(f"{controller_mode} tuning failed: {result}")
+            self.error_message(f'{controller_mode} tuning failed: {result}', color='red')
             return
 
         self.config['pid_kp'] = result['Kp']
@@ -1018,22 +1019,26 @@ class Ui_TDS(object):
         self.config['pid_kd'] = result['Kd']
         self.save_config()
         print(
-            f"PID tuned and saved: Kp={result['Kp']:.6f}, Ki={result['Ki']:.6f}, "
+            f"{controller_mode} tuned and saved: Kp={result['Kp']:.6f}, Ki={result['Ki']:.6f}, "
             f"Kd={result['Kd']:.6f}, baseline={result.get('baseline_voltage', float('nan')):.4f} V, "
             f"response={result.get('step_voltage', float('nan')):.4f} V, "
             f"delta={result.get('step_delta_voltage', float('nan')):.4f} V, "
             f"peak rise={result.get('peak_rise_c', float('nan')):.2f} C"
         )
-        self.error_message(
-            f"PID tuned: Kp={result['Kp']:.5f}, Ki={result['Ki']:.5f}, Kd={result['Kd']:.5f}",
-            color='black',
-        )
+        if controller_mode == 'PID':
+            tuning_message = (
+                f"PID tuned: Kp={result['Kp']:.5f}, Ki={result['Ki']:.5f}, Kd={result['Kd']:.5f}"
+            )
+        else:
+            tuning_message = f"PI tuned: Kp={result['Kp']:.5f}, Ki={result['Ki']:.5f}"
+        self.error_message(tuning_message, color='black')
 
     def calibrate_pid(self):
         """
         Calibrate the PID
         """
-        if not self.require_loaded_curve_and_t0('tuning PID'):
+        controller_mode = tds_experiment.get_controller_mode(self.config)
+        if not self.require_loaded_curve_and_t0(f'tuning {controller_mode}'):
             return
 
         try:
@@ -1060,7 +1065,7 @@ class Ui_TDS(object):
         )
         self.calibration_worker.finished.connect(self.pid_tuning_finished)
         self.calibration_worker.start()
-        self.error_message('Running PID tuning. Press Stop to cancel.', color='black')
+        self.error_message(f'Running {controller_mode} tuning. Press Stop to cancel.', color='black')
 
     def start_clicked(self):
         """

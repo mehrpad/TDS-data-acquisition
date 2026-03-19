@@ -10,6 +10,7 @@ from . import siglent
 
 
 CONTROL_DEFAULTS = {
+    "controller_mode": "PI",
     "pid_kp": 0.008,
     "pid_ki": 0.0004,
     "pid_kd": 0.0,
@@ -89,10 +90,16 @@ def _clamp(value, lower, upper):
     return max(lower, min(value, upper))
 
 
+def get_controller_mode(config):
+    mode = str(config.get("controller_mode", CONTROL_DEFAULTS["controller_mode"])).strip().upper()
+    return mode if mode in {"PI", "PID"} else CONTROL_DEFAULTS["controller_mode"]
+
+
 def build_control_config(config):
     merged = dict(config)
     for key, value in CONTROL_DEFAULTS.items():
         merged.setdefault(key, value)
+    merged["controller_mode"] = get_controller_mode(merged)
     return merged
 
 
@@ -637,10 +644,11 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                 warmup_stable_samples=int(config.get("warmup_stable_samples", 3)),
             )
 
+            controller_mode = get_controller_mode(config)
             pid_controller = pid.PIDController(
                 kp=config["pid_kp"],
                 ki=config["pid_ki"],
-                kd=config["pid_kd"],
+                kd=config["pid_kd"] if controller_mode == "PID" else 0.0,
                 setpoint=t_zero,
                 output_limits=(-config["max_voltage_step_down"], config["max_voltage_step_up"]),
                 integral_limits=(-config["pid_integral_limit"], config["pid_integral_limit"]),
