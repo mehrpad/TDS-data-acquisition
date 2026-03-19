@@ -894,10 +894,12 @@ class Ui_TDS(object):
         self.emitter.reset_stop()
 
         if isinstance(result, calibration.CalibrationCancelled):
+            print("PID tuning stopped by user.")
             self.error_message('PID tuning stopped.', color='black')
             return
 
         if isinstance(result, Exception):
+            print(f"PID tuning failed: {result}")
             self.error_message(f'PID tuning failed: {result}', color='red')
             return
 
@@ -905,6 +907,11 @@ class Ui_TDS(object):
         self.config['pid_ki'] = result['Ki']
         self.config['pid_kd'] = result['Kd']
         self.save_config()
+        print(
+            f"PID tuned and saved: Kp={result['Kp']:.6f}, Ki={result['Ki']:.6f}, "
+            f"Kd={result['Kd']:.6f}, step={result.get('step_voltage', float('nan')):.4f} V, "
+            f"peak rise={result.get('peak_rise_c', float('nan')):.2f} C"
+        )
         self.error_message(
             f"PID tuned: Kp={result['Kp']:.5f}, Ki={result['Ki']:.5f}, Kd={result['Kd']:.5f}",
             color='black',
