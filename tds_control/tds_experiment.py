@@ -33,6 +33,8 @@ CONTROL_DEFAULTS = {
     "tuning_start_voltage": 0.1,
     "tuning_search_max_voltage": 0.5,
     "tuning_settle_time_s": 1.0,
+    "tuning_response_voltage_step": 0.05,
+    "tuning_between_attempts_s": 2.0,
     "tuning_max_duration_s": 180.0,
     "tuning_baseline_samples": 5,
     "tuning_stable_current_samples": 3,

@@ -909,7 +909,9 @@ class Ui_TDS(object):
         self.save_config()
         print(
             f"PID tuned and saved: Kp={result['Kp']:.6f}, Ki={result['Ki']:.6f}, "
-            f"Kd={result['Kd']:.6f}, step={result.get('step_voltage', float('nan')):.4f} V, "
+            f"Kd={result['Kd']:.6f}, baseline={result.get('baseline_voltage', float('nan')):.4f} V, "
+            f"response={result.get('step_voltage', float('nan')):.4f} V, "
+            f"delta={result.get('step_delta_voltage', float('nan')):.4f} V, "
             f"peak rise={result.get('peak_rise_c', float('nan')):.2f} C"
         )
         self.error_message(

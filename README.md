@@ -11,6 +11,28 @@ The application is written with PyQt6 and PyVISA. It controls the power supply, 
 
 ![TDS GUI](files/gui.png)
 
+## Wiring
+
+Use the instruments as shown below:
+
+![Wiring diagram](files/diagram.png)
+
+What the diagram means:
+
+- The ammeter must be in series with the sample, so all current from the power supply flows through the current meter first and then through the wire.
+- The voltmeter must be in parallel with the sample, so it measures the voltage drop directly across the wire or resistor under test.
+- The power supply positive output goes to the ammeter input, then from the ammeter to the top side of the sample.
+- The bottom side of the sample returns to the power supply negative output.
+- The voltmeter connects across the two sample terminals, not in series.
+
+For this software that means:
+
+- `DMM_i` is the Siglent DMM wired as the ammeter in series.
+- `DMM_v` is the Siglent DMM wired as the voltmeter across the sample.
+- `PS` is the Siglent DC power supply driving the sample.
+
+Do not connect the current meter in parallel across the sample, because that can short the source and damage the setup.
+
 ## Features
 
 - Load an `R vs. T` file from `.xlsx` or `.csv`
@@ -64,6 +86,7 @@ Important fields:
 - `t0_settle_time_s`: how long the wire is allowed to settle before `T0` samples are accepted
 - `tuning_start_voltage`: starting voltage for the PID tuning search
 - `tuning_search_max_voltage`: highest voltage the PID tuning search is allowed to use
+- `tuning_response_voltage_step`: how much each PID tuning attempt increases above the safe baseline voltage
 
 The software also stores PID and autosave defaults in this file after you run the GUI.
 
@@ -183,8 +206,9 @@ During this step the software now:
 PID tuning uses a guarded low-rise step response:
 
 - it starts at `tuning_start_voltage` and increases only until a stable positive current is found,
-- it uses that lowest stable-current voltage as the tuning step,
-- it measures the baseline temperature at that voltage,
+- it uses that lowest stable-current voltage as a safe baseline voltage,
+- it then applies a real step above that baseline and only increases the response voltage in bounded attempts up to `tuning_search_max_voltage`,
+- it measures the baseline temperature before each response attempt,
 - stops once the requested small temperature rise is reached,
 - estimates conservative PI gains for the current setup.
 
