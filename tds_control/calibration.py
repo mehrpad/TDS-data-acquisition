@@ -417,7 +417,10 @@ def _estimate_pid_from_step(response, base_temperature, step_voltage, loop_time,
             "or tuning_voltage_step carefully."
         )
 
-    threshold = max(0.1 * peak_rise, 0.5)
+    # Small safe tuning steps can still produce a usable response, so keep the
+    # dead-time threshold low enough to identify them instead of demanding a
+    # large temperature excursion.
+    threshold = max(0.1 * peak_rise, 0.15)
     threshold_indices = np.where(temperature_rise >= threshold)[0]
     dead_time_s = float(times[threshold_indices[0]]) if threshold_indices.size else 0.0
 
@@ -531,6 +534,8 @@ def _run_pid_tuning_attempt(
     response_voltage,
     base_temperature,
     desired_rise,
+    required_rise,
+    smoothed_required_rise,
     safe_temperature_limit,
     temperature_lower_bound,
     loop_time,
@@ -539,6 +544,8 @@ def _run_pid_tuning_attempt(
     response = []
     invalid_measurements = 0
     start_time = time.time()
+    best_smoothed_rise_so_far = float("-inf")
+    last_growth_time_s = 0.0
 
     while time.time() - start_time < config["tuning_max_duration_s"]:
         _check_stop(emitter)
@@ -613,6 +620,19 @@ def _run_pid_tuning_attempt(
             f"I={measured_current:.4e} A, Vps={response_voltage:.4f} V"
         )
 
+        if smoothed_rise_so_far > best_smoothed_rise_so_far + config["tuning_plateau_growth_c"]:
+            best_smoothed_rise_so_far = smoothed_rise_so_far
+            last_growth_time_s = elapsed_s
+
+        if peak_rise_so_far >= required_rise and smoothed_rise_so_far >= smoothed_required_rise:
+            return {
+                "status": "usable_response",
+                "response": response,
+                "peak_rise_c": peak_rise_so_far,
+                "smoothed_rise_c": smoothed_rise_so_far,
+                "elapsed_s": elapsed_s,
+            }
+
         if temperature >= base_temperature + desired_rise:
             return {
                 "status": "target_reached",
@@ -628,6 +648,19 @@ def _run_pid_tuning_attempt(
         ):
             return {
                 "status": "no_response",
+                "response": response,
+                "peak_rise_c": peak_rise_so_far,
+                "smoothed_rise_c": smoothed_rise_so_far,
+                "elapsed_s": elapsed_s,
+            }
+
+        if (
+            elapsed_s >= config["tuning_plateau_timeout_s"]
+            and peak_rise_so_far < required_rise
+            and elapsed_s - last_growth_time_s >= config["tuning_plateau_idle_timeout_s"]
+        ):
+            return {
+                "status": "plateau",
                 "response": response,
                 "peak_rise_c": peak_rise_so_far,
                 "smoothed_rise_c": smoothed_rise_so_far,
@@ -762,6 +795,11 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
                     "Target temperature is not above the current temperature, so PID tuning cannot proceed."
                 )
 
+            required_rise = min(config["tuning_min_temperature_rise_c"], desired_rise)
+            smoothed_required_rise = max(
+                config["tuning_min_observable_rise_c"],
+                0.65 * required_rise,
+            )
             safe_temperature_limit = min(
                 experiment_params["target_T"],
                 base_temperature + desired_rise + config["temperature_tolerance_c"],
@@ -777,6 +815,8 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
                 response_voltage=candidate_voltage,
                 base_temperature=base_temperature,
                 desired_rise=desired_rise,
+                required_rise=required_rise,
+                smoothed_required_rise=smoothed_required_rise,
                 safe_temperature_limit=safe_temperature_limit,
                 temperature_lower_bound=temperature_lower_bound,
                 loop_time=loop_time,
@@ -785,8 +825,11 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
             siglent.set_voltage(power_supply, voltage=baseline_voltage)
             _sleep_with_stop(config["tuning_between_attempts_s"], emitter)
 
-            required_rise = min(config["tuning_min_temperature_rise_c"], desired_rise)
-            if attempt["peak_rise_c"] >= required_rise and attempt["response"]:
+            if (
+                attempt["peak_rise_c"] >= required_rise
+                and attempt["smoothed_rise_c"] >= smoothed_required_rise
+                and attempt["response"]
+            ):
                 tuned = _estimate_pid_from_step(
                     response=attempt["response"],
                     base_temperature=base_temperature,
@@ -806,7 +849,7 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
                 return tuned
 
             last_failure = (
-                f"Attempt at {candidate_voltage:.4f} V only produced "
+                f"Attempt at {candidate_voltage:.4f} V ended with status {attempt['status']} and produced "
                 f"{attempt['smoothed_rise_c']:.2f} C smoothed rise "
                 f"({attempt['peak_rise_c']:.2f} C peak)."
             )

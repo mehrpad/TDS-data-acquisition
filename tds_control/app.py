@@ -59,7 +59,7 @@ class Ui_TDS(object):
 
     def setupUi(self, TDS):
         TDS.setObjectName("TDS")
-        TDS.resize(920, 465)
+        TDS.resize(1020, 560)
         self.centralwidget = QtWidgets.QWidget(parent=TDS)
         self.centralwidget.setObjectName("centralwidget")
         self.gridLayout_6 = QtWidgets.QGridLayout(self.centralwidget)
@@ -188,7 +188,7 @@ class Ui_TDS(object):
         sizePolicy.setVerticalStretch(1)
         sizePolicy.setHeightForWidth(self.temperature_vis.sizePolicy().hasHeightForWidth())
         self.temperature_vis.setSizePolicy(sizePolicy)
-        self.temperature_vis.setMinimumSize(QtCore.QSize(150, 150))
+        self.temperature_vis.setMinimumSize(QtCore.QSize(260, 190))
         self.temperature_vis.setStyleSheet("QWidget{\n"
                                            "                                            border: 0.5px solid gray;\n"
                                            "                                            }\n"
@@ -206,7 +206,7 @@ class Ui_TDS(object):
         sizePolicy.setVerticalStretch(1)
         sizePolicy.setHeightForWidth(self.h_flux_vis.sizePolicy().hasHeightForWidth())
         self.h_flux_vis.setSizePolicy(sizePolicy)
-        self.h_flux_vis.setMinimumSize(QtCore.QSize(150, 150))
+        self.h_flux_vis.setMinimumSize(QtCore.QSize(260, 190))
         self.h_flux_vis.setStyleSheet("QWidget{\n"
                                       "                                            border: 0.5px solid gray;\n"
                                       "                                            }\n"
@@ -387,7 +387,7 @@ class Ui_TDS(object):
         self.gridLayout_3.addLayout(self.gridLayout_2, 3, 0, 1, 5)
         self.gridLayout_5.addLayout(self.gridLayout_3, 1, 0, 1, 1)
         self.Error = QtWidgets.QLabel(parent=self.centralwidget)
-        self.Error.setMinimumSize(QtCore.QSize(900, 30))
+        self.Error.setMinimumSize(QtCore.QSize(1000, 30))
         font = QtGui.QFont()
         font.setPointSize(10)
         font.setBold(True)
@@ -398,10 +398,14 @@ class Ui_TDS(object):
         self.Error.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.LinksAccessibleByMouse)
         self.Error.setObjectName("Error")
         self.gridLayout_5.addWidget(self.Error, 2, 0, 1, 2)
+        self.gridLayout_5.setColumnStretch(0, 3)
+        self.gridLayout_5.setColumnStretch(1, 5)
+        self.gridLayout_5.setRowStretch(0, 5)
+        self.gridLayout_5.setRowStretch(1, 3)
         self.gridLayout_6.addLayout(self.gridLayout_5, 0, 0, 1, 1)
         TDS.setCentralWidget(self.centralwidget)
         self.menubar = QtWidgets.QMenuBar(parent=TDS)
-        self.menubar.setGeometry(QtCore.QRect(0, 0, 820, 22))
+        self.menubar.setGeometry(QtCore.QRect(0, 0, 1020, 22))
         self.menubar.setObjectName("menubar")
         self.menuFile = QtWidgets.QMenu(parent=self.menubar)
         self.menuFile.setObjectName("menuFile")
