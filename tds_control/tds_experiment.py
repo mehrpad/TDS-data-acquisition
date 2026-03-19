@@ -33,13 +33,16 @@ CONTROL_DEFAULTS = {
     "resistance_range_margin_ohm": 0.01,
     "warmup_stable_samples": 3,
     "resistance_glitch_jump_ohm": 0.03,
+    "resistance_glitch_jump_ratio": 0.015,
     "measurement_retry_attempts": 2,
     "measurement_retry_delay_s": 0.15,
     "measurement_retry_consensus_ohm": 0.015,
     "measurement_temp_jump_c": 8.0,
     "measurement_temp_jump_up_c": 20.0,
     "measurement_temp_jump_down_c": 8.0,
-    "measurement_cooldown_confirm_samples": 2,
+    "measurement_temp_jump_accept_up_c": 35.0,
+    "measurement_temp_jump_accept_setpoint_margin_c": 15.0,
+    "measurement_cooldown_confirm_samples": 1,
     "ignore_invalid_below_voltage": 0.05,
     "invalid_voltage_step_down": 0.02,
     "rate_limit_activation_band_c": 2.0,
@@ -273,6 +276,13 @@ def _calculate_resistance(measured_voltage, measured_current):
     return float(resistance)
 
 
+def _resistance_jump_limit(previous_resistance, config):
+    base_jump_limit = float(config.get("resistance_glitch_jump_ohm", 0.03))
+    if previous_resistance is None or not np.isfinite(previous_resistance):
+        return base_jump_limit
+    return max(base_jump_limit, abs(float(previous_resistance)) * float(config.get("resistance_glitch_jump_ratio", 0.0)))
+
+
 def _resistance_in_curve_bounds(resistance, temperature_interp, config):
     resistance_axis = getattr(temperature_interp, "x", None)
     if resistance_axis is None:
@@ -308,8 +318,11 @@ def _measure_with_retry(
         config=config,
     )
     resistance = _calculate_resistance(measured_voltage, measured_current)
-    jump_limit = float(config.get("resistance_glitch_jump_ohm", 0.03))
-    consensus_limit = float(config.get("measurement_retry_consensus_ohm", 0.015))
+    jump_limit = _resistance_jump_limit(previous_resistance, config)
+    consensus_limit = max(
+        float(config.get("measurement_retry_consensus_ohm", 0.015)),
+        jump_limit * 0.5,
+    )
 
     if (
         previous_resistance is None
@@ -486,6 +499,7 @@ def _confirmed_upward_temperature_jump(
     measured_current,
     applied_voltage,
     resistance_confirmed,
+    setpoint,
     config,
 ):
     if not resistance_confirmed:
@@ -499,6 +513,7 @@ def _confirmed_upward_temperature_jump(
             previous_resistance,
             measured_current,
             applied_voltage,
+            setpoint,
         )
     ):
         return False
@@ -510,7 +525,16 @@ def _confirmed_upward_temperature_jump(
         config.get("ignore_invalid_below_voltage", 0.05) * 4.0,
         0.5,
     )
-    return abs(measured_current) >= minimum_confirm_current and applied_voltage >= minimum_confirm_voltage
+    if abs(measured_current) < minimum_confirm_current or applied_voltage < minimum_confirm_voltage:
+        return False
+
+    if temperature - previous_temperature > float(config.get("measurement_temp_jump_accept_up_c", 35.0)):
+        return False
+
+    if temperature > setpoint + float(config.get("measurement_temp_jump_accept_setpoint_margin_c", 15.0)):
+        return False
+
+    return True
 
 
 def _confirmed_downward_temperature_jump(
@@ -523,8 +547,6 @@ def _confirmed_downward_temperature_jump(
     resistance_confirmed,
     config,
 ):
-    if not resistance_confirmed:
-        return False
     if not all(
         np.isfinite(value)
         for value in (
@@ -685,6 +707,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     config=config,
                     previous_resistance=previous_resistance,
                 )
+                raw_temperature = temperature
                 low_signal_state = _is_low_signal_state(applied_voltage, config)
                 confirmed_upward_jump = _confirmed_upward_temperature_jump(
                     temperature=temperature,
@@ -694,6 +717,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     measured_current=measured_current,
                     applied_voltage=applied_voltage,
                     resistance_confirmed=resistance_confirmed,
+                    setpoint=float(program.scheduled_target),
                     config=config,
                 )
                 confirmed_downward_jump = _confirmed_downward_temperature_jump(
@@ -809,11 +833,40 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                         recovery_under_target_band = float(
                             config.get("under_target_no_decrease_band_c", config.get("temperature_tolerance_c", 2.0))
                         )
+                        resistance_jump_limit = _resistance_jump_limit(previous_resistance, config)
+                        invalid_hot_hint = (
+                            not low_signal_state
+                            and (
+                                (
+                                    np.isfinite(raw_temperature)
+                                    and raw_temperature >= setpoint + config["temperature_tolerance_c"]
+                                )
+                                or (
+                                    np.isfinite(measured_resistance)
+                                    and np.isfinite(previous_resistance)
+                                    and measured_resistance
+                                    >= previous_resistance
+                                    + max(
+                                        resistance_jump_limit * 0.5,
+                                        float(config.get("measurement_retry_consensus_ohm", 0.015)),
+                                    )
+                                )
+                            )
+                        )
                         recovery_current_limited = (
                             np.isfinite(measured_current)
                             and abs(measured_current) >= 0.95 * config["max_current"]
                         )
-                        if (
+                        if invalid_hot_hint:
+                            pid_voltage = min(
+                                pid_voltage,
+                                applied_voltage
+                                - max(
+                                    float(config.get("invalid_voltage_step_down", config["max_voltage_step_up"])),
+                                    config["max_voltage_step_up"],
+                                ),
+                            )
+                        elif (
                             not low_signal_state
                             and pid_voltage >= applied_voltage
                             and (
