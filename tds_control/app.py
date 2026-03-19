@@ -929,6 +929,21 @@ class Ui_TDS(object):
         self.index_plot += 1
         self.refresh_plot_ranges()
 
+    def _prepare_new_experiment_plots(self):
+        """
+        Clear plot traces for a new experiment start.
+        """
+        self.index_plot_start = 0
+        self.index_plot = 0
+        self.temperature_y = [np.nan] * len(self.temperature_x)
+        self.temperature_y_target = [np.nan] * len(self.temperature_x)
+        self.h_flux_y = [np.nan] * len(self.h_flux_x)
+        self.temperature_vis_line_target.setData(self.temperature_x, self.temperature_y_target)
+        self.temperature_vis_line.setData(self.temperature_x, self.temperature_y)
+        self.h_flux_vis_line.setData(self.h_flux_x, self.h_flux_y)
+        self.diff_label.setText("Diff: --", color="#000000")
+        self.refresh_plot_ranges()
+
     def calibrate_base_temperature(self):
         """
         Calibrate the base temperature
@@ -1096,6 +1111,7 @@ class Ui_TDS(object):
             self.error_message(f'Cannot start autosave: {exc}', color='red')
             return
         self.emitter.reset_stop()
+        self._prepare_new_experiment_plots()
         self.start_botton.setEnabled(False)
         self.stop_botton.setEnabled(True)
         self.calibrate_botton_base_t.setEnabled(False)
@@ -1130,8 +1146,6 @@ class Ui_TDS(object):
         Handles the thread completion.
         """
         self.update_timer.stop()
-        self.index_plot_start = 0
-        self.index_plot = 0
         self.voltage = 0
         self.current = 0
         self.temperature = 0
@@ -1152,7 +1166,12 @@ class Ui_TDS(object):
         self.resistivity_lcd.display(0)
         self.temperature_lcd.display(0)
         self.temperature_target_lcd.display(0)
-        self.refresh_plot_ranges()
+        # After stop/finish show full experiment history and keep it visible.
+        if self.plot_window_button.isChecked():
+            self.plot_window_button.setChecked(False)
+        else:
+            self.plot_window_last60_selected = False
+            self.refresh_plot_ranges()
 
         self.experiment_params = []
         experiment_dir = self.current_experiment_dir
