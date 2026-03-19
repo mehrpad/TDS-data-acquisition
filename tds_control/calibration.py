@@ -178,6 +178,7 @@ def _find_stable_current_voltage(
                 siglent,
                 temperature_interp,
                 calibration=True,
+                config=config,
             )
             resistance = _calculate_resistance(measured_voltage, measured_current)
             _emit_live_measurement(
@@ -304,6 +305,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
                 siglent,
                 temperature_interp,
                 calibration=True,
+                config=config,
             )
             _emit_live_measurement(
                 emitter,
@@ -487,6 +489,7 @@ def _collect_pid_baseline(
             siglent,
             temperature_interp,
             calibration=True,
+            config=config,
         )
         resistance = _calculate_resistance(measured_voltage, measured_current)
         _emit_live_measurement(
@@ -556,6 +559,7 @@ def _run_pid_tuning_attempt(
             siglent,
             temperature_interp,
             calibration=True,
+            config=config,
         )
         resistance = _calculate_resistance(measured_voltage, measured_current)
         _emit_live_measurement(
