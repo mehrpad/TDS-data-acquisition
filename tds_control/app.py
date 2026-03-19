@@ -730,6 +730,18 @@ class Ui_TDS(object):
         except (TypeError, ValueError):
             return False
 
+    def _format_lcd_value(self, value, decimals=4):
+        if not self._is_finite_number(value):
+            return "0"
+
+        numeric_value = float(value)
+        magnitude = abs(numeric_value)
+        if magnitude == 0.0:
+            return "0.0000"
+        if 1e-3 <= magnitude < 1e3:
+            return f"{numeric_value:.{decimals}f}"
+        return f"{numeric_value:.2e}"
+
     def _apply_measurement_to_displays(self, *, target_temperature=None, temperature=None, voltage=None, current=None):
         if self._is_finite_number(target_temperature):
             self.target_temperature = float(target_temperature)
@@ -741,12 +753,12 @@ class Ui_TDS(object):
             self.current = float(current)
 
         if self._is_finite_number(self.voltage):
-            self.voltage_lcd.display("{:.1e}".format(self.voltage))
+            self.voltage_lcd.display(self._format_lcd_value(self.voltage, decimals=4))
         else:
             self.voltage_lcd.display(0)
 
         if self._is_finite_number(self.current):
-            self.current_lcd.display("{:.1e}".format(self.current))
+            self.current_lcd.display(self._format_lcd_value(self.current, decimals=4))
         else:
             self.current_lcd.display(0)
 
