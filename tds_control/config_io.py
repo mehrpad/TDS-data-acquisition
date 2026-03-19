@@ -65,6 +65,8 @@ CONFIG_GROUPS = [
             ("measurement_temp_jump_c", "Legacy symmetric temperature-jump threshold kept for compatibility."),
             ("measurement_temp_jump_up_c", "Upward temperature jump threshold before a reading is questioned."),
             ("measurement_temp_jump_down_c", "Downward temperature jump threshold before a reading is questioned."),
+            ("measurement_jump_confirm_min_current_a", "Minimum current required to accept a confirmed jump."),
+            ("measurement_jump_confirm_min_voltage", "Minimum PSU voltage required to accept a confirmed jump."),
             ("measurement_temp_jump_accept_up_c", "Largest upward jump that may still be accepted as physically plausible."),
             ("measurement_temp_jump_accept_setpoint_margin_c", "How far above the live setpoint an accepted upward jump may land."),
             ("measurement_cooldown_confirm_samples", "How many downward jump confirmations are required before accepting cooldown."),

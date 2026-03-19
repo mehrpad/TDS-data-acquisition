@@ -42,6 +42,8 @@ CONTROL_DEFAULTS = {
     "measurement_temp_jump_c": 8.0,
     "measurement_temp_jump_up_c": 20.0,
     "measurement_temp_jump_down_c": 8.0,
+    "measurement_jump_confirm_min_current_a": 0.02,
+    "measurement_jump_confirm_min_voltage": 0.1,
     "measurement_temp_jump_accept_up_c": 35.0,
     "measurement_temp_jump_accept_setpoint_margin_c": 15.0,
     "measurement_cooldown_confirm_samples": 1,
@@ -529,10 +531,13 @@ def _confirmed_upward_temperature_jump(
     if temperature <= previous_temperature or measured_resistance <= previous_resistance:
         return False
 
-    minimum_confirm_current = max(config["minimum_current_a"] * 20.0, 0.05)
+    minimum_confirm_current = max(
+        config["minimum_current_a"] * 20.0,
+        float(config.get("measurement_jump_confirm_min_current_a", 0.02)),
+    )
     minimum_confirm_voltage = max(
-        config.get("ignore_invalid_below_voltage", 0.05) * 4.0,
-        0.5,
+        config.get("ignore_invalid_below_voltage", 0.05) * 2.0,
+        float(config.get("measurement_jump_confirm_min_voltage", 0.1)),
     )
     if abs(measured_current) < minimum_confirm_current or applied_voltage < minimum_confirm_voltage:
         return False
@@ -571,10 +576,13 @@ def _confirmed_downward_temperature_jump(
     if temperature >= previous_temperature or measured_resistance >= previous_resistance:
         return False
 
-    minimum_confirm_current = max(config["minimum_current_a"] * 20.0, 0.05)
+    minimum_confirm_current = max(
+        config["minimum_current_a"] * 20.0,
+        float(config.get("measurement_jump_confirm_min_current_a", 0.02)),
+    )
     minimum_confirm_voltage = max(
-        config.get("ignore_invalid_below_voltage", 0.05) * 4.0,
-        0.5,
+        config.get("ignore_invalid_below_voltage", 0.05) * 2.0,
+        float(config.get("measurement_jump_confirm_min_voltage", 0.1)),
     )
     return abs(measured_current) >= minimum_confirm_current and applied_voltage >= minimum_confirm_voltage
 
