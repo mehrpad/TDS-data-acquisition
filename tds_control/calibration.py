@@ -9,7 +9,7 @@ from . import tds_experiment
 
 
 class CalibrationCancelled(RuntimeError):
-    """Raised when the user stops calibration or PID tuning from the GUI."""
+    """Raised when the user stops calibration or controller tuning from the GUI."""
 
 
 def _prepare_curve_interpolators(r_vs_t):
@@ -75,7 +75,7 @@ def _filter_room_temperature_samples(samples):
 
 def _check_stop(emitter):
     if emitter is not None and getattr(emitter, "stopped", False):
-        print("Calibration or PID tuning stop requested by user.")
+        print("Calibration or controller tuning stop requested by user.")
         raise CalibrationCancelled("Stopped by user.")
 
 
@@ -404,9 +404,9 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
         tds_experiment._shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager)
 
 
-def _estimate_pid_from_step(response, base_temperature, step_voltage, loop_time, min_temp_rise):
+def _estimate_pid_from_step(response, base_temperature, step_voltage, loop_time, min_temp_rise, controller_mode="PI"):
     if not response:
-        raise ValueError("PID tuning did not collect any valid samples.")
+        raise ValueError("Controller tuning did not collect any valid samples.")
 
     times = np.array([sample["elapsed_s"] for sample in response], dtype=float)
     temperatures = np.array([sample["temperature"] for sample in response], dtype=float)
@@ -415,7 +415,7 @@ def _estimate_pid_from_step(response, base_temperature, step_voltage, loop_time,
 
     if peak_rise < min_temp_rise:
         raise ValueError(
-            "PID tuning did not produce enough temperature change. Increase tuning_search_max_voltage "
+            "Controller tuning did not produce enough temperature change. Increase tuning_search_max_voltage "
             "or tuning_voltage_step carefully."
         )
 
@@ -440,9 +440,17 @@ def _estimate_pid_from_step(response, base_temperature, step_voltage, loop_time,
     ti = max(time_constant_s + dead_time_s / 2.0, loop_time)
     ki = kp / ti
 
-    # Resistive temperature measurements are noisy enough that a conservative PI
-    # controller is safer than an aggressive derivative term.
-    kd = 0.0
+    controller_mode = str(controller_mode).strip().upper()
+    if controller_mode == "PID":
+        derivative_time_s = 0.0
+        if dead_time_s > 0.0:
+            derivative_time_s = (time_constant_s * dead_time_s) / max(
+                2.0 * time_constant_s + dead_time_s,
+                loop_time,
+            )
+        kd = float(np.clip(kp * derivative_time_s, 0.0, 0.02))
+    else:
+        kd = 0.0
 
     return {
         "Kp": float(np.clip(kp, 0.001, 0.05)),
@@ -519,7 +527,7 @@ def _collect_pid_baseline(
         else:
             invalid_measurements += 1
             if invalid_measurements >= config["measurement_fail_limit"]:
-                raise ValueError("Could not get a stable baseline temperature for PID tuning.")
+                raise ValueError("Could not get a stable baseline temperature for controller tuning.")
         _sleep_with_stop(sample_interval_s, emitter)
 
     return float(np.median(np.array(baseline_temperatures, dtype=float)))
@@ -573,7 +581,7 @@ def _run_pid_tuning_attempt(
 
         if np.isfinite(temperature) and temperature > safe_temperature_limit:
             print(
-                f"PID tuning stopped at the safety temperature limit: "
+                f"Controller tuning stopped at the safety temperature limit: "
                 f"T={temperature:.2f} C, limit={safe_temperature_limit:.2f} C"
             )
             break
@@ -590,7 +598,7 @@ def _run_pid_tuning_attempt(
         if not valid_response:
             invalid_measurements += 1
             if invalid_measurements >= config["measurement_fail_limit"]:
-                raise ValueError("Too many invalid measurements during PID tuning.")
+                raise ValueError("Too many invalid measurements during controller tuning.")
             elapsed = time.time() - loop_started
             if elapsed < loop_time:
                 _sleep_with_stop(loop_time - elapsed, emitter)
@@ -700,6 +708,7 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
     Tune conservative gains from a small guarded voltage step on the real setup.
     """
     config = tds_experiment.build_control_config(config)
+    controller_mode = tds_experiment.get_controller_mode(config)
     loop_time = 1.0 / config["experiment_frequency"]
     _, _, temperature_interp = _prepare_curve_interpolators(r_vs_t)
 
@@ -743,13 +752,13 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
             stable_samples=config["tuning_stable_current_samples"],
             minimum_current=config["tuning_stable_current_a"],
             emitter=emitter,
-            label="PID tuning search",
+            label=f"{controller_mode} tuning search",
             temperature_lower_bound=temperature_lower_bound,
             temperature_upper_bound=temperature_upper_bound,
             display_target_temperature=base_temperature_hint,
         )
         baseline_voltage = step_voltage
-        print(f"Using PID baseline voltage: {baseline_voltage:.4f} V")
+        print(f"Using {controller_mode} baseline voltage: {baseline_voltage:.4f} V")
 
         response_step = max(config["tuning_response_voltage_step"], config["minimum_voltage_change"])
         max_response_voltage = min(config["tuning_search_max_voltage"], config["max_voltage"])
@@ -759,7 +768,7 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
         )
         if candidate_voltage > max_response_voltage + 1e-12:
             raise ValueError(
-                "PID tuning could not create a voltage step above the stable-current baseline. "
+                "Controller tuning could not create a voltage step above the stable-current baseline. "
                 "Increase tuning_search_max_voltage carefully."
             )
 
@@ -769,7 +778,7 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
         while candidate_voltage <= max_response_voltage + 1e-12:
             attempt_number += 1
             print(
-                f"PID tuning attempt {attempt_number}: baseline={baseline_voltage:.4f} V, "
+                f"{controller_mode} tuning attempt {attempt_number}: baseline={baseline_voltage:.4f} V, "
                 f"response={candidate_voltage:.4f} V"
             )
             siglent.set_voltage(power_supply, voltage=baseline_voltage)
@@ -796,7 +805,7 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
                 desired_rise = available_rise
             if desired_rise <= 0:
                 raise ValueError(
-                    "Target temperature is not above the current temperature, so PID tuning cannot proceed."
+                    "Target temperature is not above the current temperature, so controller tuning cannot proceed."
                 )
 
             required_rise = min(config["tuning_min_temperature_rise_c"], desired_rise)
@@ -840,12 +849,13 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
                     step_voltage=candidate_voltage - baseline_voltage,
                     loop_time=loop_time,
                     min_temp_rise=required_rise,
+                    controller_mode=controller_mode,
                 )
                 tuned["baseline_voltage"] = baseline_voltage
                 tuned["step_voltage"] = candidate_voltage
                 tuned["step_delta_voltage"] = candidate_voltage - baseline_voltage
                 print(
-                    f"Tuned PID parameters: Kp={tuned['Kp']:.6f}, Ki={tuned['Ki']:.6f}, "
+                    f"Tuned {controller_mode} parameters: Kp={tuned['Kp']:.6f}, Ki={tuned['Ki']:.6f}, "
                     f"Kd={tuned['Kd']:.6f}, baseline={baseline_voltage:.4f} V, "
                     f"response={candidate_voltage:.4f} V, delta={tuned['step_delta_voltage']:.4f} V, "
                     f"peak rise={tuned['peak_rise_c']:.2f} C"
@@ -857,11 +867,11 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
                 f"{attempt['smoothed_rise_c']:.2f} C smoothed rise "
                 f"({attempt['peak_rise_c']:.2f} C peak)."
             )
-            print(f"PID tuning attempt did not produce enough response. {last_failure}")
+            print(f"{controller_mode} tuning attempt did not produce enough response. {last_failure}")
             candidate_voltage += response_step
 
         failure_message = (
-            f"PID tuning could not find a usable step response up to {max_response_voltage:.4f} V. "
+            f"{controller_mode} tuning could not find a usable step response up to {max_response_voltage:.4f} V. "
             f"{last_failure or ''}"
         ).strip()
         raise ValueError(failure_message)
