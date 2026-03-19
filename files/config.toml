@@ -55,10 +55,10 @@ min_voltage = 0
 max_voltage_step_up = 0.01
 
 # Largest downward voltage step per loop.
-max_voltage_step_down = 0.04
+max_voltage_step_down = 0.01
 
 # Larger upward step allowed when the sample is far below the setpoint.
-max_voltage_step_up_far = 0.04
+max_voltage_step_up_far = 0.01
 
 # Temperature gap below the setpoint that enables aggressive catch-up.
 aggressive_step_band_c = 4
@@ -158,7 +158,7 @@ measurement_heatup_confirm_samples = 2
 ignore_invalid_below_voltage = 0.05
 
 # Backoff step used when an invalid reading appears too hot.
-invalid_voltage_step_down = 0.02
+invalid_voltage_step_down = 0.01
 
 # After this many reused invalid cycles, stop increasing voltage and hold/back off.
 invalid_reuse_hold_after = 8

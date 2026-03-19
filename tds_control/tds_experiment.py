@@ -19,7 +19,7 @@ CONTROL_DEFAULTS = {
     "startup_voltage": 0.01,
     "min_voltage": 0.0,
     "max_voltage_step_up": 0.01,
-    "max_voltage_step_down": 0.04,
+    "max_voltage_step_down": 0.01,
     "temperature_tolerance_c": 2.0,
     "hold_entry_tolerance_c": 3.0,
     "safety_temp_margin_c": 15.0,
@@ -49,7 +49,7 @@ CONTROL_DEFAULTS = {
     "measurement_cooldown_confirm_samples": 2,
     "measurement_heatup_confirm_samples": 2,
     "ignore_invalid_below_voltage": 0.05,
-    "invalid_voltage_step_down": 0.02,
+    "invalid_voltage_step_down": 0.01,
     "invalid_reuse_hold_after": 8,
     "rate_limit_activation_band_c": 2.0,
     "under_target_no_decrease_band_c": 1.5,
@@ -72,7 +72,7 @@ CONTROL_DEFAULTS = {
     "tuning_min_observable_rise_c": 0.25,
     "tuning_plateau_timeout_s": 15.0,
     "tuning_plateau_idle_timeout_s": 6.0,
-    "max_voltage_step_up_far": 0.04,
+    "max_voltage_step_up_far": 0.01,
     "aggressive_step_band_c": 4.0,
     "tuning_plateau_growth_c": 0.08,
     "t0_calibration_voltage": 0.1,
@@ -93,6 +93,19 @@ class ExperimentSafetyError(RuntimeError):
 
 def _clamp(value, lower, upper):
     return max(lower, min(value, upper))
+
+
+def _limit_voltage_slew(target_voltage, current_voltage, min_voltage, max_voltage, config):
+    if not np.isfinite(target_voltage) or not np.isfinite(current_voltage):
+        return _clamp(current_voltage, min_voltage, max_voltage)
+    max_step_up = float(config.get("max_voltage_step_up", 0.01))
+    max_step_down = float(config.get("max_voltage_step_down", 0.01))
+    delta = target_voltage - current_voltage
+    if delta > max_step_up:
+        target_voltage = current_voltage + max_step_up
+    elif delta < -max_step_down:
+        target_voltage = current_voltage - max_step_down
+    return _clamp(target_voltage, min_voltage, max_voltage)
 
 
 def get_controller_mode(config):
@@ -167,12 +180,9 @@ class TemperatureProgram:
     def update(self, measured_temperature, dt):
         while True:
             if self.phase == "warmup":
-                if measured_temperature > self.start_T + self.temperature_tolerance_c:
-                    self.scheduled_target = self.start_T
-                    self.warmup_stable_count = 0
-                    return self.start_T, self.phase, False
                 target = self._advance_target(self.start_T, dt)
-                if abs(measured_temperature - self.start_T) <= self.temperature_tolerance_c:
+                # Warmup should complete once we consistently reach (or exceed) the start temperature band.
+                if measured_temperature >= self.start_T - self.temperature_tolerance_c:
                     self.warmup_stable_count += 1
                 else:
                     self.warmup_stable_count = 0
@@ -499,7 +509,14 @@ def _compute_next_voltage(
     if temperature >= target_temperature and setpoint >= target_temperature:
         delta_voltage = min(delta_voltage, 0.0)
 
-    new_voltage = _clamp(current_voltage + delta_voltage, control_min_voltage, config["max_voltage"])
+    requested_voltage = _clamp(current_voltage + delta_voltage, control_min_voltage, config["max_voltage"])
+    new_voltage = _limit_voltage_slew(
+        requested_voltage,
+        current_voltage,
+        control_min_voltage,
+        config["max_voltage"],
+        config,
+    )
     return new_voltage
 
 
@@ -922,7 +939,13 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             )
                         ):
                             pid_voltage = applied_voltage - config["max_voltage_step_up"]
-                        pid_voltage = _clamp(pid_voltage, measurement_voltage_floor, config["max_voltage"])
+                        pid_voltage = _limit_voltage_slew(
+                            pid_voltage,
+                            applied_voltage,
+                            measurement_voltage_floor,
+                            config["max_voltage"],
+                            config,
+                        )
                         previous_voltage = _set_voltage_if_needed(power_supply, pid_voltage, previous_voltage, config)
                         invalid_measurements = 0
                         if resistance_confirmed and np.isfinite(measured_resistance):
@@ -972,6 +995,13 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                         applied_voltage - config.get("invalid_voltage_step_down", config["max_voltage_step_down"]),
                         measurement_voltage_floor,
                         config["max_voltage"],
+                    )
+                    pid_voltage = _limit_voltage_slew(
+                        pid_voltage,
+                        applied_voltage,
+                        measurement_voltage_floor,
+                        config["max_voltage"],
+                        config,
                     )
                     previous_voltage = _set_voltage_if_needed(power_supply, pid_voltage, previous_voltage, config)
                     print(
