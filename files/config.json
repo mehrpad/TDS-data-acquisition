@@ -33,6 +33,8 @@
   "measurement_retry_delay_s": 0.15,
   "measurement_retry_consensus_ohm": 0.015,
   "measurement_temp_jump_c": 8.0,
+  "measurement_temp_jump_up_c": 20.0,
+  "measurement_temp_jump_down_c": 8.0,
   "ignore_invalid_below_voltage": 0.05,
   "invalid_voltage_step_down": 0.02,
   "rate_limit_activation_band_c": 2.0,
