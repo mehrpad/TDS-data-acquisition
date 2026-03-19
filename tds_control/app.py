@@ -24,6 +24,8 @@ class Ui_TDS(object):
         self.temperature = 0
         self.resistivity = 0
         self.index_plot_start = 0
+        self.plot_window_last60_selected = False
+        self.plot_window_seconds = 60.0
         self.config = tds_experiment.build_control_config(data)
         self.experiment_params = []
         self.r_vs_t = None
@@ -213,6 +215,21 @@ class Ui_TDS(object):
                                       "                                        ")
         self.h_flux_vis.setObjectName("h_flux_vis")
         self.gridLayout_4.addWidget(self.h_flux_vis, 1, 0, 1, 1)
+        self.plot_window_layout = QtWidgets.QHBoxLayout()
+        self.plot_window_layout.setObjectName("plot_window_layout")
+        self.plot_window_button = QtWidgets.QPushButton(parent=self.centralwidget)
+        self.plot_window_button.setMinimumSize(QtCore.QSize(120, 24))
+        self.plot_window_button.setMaximumSize(QtCore.QSize(140, 16777215))
+        self.plot_window_button.setCheckable(True)
+        self.plot_window_button.setStyleSheet(
+            "QPushButton{background: rgb(193, 193, 193)}\n"
+            "QPushButton:checked{background: rgb(190, 255, 190)}"
+        )
+        self.plot_window_button.setObjectName("plot_window_button")
+        self.plot_window_layout.addStretch(1)
+        self.plot_window_layout.addWidget(self.plot_window_button)
+        self.plot_window_layout.addStretch(1)
+        self.gridLayout_4.addLayout(self.plot_window_layout, 2, 0, 1, 1)
         self.gridLayout_5.addLayout(self.gridLayout_4, 0, 1, 2, 1)
         self.gridLayout_3 = QtWidgets.QGridLayout()
         self.gridLayout_3.setObjectName("gridLayout_3")
@@ -450,6 +467,7 @@ class Ui_TDS(object):
         self.stop_botton.clicked.connect(self.stop_clicked)
         self.calibrate_botton_base_t.clicked.connect(self.calibrate_base_temperature)
         self.calibrate_botton_pid.clicked.connect(self.calibrate_pid)
+        self.plot_window_button.toggled.connect(self.toggle_plot_window)
         self.calibrate_botton_pid.setEnabled(True)
 
         self.h_flux_x = [i * 0.5 for i in range(200)]
@@ -488,6 +506,7 @@ class Ui_TDS(object):
 
         self.temperature_vis.showGrid(x=True, y=True)
         self.h_flux_vis.showGrid(x=True, y=True)
+        self.refresh_plot_ranges()
 
         self.update_timer = QTimer()  # Create a QTimer for updating graphs
         # self.update_timer.start(500)
@@ -541,6 +560,7 @@ class Ui_TDS(object):
         self.stop_botton.setText(_translate("TDS", "Stop"))
         self.load_csv_botton.setText(_translate("TDS", "Reload R vs. T"))
         self.calibrate_botton_pid.setText(_translate("TDS", "Tune PID"))
+        self.plot_window_button.setText(_translate("TDS", "Last 60 s"))
         self.Error.setText(_translate("TDS", "<html><head/><body><p><br/></p></body></html>"))
         self.menuFile.setTitle(_translate("TDS", "File"))
         self.menuHelp.setTitle(_translate("TDS", "Help"))
@@ -839,6 +859,39 @@ class Ui_TDS(object):
             resistivity=measurement.get("resistance"),
         )
 
+    def toggle_plot_window(self, checked):
+        """
+        Toggle between the full experiment view and the last 60 seconds.
+        """
+        self.plot_window_last60_selected = bool(checked)
+        self.refresh_plot_ranges()
+
+    def _current_plot_end_time(self):
+        """
+        Return the latest plotted experiment time in seconds.
+        """
+        if self.index_plot <= 0:
+            return 0.0
+
+        temperature_index = min(max(self.index_plot - 1, 0), len(self.temperature_x) - 1)
+        h_flux_index = min(max(self.index_plot - 1, 0), len(self.h_flux_x) - 1)
+        return float(max(self.temperature_x[temperature_index], self.h_flux_x[h_flux_index], 0.0))
+
+    def refresh_plot_ranges(self):
+        """
+        Keep both plots on the selected time window.
+        """
+        end_time = self._current_plot_end_time()
+        if self.plot_window_last60_selected:
+            visible_end = max(self.plot_window_seconds, end_time)
+            visible_start = max(0.0, visible_end - self.plot_window_seconds)
+        else:
+            visible_start = 0.0
+            visible_end = max(1.0, end_time)
+
+        for plot_widget in (self.temperature_vis, self.h_flux_vis):
+            plot_widget.setXRange(visible_start, visible_end, padding=0.01)
+
     def update_graphs(self):
         """
         Update the graphs with new data
@@ -875,6 +928,7 @@ class Ui_TDS(object):
         self.h_flux_vis_line.setData(self.h_flux_x, self.h_flux_y)
 
         self.index_plot += 1
+        self.refresh_plot_ranges()
 
     def calibrate_base_temperature(self):
         """
@@ -1094,6 +1148,7 @@ class Ui_TDS(object):
         self.resistivity_lcd.display(0)
         self.temperature_lcd.display(0)
         self.temperature_target_lcd.display(0)
+        self.refresh_plot_ranges()
 
         self.experiment_params = []
         experiment_dir = self.current_experiment_dir

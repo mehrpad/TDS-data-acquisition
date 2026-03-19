@@ -35,7 +35,7 @@
   "measurement_temp_jump_c": 8.0,
   "ignore_invalid_below_voltage": 0.05,
   "invalid_voltage_step_down": 0.02,
-  "rate_limit_activation_band_c": 5.0,
+  "rate_limit_activation_band_c": 2.0,
   "under_target_no_decrease_band_c": 1.5,
   "autosave_flush_interval_s": 5.0,
   "autosave_batch_size": 10,
