@@ -154,6 +154,7 @@ def _find_stable_current_voltage(
     temperature_lower_bound=None,
     temperature_upper_bound=None,
     display_target_temperature=None,
+    allow_current_only_fallback=False,
 ):
     sample_interval_s = max(0.5, 1.0 / config["experiment_frequency"])
     voltage = max(start_voltage, config["min_voltage"], 0.005)
@@ -169,6 +170,7 @@ def _find_stable_current_voltage(
         samples = []
         consecutive_invalid_samples = 0
         invalid_advance_count = max(int(config.get("stable_current_invalid_advance_count", 5)), 1)
+        announced_current_only_fallback = False
         attempts = 0
         max_attempts = max(int(stable_samples) * 3, int(stable_samples) + config["measurement_fail_limit"] * 3)
         while len(samples) < int(stable_samples) and attempts < max_attempts:
@@ -201,16 +203,34 @@ def _find_stable_current_voltage(
                     f"{label}: measured current {measured_current:.4e} A exceeded max_current."
                 )
 
-            valid_sample = (
-                tds_experiment._is_valid_measurement(measured_voltage, measured_current, temperature, config)
+            stable_current_sample = (
+                np.isfinite(measured_voltage)
+                and np.isfinite(measured_current)
                 and measured_current > minimum_current
                 and np.isfinite(resistance)
+            )
+            valid_sample = (
+                tds_experiment._is_valid_measurement(measured_voltage, measured_current, temperature, config)
+                and stable_current_sample
                 and _temperature_is_in_window(
                     temperature,
                     lower_bound=temperature_lower_bound,
                     upper_bound=temperature_upper_bound,
                 )
             )
+            if (
+                not valid_sample
+                and allow_current_only_fallback
+                and stable_current_sample
+                and not np.isfinite(temperature)
+            ):
+                valid_sample = True
+                if not announced_current_only_fallback:
+                    print(
+                        f"{label}: resistance is outside the loaded R vs. T range, "
+                        "so calibration will use stable current and room-temperature scaling."
+                    )
+                    announced_current_only_fallback = True
 
             if valid_sample:
                 consecutive_invalid_samples = 0
@@ -293,6 +313,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
             temperature_lower_bound=room_temp - config["t0_max_temp_error_c"],
             temperature_upper_bound=room_temp + config["t0_max_temp_error_c"],
             display_target_temperature=room_temp,
+            allow_current_only_fallback=True,
         )
         print(f"Using T0 calibration voltage: {calibration_voltage:.4f} V")
 
@@ -302,6 +323,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
         warmup_remaining = max(int(config["t0_warmup_samples"]), 0)
         target_samples = max(int(config["t0_calibration_samples"]), 3)
         attempts = 0
+        room_temp_scaling_fallback_used = False
         max_attempts = max(
             12,
             target_samples + warmup_remaining + config["measurement_fail_limit"] * 6,
@@ -328,35 +350,48 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
             print(
                 f"Room-temperature calibration sample: T={temperature}, V={measured_voltage}, I={measured_current}"
             )
-            if not tds_experiment._is_valid_measurement(measured_voltage, measured_current, temperature, config):
-                print("Rejected room-temperature calibration sample: invalid measurement.")
-                _sleep_with_stop(sample_interval_s, emitter)
-                continue
-
             if abs(measured_current) > config["max_current"]:
                 raise tds_experiment.ExperimentSafetyError(
                     f"Measured current {measured_current:.4e} A exceeded max_current during T0 calibration."
                 )
+
+            if not np.isfinite(measured_voltage) or not np.isfinite(measured_current):
+                print("Rejected room-temperature calibration sample: invalid measurement.")
+                _sleep_with_stop(sample_interval_s, emitter)
+                continue
 
             resistance = _calculate_resistance(measured_voltage, measured_current)
             if not np.isfinite(resistance):
                 print("Rejected room-temperature calibration sample: invalid resistance.")
                 _sleep_with_stop(sample_interval_s, emitter)
                 continue
-
-            if abs(temperature - room_temp) > config["t0_max_temp_error_c"]:
-                print(
-                    "Rejected room-temperature calibration sample: "
-                    f"|T-room_temp|={abs(temperature - room_temp):.2f} C exceeds "
-                    f"{config['t0_max_temp_error_c']:.2f} C."
-                )
-                _sleep_with_stop(sample_interval_s, emitter)
-                continue
+            sample_temperature = float(temperature)
+            if np.isfinite(temperature):
+                if abs(temperature - room_temp) > config["t0_max_temp_error_c"]:
+                    print(
+                        "Rejected room-temperature calibration sample: "
+                        f"|T-room_temp|={abs(temperature - room_temp):.2f} C exceeds "
+                        f"{config['t0_max_temp_error_c']:.2f} C."
+                    )
+                    _sleep_with_stop(sample_interval_s, emitter)
+                    continue
+            else:
+                if abs(measured_current) <= config["t0_stable_current_a"]:
+                    print("Rejected room-temperature calibration sample: current is too small.")
+                    _sleep_with_stop(sample_interval_s, emitter)
+                    continue
+                sample_temperature = float(room_temp)
+                if not room_temp_scaling_fallback_used:
+                    print(
+                        "Room-temperature calibration is using resistance-only scaling because the measured "
+                        "wire resistance is outside the loaded R vs. T range."
+                    )
+                    room_temp_scaling_fallback_used = True
 
             if warmup_remaining > 0:
                 print(
                     "Discarding room-temperature calibration warmup sample: "
-                    f"R={resistance:.4f} Ohm, T={temperature:.2f} C"
+                    f"R={resistance:.4f} Ohm, T={sample_temperature:.2f} C"
                 )
                 warmup_remaining -= 1
                 _sleep_with_stop(sample_interval_s, emitter)
@@ -366,7 +401,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
                 {
                     "voltage": float(measured_voltage),
                     "current": float(measured_current),
-                    "temperature": float(temperature),
+                    "temperature": sample_temperature,
                     "resistance": resistance,
                 }
             )
@@ -405,6 +440,11 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
         print(f"Measured resistivity: {measured_resistivity:.4f} Ohm")
         print(f"Reference resistivity: {resistivity_room_temp:.4f} Ohm")
         print(f"Calibration scale: {scale:.4f}")
+        if room_temp_scaling_fallback_used:
+            print(
+                "Applied room-temperature scaling fallback so a different wire geometry can reuse the "
+                "loaded material curve."
+            )
 
         calibrated = curve.copy()
         calibrated[0, :] *= scale
