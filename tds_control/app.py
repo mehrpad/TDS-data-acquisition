@@ -471,17 +471,17 @@ class Ui_TDS(object):
         self.legend = pg.LegendItem(offset=(-5, -35))  # Position legend
         self.legend.setParentItem(self.temperature_vis.getPlotItem())  # Attach to the plot
         self.legend.addItem(self.temperature_vis_line, f"Diff: "
-                                                       f"{abs(self.target_temperature - self.temperature):.2f}°C")
+                                                       f"{abs(self.target_temperature - self.temperature):.2f} C")
 
         self.diff_label = self.legend.items[0][1]
         self.diff_label.setText(
-            f"Diff: {abs(self.target_temperature - self.temperature):.2f}Â°C",
+            f"Diff: {abs(self.target_temperature - self.temperature):.2f} C",
             color="#000000",
         )
 
         # Add Axis Labels
         self.styles = {"color": "#f00", "font-size": "12px"}
-        self.temperature_vis.setLabel("left", "Temperature", units='°C', **self.styles)
+        self.temperature_vis.setLabel("left", "Temperature", units="C", **self.styles)
         self.temperature_vis.setLabel("bottom", "Time (s)", **self.styles)
         self.h_flux_vis.setLabel("left", "Flux", units='mol/s', **self.styles)
         self.h_flux_vis.setLabel("bottom", "Time (s)", **self.styles)
@@ -862,7 +862,7 @@ class Ui_TDS(object):
         self.temperature_vis_line_target.setData(self.temperature_x, self.temperature_y_target)
         self.temperature_vis_line.setData(self.temperature_x, self.temperature_y)
         self.diff_label.setText(
-            f"Diff: {abs(self.target_temperature - self.temperature):.2f}°C",
+            f"Diff: {abs(self.target_temperature - self.temperature):.2f} C",
             color="#000000",
         )
 

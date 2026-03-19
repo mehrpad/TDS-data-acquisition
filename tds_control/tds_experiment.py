@@ -37,6 +37,7 @@ CONTROL_DEFAULTS = {
     "measurement_retry_delay_s": 0.15,
     "measurement_retry_consensus_ohm": 0.015,
     "measurement_temp_jump_c": 8.0,
+    "ignore_invalid_below_voltage": 0.05,
     "invalid_voltage_step_down": 0.02,
     "rate_limit_activation_band_c": 5.0,
     "autosave_flush_interval_s": 5.0,
@@ -58,7 +59,7 @@ CONTROL_DEFAULTS = {
     "tuning_min_observable_rise_c": 0.25,
     "tuning_plateau_timeout_s": 15.0,
     "tuning_plateau_idle_timeout_s": 6.0,
-    "max_voltage_step_up_far": 0.02,
+    "max_voltage_step_up_far": 0.03,
     "aggressive_step_band_c": 6.0,
     "tuning_plateau_growth_c": 0.08,
     "t0_calibration_voltage": 0.1,
@@ -235,6 +236,17 @@ def _temperature_rate_c_min(current_temperature, previous_temperature, dt):
     return (current_temperature - previous_temperature) * 60.0 / dt
 
 
+def _is_low_signal_state(applied_voltage, config):
+    if not np.isfinite(applied_voltage):
+        return False
+    return applied_voltage <= float(
+        config.get(
+            "ignore_invalid_below_voltage",
+            max(config.get("measurement_voltage_floor", 0.01) * 5.0, 0.05),
+        )
+    )
+
+
 def _temperature_filter(history, temperature, window):
     if np.isfinite(temperature):
         history.append(float(temperature))
@@ -401,9 +413,10 @@ def _compute_next_voltage(
 
     far_below_setpoint = temperature <= setpoint - config.get("aggressive_step_band_c", 6.0)
     if far_below_setpoint and delta_voltage > 0.0:
+        aggressive_step = float(config.get("max_voltage_step_up_far", config["max_voltage_step_up"]))
         delta_voltage = min(
-            config.get("max_voltage_step_up_far", config["max_voltage_step_up"]),
-            max(delta_voltage * 2.0, config["max_voltage_step_up"]),
+            aggressive_step,
+            max(delta_voltage * 2.0, config["max_voltage_step_up"] * 2.0),
         )
 
     if temperature >= setpoint + config["temperature_tolerance_c"]:
@@ -564,12 +577,14 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     config=config,
                     previous_resistance=previous_resistance,
                 )
+                low_signal_state = _is_low_signal_state(applied_voltage, config)
 
                 if (
                     np.isfinite(temperature)
                     and previous_temperature is not None
                     and np.isfinite(previous_temperature)
                     and abs(temperature - previous_temperature) > config.get("measurement_temp_jump_c", 8.0)
+                    and not low_signal_state
                 ):
                     print(
                         f"Temperature jump detected: previous={previous_temperature:.2f} C, "
@@ -578,6 +593,72 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     temperature = np.nan
 
                 if not _is_valid_measurement(measured_voltage, measured_current, temperature, config):
+                    can_reuse_last_temperature = (
+                        previous_temperature is not None
+                        and np.isfinite(previous_temperature)
+                        and np.isfinite(measured_voltage)
+                        and np.isfinite(measured_current)
+                        and abs(measured_current) <= config["max_current"]
+                    )
+                    if can_reuse_last_temperature:
+                        recovery_temperature = previous_temperature
+                        setpoint, phase, finished = program.update(recovery_temperature, loop_time)
+
+                        if phase != previous_phase:
+                            pid_controller.reset(measurement=recovery_temperature)
+                            previous_phase = phase
+                        else:
+                            pid_controller.reset(measurement=recovery_temperature)
+
+                        pid_voltage = _compute_next_voltage(
+                            pid_controller=pid_controller,
+                            temperature=recovery_temperature,
+                            setpoint=setpoint,
+                            current_voltage=pid_voltage,
+                            measured_current=measured_current,
+                            target_temperature=program.target_T,
+                            temp_rate_c_min=0.0,
+                            ramp_speed_c_min=program.ramp_speed_c_min,
+                            config=config,
+                            loop_time=loop_time,
+                        )
+                        if not low_signal_state and pid_voltage >= applied_voltage:
+                            pid_voltage = applied_voltage - config["max_voltage_step_up"]
+                        pid_voltage = _clamp(pid_voltage, measurement_voltage_floor, config["max_voltage"])
+                        previous_voltage = _set_voltage_if_needed(power_supply, pid_voltage, previous_voltage, config)
+                        invalid_measurements = 0
+                        print(
+                            f"Ignoring {'low-signal' if low_signal_state else 'transient'} invalid measurement. "
+                            f"Measured Vsample={measured_voltage}, I={measured_current} while PSU was {applied_voltage:.4f} V. "
+                            f"Reusing last trusted temperature {recovery_temperature:.2f} C and "
+                            f"{'continuing' if low_signal_state else 'gently backing off'} to {pid_voltage:.4f} V."
+                        )
+                        _persist_measurement(
+                            data_saver,
+                            setpoint,
+                            recovery_temperature,
+                            measured_voltage,
+                            measured_current,
+                            applied_voltage,
+                        )
+                        _emit_measurement(
+                            emitter,
+                            setpoint,
+                            recovery_temperature,
+                            measured_voltage,
+                            measured_current,
+                            applied_voltage,
+                        )
+                        if finished:
+                            print("Experiment step finished.")
+                            break
+                        elapsed = time.time() - loop_started
+                        if elapsed < loop_time:
+                            time.sleep(loop_time - elapsed)
+                        else:
+                            print(f"Loop time exceeded: {elapsed:.3f} s")
+                        continue
+
                     invalid_measurements += 1
                     pid_controller.reset(measurement=previous_temperature)
                     pid_voltage = _clamp(
