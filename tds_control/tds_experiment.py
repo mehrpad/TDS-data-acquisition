@@ -39,7 +39,7 @@ CONTROL_DEFAULTS = {
     "measurement_temp_jump_c": 8.0,
     "ignore_invalid_below_voltage": 0.05,
     "invalid_voltage_step_down": 0.02,
-    "rate_limit_activation_band_c": 5.0,
+    "rate_limit_activation_band_c": 2.0,
     "under_target_no_decrease_band_c": 1.5,
     "autosave_flush_interval_s": 5.0,
     "autosave_batch_size": 10,
@@ -415,25 +415,34 @@ def _compute_next_voltage(
     under_target_band = float(
         config.get("under_target_no_decrease_band_c", config.get("temperature_tolerance_c", 2.0))
     )
+    rate_limit_band = float(
+        config.get("rate_limit_activation_band_c", config.get("temperature_tolerance_c", under_target_band))
+    )
+    rate_limit_band = min(
+        rate_limit_band,
+        max(float(config.get("temperature_tolerance_c", 2.0)), under_target_band),
+    )
+    current_limited = abs(measured_current) >= 0.95 * config["max_current"]
+
     if temperature <= setpoint - under_target_band and delta_voltage < 0.0:
         delta_voltage = 0.0
 
     aggressive_step = float(config.get("max_voltage_step_up_far", config["max_voltage_step_up"]))
     far_below_setpoint = temperature <= setpoint - config.get("aggressive_step_band_c", 4.0)
+    significantly_below_setpoint = temperature <= setpoint - rate_limit_band
     catchup_rate_c_min = max(ramp_speed_c_min * 0.6, ramp_speed_c_min - 3.0, 1.0)
-    if far_below_setpoint:
+    if far_below_setpoint and not current_limited:
         if temp_rate_c_min is None or not np.isfinite(temp_rate_c_min) or temp_rate_c_min < catchup_rate_c_min:
             delta_voltage = max(delta_voltage, aggressive_step)
-        elif delta_voltage > 0.0:
-            delta_voltage = min(
-                aggressive_step,
-                max(delta_voltage * 2.0, config["max_voltage_step_up"] * 2.0),
-            )
+        else:
+            delta_voltage = max(delta_voltage, config["max_voltage_step_up"])
+    elif significantly_below_setpoint and not current_limited:
+        delta_voltage = max(delta_voltage, config["max_voltage_step_up"])
 
     if temperature >= setpoint + config["temperature_tolerance_c"]:
         delta_voltage = min(delta_voltage, 0.0)
 
-    near_setpoint = temperature >= setpoint - config.get("rate_limit_activation_band_c", 5.0)
+    near_setpoint = temperature >= setpoint - rate_limit_band
     soft_rate_limit = max(
         ramp_speed_c_min + config["soft_temp_rate_margin_c_min"],
         config["soft_temp_rate_margin_c_min"],
@@ -456,7 +465,7 @@ def _compute_next_voltage(
             pid_controller.reset(measurement=temperature)
             delta_voltage = -config["max_voltage_step_down"]
 
-    if abs(measured_current) >= 0.95 * config["max_current"] and delta_voltage > 0.0:
+    if current_limited and delta_voltage > 0.0:
         delta_voltage = 0.0
 
     if temperature >= target_temperature and setpoint >= target_temperature:
@@ -647,16 +656,36 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             config=config,
                             loop_time=loop_time,
                         )
-                        if not low_signal_state and pid_voltage >= applied_voltage:
+                        recovery_under_target_band = float(
+                            config.get("under_target_no_decrease_band_c", config.get("temperature_tolerance_c", 2.0))
+                        )
+                        recovery_current_limited = (
+                            np.isfinite(measured_current)
+                            and abs(measured_current) >= 0.95 * config["max_current"]
+                        )
+                        if (
+                            not low_signal_state
+                            and pid_voltage >= applied_voltage
+                            and (
+                                recovery_current_limited
+                                or recovery_temperature >= setpoint - recovery_under_target_band
+                            )
+                        ):
                             pid_voltage = applied_voltage - config["max_voltage_step_up"]
                         pid_voltage = _clamp(pid_voltage, measurement_voltage_floor, config["max_voltage"])
                         previous_voltage = _set_voltage_if_needed(power_supply, pid_voltage, previous_voltage, config)
                         invalid_measurements = 0
+                        if pid_voltage > applied_voltage + 1e-9:
+                            recovery_action = "continuing upward"
+                        elif pid_voltage < applied_voltage - 1e-9:
+                            recovery_action = "gently backing off"
+                        else:
+                            recovery_action = "holding"
                         print(
                             f"Ignoring {'low-signal' if low_signal_state else 'transient'} invalid measurement. "
                             f"Measured Vsample={measured_voltage}, I={measured_current} while PSU was {applied_voltage:.4f} V. "
                             f"Reusing last trusted temperature {recovery_temperature:.2f} C and "
-                            f"{'continuing' if low_signal_state else 'gently backing off'} to {pid_voltage:.4f} V."
+                            f"{recovery_action} to {pid_voltage:.4f} V."
                         )
                         _persist_measurement(
                             data_saver,
