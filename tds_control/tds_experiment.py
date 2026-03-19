@@ -32,6 +32,10 @@ CONTROL_DEFAULTS = {
     "resistance_range_margin_ratio": 0.0,
     "resistance_range_margin_ohm": 0.01,
     "warmup_stable_samples": 3,
+    "resistance_glitch_jump_ohm": 0.03,
+    "measurement_retry_attempts": 2,
+    "measurement_retry_delay_s": 0.15,
+    "rate_limit_activation_band_c": 5.0,
     "autosave_flush_interval_s": 5.0,
     "autosave_batch_size": 10,
     "tuning_voltage_step": 0.01,
@@ -237,6 +241,17 @@ def _temperature_filter(history, temperature, window):
     return float(np.median(np.array(history, dtype=float)))
 
 
+def _calculate_resistance(measured_voltage, measured_current):
+    if not np.isfinite(measured_voltage) or not np.isfinite(measured_current):
+        return np.nan
+    if abs(measured_current) < 1e-12:
+        return np.nan
+    resistance = measured_voltage / measured_current
+    if not np.isfinite(resistance) or resistance <= 0:
+        return np.nan
+    return float(resistance)
+
+
 def _resistance_in_curve_bounds(resistance, temperature_interp, config):
     resistance_axis = getattr(temperature_interp, "x", None)
     if resistance_axis is None:
@@ -253,6 +268,68 @@ def _resistance_in_curve_bounds(resistance, temperature_interp, config):
         float(config.get("resistance_range_margin_ohm", 0.0)),
     )
     return lower_bound - margin <= resistance <= upper_bound + margin
+
+
+def _measure_with_retry(
+    dmm_v,
+    dmm_i,
+    siglent_module,
+    temperature_interp,
+    *,
+    config,
+    previous_resistance=None,
+):
+    measured_voltage, measured_current, temperature = measure_resistivity(
+        dmm_v,
+        dmm_i,
+        siglent_module,
+        temperature_interp,
+        config=config,
+    )
+    resistance = _calculate_resistance(measured_voltage, measured_current)
+    jump_limit = float(config.get("resistance_glitch_jump_ohm", 0.03))
+
+    if (
+        previous_resistance is None
+        or not np.isfinite(previous_resistance)
+        or not np.isfinite(resistance)
+        or abs(resistance - previous_resistance) <= jump_limit
+    ):
+        return measured_voltage, measured_current, temperature, resistance
+
+    print(
+        f"Resistance jump detected: previous={previous_resistance:.4f} Ohm, "
+        f"new={resistance:.4f} Ohm. Retrying measurement."
+    )
+    best = (measured_voltage, measured_current, temperature, resistance)
+    best_distance = abs(resistance - previous_resistance)
+
+    for _ in range(int(config.get("measurement_retry_attempts", 2))):
+        time.sleep(float(config.get("measurement_retry_delay_s", 0.15)))
+        retry_voltage, retry_current, retry_temperature = measure_resistivity(
+            dmm_v,
+            dmm_i,
+            siglent_module,
+            temperature_interp,
+            config=config,
+        )
+        retry_resistance = _calculate_resistance(retry_voltage, retry_current)
+        if np.isfinite(retry_resistance):
+            retry_distance = abs(retry_resistance - previous_resistance)
+            if retry_distance < best_distance:
+                best = (retry_voltage, retry_current, retry_temperature, retry_resistance)
+                best_distance = retry_distance
+            if retry_distance <= jump_limit:
+                return best
+
+    if np.isfinite(best[3]) and best_distance <= jump_limit:
+        return best
+
+    print(
+        f"Rejecting measurement after retries; best resistance {best[3]:.4f} Ohm "
+        f"is still too far from previous {previous_resistance:.4f} Ohm."
+    )
+    return best[0], best[1], np.nan, best[3]
 
 
 def _set_voltage_if_needed(power_supply, voltage, previous_voltage, config):
@@ -306,11 +383,16 @@ def _compute_next_voltage(
     )
 
     if temp_rate_c_min is not None and np.isfinite(temp_rate_c_min):
+        near_setpoint = temperature >= setpoint - config.get("rate_limit_activation_band_c", 5.0)
         if temp_rate_c_min > soft_rate_limit and delta_voltage > 0.0:
             delta_voltage = 0.0
-        if temp_rate_c_min > soft_rate_limit and temperature >= setpoint - config["temperature_tolerance_c"]:
+        if (
+            near_setpoint
+            and temp_rate_c_min > soft_rate_limit
+            and temperature >= setpoint - config["temperature_tolerance_c"]
+        ):
             delta_voltage = min(delta_voltage, -config["max_voltage_step_down"] / 2.0)
-        if temp_rate_c_min > hard_rate_limit:
+        if near_setpoint and temp_rate_c_min > hard_rate_limit:
             pid_controller.reset(measurement=temperature)
             delta_voltage = -config["max_voltage_step_down"]
 
@@ -413,6 +495,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
             measured_voltage, measured_current, temperature = measure_resistivity(
                 dmm_v, dmm_i, siglent, temperature_interp, config=config
             )
+            initial_resistance = _calculate_resistance(measured_voltage, measured_current)
             if not _is_valid_measurement(measured_voltage, measured_current, temperature, config):
                 raise ExperimentSafetyError("Unable to acquire a valid initial measurement.")
 
@@ -428,16 +511,22 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
             filtered_temperature = _temperature_filter(
                 temperature_history,
                 temperature,
-                config.get("measurement_filter_samples", 3),
+                config.get("measurement_filter_samples", 5),
             )
             previous_temperature = filtered_temperature
+            previous_resistance = initial_resistance
             previous_phase = None
 
             while not emitter.stopped:
                 loop_started = time.time()
                 applied_voltage = pid_voltage
-                measured_voltage, measured_current, temperature = measure_resistivity(
-                    dmm_v, dmm_i, siglent, temperature_interp, config=config
+                measured_voltage, measured_current, temperature, measured_resistance = _measure_with_retry(
+                    dmm_v,
+                    dmm_i,
+                    siglent,
+                    temperature_interp,
+                    config=config,
+                    previous_resistance=previous_resistance,
                 )
 
                 if not _is_valid_measurement(measured_voltage, measured_current, temperature, config):
@@ -477,7 +566,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                 filtered_temperature = _temperature_filter(
                     temperature_history,
                     temperature,
-                    config.get("measurement_filter_samples", 3),
+                    config.get("measurement_filter_samples", 5),
                 )
                 temp_rate_c_min = _temperature_rate_c_min(filtered_temperature, previous_temperature, loop_time)
                 setpoint, phase, finished = program.update(filtered_temperature, loop_time)
@@ -523,6 +612,8 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     applied_voltage,
                 )
                 previous_temperature = filtered_temperature
+                if np.isfinite(measured_resistance):
+                    previous_resistance = measured_resistance
 
                 if finished:
                     print("Experiment step finished.")
