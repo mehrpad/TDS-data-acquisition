@@ -17,8 +17,8 @@ CONTROL_DEFAULTS = {
     "pid_derivative_filter": 0.6,
     "startup_voltage": 0.01,
     "min_voltage": 0.0,
-    "max_voltage_step_up": 0.02,
-    "max_voltage_step_down": 0.08,
+    "max_voltage_step_up": 0.01,
+    "max_voltage_step_down": 0.04,
     "temperature_tolerance_c": 2.0,
     "hold_entry_tolerance_c": 3.0,
     "safety_temp_margin_c": 15.0,
@@ -28,8 +28,10 @@ CONTROL_DEFAULTS = {
     "minimum_current_a": 5e-4,
     "minimum_voltage_change": 1e-4,
     "measurement_voltage_floor": 0.01,
-    "measurement_filter_samples": 3,
-    "resistance_range_margin_ratio": 0.05,
+    "measurement_filter_samples": 5,
+    "resistance_range_margin_ratio": 0.0,
+    "resistance_range_margin_ohm": 0.01,
+    "warmup_stable_samples": 3,
     "autosave_flush_interval_s": 5.0,
     "autosave_batch_size": 10,
     "tuning_voltage_step": 0.01,
@@ -103,6 +105,7 @@ class TemperatureProgram:
     hold_step_time_min: float
     temperature_tolerance_c: float
     hold_entry_tolerance_c: float
+    warmup_stable_samples: int
 
     def __post_init__(self):
         if self.target_T < self.start_T:
@@ -119,12 +122,14 @@ class TemperatureProgram:
         self.scheduled_target = self.start_T
         self.current_plateau = self.start_T
         self.hold_elapsed_s = 0.0
+        self.warmup_stable_count = 0
 
     def initialize(self, initial_temperature):
         self.scheduled_target = min(initial_temperature, self.start_T)
         self.current_plateau = self.start_T
         self.hold_elapsed_s = 0.0
         self.phase = "warmup"
+        self.warmup_stable_count = 0
 
     def _advance_target(self, target_limit, dt):
         self.scheduled_target = min(target_limit, self.scheduled_target + self.ramp_speed_c_s * dt)
@@ -135,12 +140,14 @@ class TemperatureProgram:
             if self.phase == "warmup":
                 if measured_temperature > self.start_T + self.temperature_tolerance_c:
                     self.scheduled_target = self.start_T
+                    self.warmup_stable_count = 0
                     return self.start_T, self.phase, False
                 target = self._advance_target(self.start_T, dt)
-                if (
-                    target >= self.start_T
-                    and abs(measured_temperature - self.start_T) <= self.temperature_tolerance_c
-                ):
+                if abs(measured_temperature - self.start_T) <= self.temperature_tolerance_c:
+                    self.warmup_stable_count += 1
+                else:
+                    self.warmup_stable_count = 0
+                if target >= self.start_T and self.warmup_stable_count >= self.warmup_stable_samples:
                     self.scheduled_target = self.start_T
                     if self.simple_ramp:
                         self.phase = "final_ramp"
@@ -243,7 +250,7 @@ def _resistance_in_curve_bounds(resistance, temperature_interp, config):
     upper_bound = float(np.max(resistance_axis))
     margin = max(
         (upper_bound - lower_bound) * float(config.get("resistance_range_margin_ratio", 0.05)),
-        0.05,
+        float(config.get("resistance_range_margin_ohm", 0.0)),
     )
     return lower_bound - margin <= resistance <= upper_bound + margin
 
@@ -381,6 +388,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                 hold_step_time_min=ex_param["hold_step_time_min"],
                 temperature_tolerance_c=config["temperature_tolerance_c"],
                 hold_entry_tolerance_c=config["hold_entry_tolerance_c"],
+                warmup_stable_samples=int(config.get("warmup_stable_samples", 3)),
             )
 
             pid_controller = pid.PIDController(
@@ -427,6 +435,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
 
             while not emitter.stopped:
                 loop_started = time.time()
+                applied_voltage = pid_voltage
                 measured_voltage, measured_current, temperature = measure_resistivity(
                     dmm_v, dmm_i, siglent, temperature_interp, config=config
                 )
@@ -438,6 +447,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     previous_voltage = _set_voltage_if_needed(power_supply, pid_voltage, previous_voltage, config)
                     print(
                         "Invalid measurement received. "
+                        f"Measured Vsample={measured_voltage}, I={measured_current} while PSU was {applied_voltage:.4f} V. "
                         f"Holding sensing voltage at {pid_voltage:.4f} V (attempt {invalid_measurements})."
                     )
                     if invalid_measurements >= config["measurement_fail_limit"]:
@@ -448,9 +458,16 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                         np.nan,
                         measured_voltage,
                         measured_current,
-                        pid_voltage,
+                        applied_voltage,
                     )
-                    _emit_measurement(emitter, program.scheduled_target, np.nan, measured_voltage, measured_current, pid_voltage)
+                    _emit_measurement(
+                        emitter,
+                        program.scheduled_target,
+                        np.nan,
+                        measured_voltage,
+                        measured_current,
+                        applied_voltage,
+                    )
                     elapsed = time.time() - loop_started
                     if elapsed < loop_time:
                         time.sleep(loop_time - elapsed)
@@ -485,7 +502,8 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
 
                 print(
                     f"Phase: {phase}, T: {filtered_temperature:.2f} C, Setpoint: {setpoint:.2f} C, "
-                    f"Voltage: {pid_voltage:.4f} V, Current: {measured_current:.4e} A, "
+                    f"Vsample: {measured_voltage:.6f} V, Current: {measured_current:.4e} A, "
+                    f"PSU: {applied_voltage:.4f} -> {pid_voltage:.4f} V, "
                     f"Rate: {temp_rate_c_min if temp_rate_c_min is not None else 0.0:.2f} C/min"
                 )
                 _persist_measurement(
@@ -494,7 +512,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     filtered_temperature,
                     measured_voltage,
                     measured_current,
-                    pid_voltage,
+                    applied_voltage,
                 )
                 _emit_measurement(
                     emitter,
@@ -502,7 +520,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     filtered_temperature,
                     measured_voltage,
                     measured_current,
-                    pid_voltage,
+                    applied_voltage,
                 )
                 previous_temperature = filtered_temperature
 
