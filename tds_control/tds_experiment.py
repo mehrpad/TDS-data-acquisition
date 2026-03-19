@@ -37,6 +37,8 @@ CONTROL_DEFAULTS = {
     "measurement_retry_delay_s": 0.15,
     "measurement_retry_consensus_ohm": 0.015,
     "measurement_temp_jump_c": 8.0,
+    "measurement_temp_jump_up_c": 20.0,
+    "measurement_temp_jump_down_c": 8.0,
     "ignore_invalid_below_voltage": 0.05,
     "invalid_voltage_step_down": 0.02,
     "rate_limit_activation_band_c": 2.0,
@@ -314,7 +316,7 @@ def _measure_with_retry(
         or not np.isfinite(resistance)
         or abs(resistance - previous_resistance) <= jump_limit
     ):
-        return measured_voltage, measured_current, temperature, resistance
+        return measured_voltage, measured_current, temperature, resistance, np.isfinite(resistance)
 
     print(
         f"Resistance jump detected: previous={previous_resistance:.4f} Ohm, "
@@ -341,10 +343,10 @@ def _measure_with_retry(
                 best = (retry_voltage, retry_current, retry_temperature, retry_resistance)
                 best_distance = retry_distance
             if retry_distance <= jump_limit:
-                return best
+                return best[0], best[1], best[2], best[3], True
 
     if np.isfinite(best[3]) and best_distance <= jump_limit:
-        return best
+        return best[0], best[1], best[2], best[3], True
 
     valid_candidates = [candidate for candidate in candidates if np.isfinite(candidate[3])]
     if len(valid_candidates) >= 2:
@@ -365,13 +367,13 @@ def _measure_with_retry(
                 f"Accepting stable retried measurement at {accepted_resistance:.4f} Ohm "
                 f"despite jump from previous {previous_resistance:.4f} Ohm."
             )
-            return accepted_voltage, accepted_current, accepted_temperature, accepted_resistance
+            return accepted_voltage, accepted_current, accepted_temperature, accepted_resistance, True
 
     print(
         f"Rejecting measurement after retries; best resistance {best[3]:.4f} Ohm "
         f"is still too far from previous {previous_resistance:.4f} Ohm."
     )
-    return best[0], best[1], np.nan, best[3]
+    return best[0], best[1], np.nan, best[3], False
 
 
 def _set_voltage_if_needed(power_supply, voltage, previous_voltage, config):
@@ -473,6 +475,41 @@ def _compute_next_voltage(
 
     new_voltage = _clamp(current_voltage + delta_voltage, control_min_voltage, config["max_voltage"])
     return new_voltage
+
+
+def _confirmed_upward_temperature_jump(
+    temperature,
+    previous_temperature,
+    measured_resistance,
+    previous_resistance,
+    measured_current,
+    applied_voltage,
+    resistance_confirmed,
+    config,
+):
+    if not resistance_confirmed:
+        return False
+    if not all(
+        np.isfinite(value)
+        for value in (
+            temperature,
+            previous_temperature,
+            measured_resistance,
+            previous_resistance,
+            measured_current,
+            applied_voltage,
+        )
+    ):
+        return False
+    if temperature <= previous_temperature or measured_resistance <= previous_resistance:
+        return False
+
+    minimum_confirm_current = max(config["minimum_current_a"] * 20.0, 0.05)
+    minimum_confirm_voltage = max(
+        config.get("ignore_invalid_below_voltage", 0.05) * 4.0,
+        0.5,
+    )
+    return abs(measured_current) >= minimum_confirm_current and applied_voltage >= minimum_confirm_voltage
 
 
 def _shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager):
@@ -603,7 +640,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
             while not emitter.stopped:
                 loop_started = time.time()
                 applied_voltage = pid_voltage
-                measured_voltage, measured_current, temperature, measured_resistance = _measure_with_retry(
+                measured_voltage, measured_current, temperature, measured_resistance, resistance_confirmed = _measure_with_retry(
                     dmm_v,
                     dmm_i,
                     siglent,
@@ -612,19 +649,55 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     previous_resistance=previous_resistance,
                 )
                 low_signal_state = _is_low_signal_state(applied_voltage, config)
+                confirmed_upward_jump = _confirmed_upward_temperature_jump(
+                    temperature=temperature,
+                    previous_temperature=previous_temperature,
+                    measured_resistance=measured_resistance,
+                    previous_resistance=previous_resistance,
+                    measured_current=measured_current,
+                    applied_voltage=applied_voltage,
+                    resistance_confirmed=resistance_confirmed,
+                    config=config,
+                )
 
                 if (
                     np.isfinite(temperature)
                     and previous_temperature is not None
                     and np.isfinite(previous_temperature)
-                    and abs(temperature - previous_temperature) > config.get("measurement_temp_jump_c", 8.0)
                     and not low_signal_state
                 ):
-                    print(
-                        f"Temperature jump detected: previous={previous_temperature:.2f} C, "
-                        f"new={temperature:.2f} C. Treating this reading as invalid."
+                    temperature_delta = temperature - previous_temperature
+                    jump_up_limit = float(
+                        config.get(
+                            "measurement_temp_jump_up_c",
+                            config.get("measurement_temp_jump_c", 8.0) * 2.5,
+                        )
                     )
-                    temperature = np.nan
+                    jump_down_limit = float(
+                        config.get(
+                            "measurement_temp_jump_down_c",
+                            config.get("measurement_temp_jump_c", 8.0),
+                        )
+                    )
+                    if temperature_delta < -jump_down_limit:
+                        print(
+                            f"Temperature jump detected: previous={previous_temperature:.2f} C, "
+                            f"new={temperature:.2f} C. Treating this reading as invalid."
+                        )
+                        temperature = np.nan
+                    elif temperature_delta > jump_up_limit:
+                        if confirmed_upward_jump:
+                            print(
+                                f"Confirmed upward temperature jump: previous={previous_temperature:.2f} C, "
+                                f"new={temperature:.2f} C. Accepting it and resetting the temperature filter."
+                            )
+                            temperature_history[:] = [float(temperature)]
+                        else:
+                            print(
+                                f"Temperature jump detected: previous={previous_temperature:.2f} C, "
+                                f"new={temperature:.2f} C. Treating this reading as invalid."
+                            )
+                            temperature = np.nan
 
                 if not _is_valid_measurement(measured_voltage, measured_current, temperature, config):
                     can_reuse_last_temperature = (
@@ -675,6 +748,8 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                         pid_voltage = _clamp(pid_voltage, measurement_voltage_floor, config["max_voltage"])
                         previous_voltage = _set_voltage_if_needed(power_supply, pid_voltage, previous_voltage, config)
                         invalid_measurements = 0
+                        if resistance_confirmed and np.isfinite(measured_resistance):
+                            previous_resistance = measured_resistance
                         if pid_voltage > applied_voltage + 1e-9:
                             recovery_action = "continuing upward"
                         elif pid_voltage < applied_voltage - 1e-9:
