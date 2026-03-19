@@ -35,17 +35,18 @@ CONTROL_DEFAULTS = {
     "resistance_glitch_jump_ohm": 0.03,
     "measurement_retry_attempts": 2,
     "measurement_retry_delay_s": 0.15,
+    "measurement_retry_consensus_ohm": 0.015,
     "rate_limit_activation_band_c": 5.0,
     "autosave_flush_interval_s": 5.0,
     "autosave_batch_size": 10,
     "tuning_voltage_step": 0.01,
     "tuning_start_voltage": 0.1,
     "tuning_search_max_voltage": 0.5,
-    "tuning_settle_time_s": 1.0,
+    "tuning_settle_time_s": 0.5,
     "tuning_response_voltage_step": 0.05,
-    "tuning_between_attempts_s": 2.0,
+    "tuning_between_attempts_s": 1.0,
     "tuning_max_duration_s": 180.0,
-    "tuning_baseline_samples": 5,
+    "tuning_baseline_samples": 3,
     "tuning_stable_current_samples": 3,
     "tuning_stable_current_a": 1e-4,
     "tuning_temperature_window_c": 40.0,
@@ -53,8 +54,8 @@ CONTROL_DEFAULTS = {
     "tuning_min_temperature_rise_c": 0.8,
     "tuning_no_response_timeout_s": 25.0,
     "tuning_min_observable_rise_c": 0.25,
-    "tuning_plateau_timeout_s": 35.0,
-    "tuning_plateau_idle_timeout_s": 15.0,
+    "tuning_plateau_timeout_s": 20.0,
+    "tuning_plateau_idle_timeout_s": 8.0,
     "tuning_plateau_growth_c": 0.08,
     "t0_calibration_voltage": 0.1,
     "t0_voltage_search_start": 0.01,
@@ -288,6 +289,7 @@ def _measure_with_retry(
     )
     resistance = _calculate_resistance(measured_voltage, measured_current)
     jump_limit = float(config.get("resistance_glitch_jump_ohm", 0.03))
+    consensus_limit = float(config.get("measurement_retry_consensus_ohm", 0.015))
 
     if (
         previous_resistance is None
@@ -303,6 +305,7 @@ def _measure_with_retry(
     )
     best = (measured_voltage, measured_current, temperature, resistance)
     best_distance = abs(resistance - previous_resistance)
+    candidates = [best]
 
     for _ in range(int(config.get("measurement_retry_attempts", 2))):
         time.sleep(float(config.get("measurement_retry_delay_s", 0.15)))
@@ -314,6 +317,7 @@ def _measure_with_retry(
             config=config,
         )
         retry_resistance = _calculate_resistance(retry_voltage, retry_current)
+        candidates.append((retry_voltage, retry_current, retry_temperature, retry_resistance))
         if np.isfinite(retry_resistance):
             retry_distance = abs(retry_resistance - previous_resistance)
             if retry_distance < best_distance:
@@ -324,6 +328,27 @@ def _measure_with_retry(
 
     if np.isfinite(best[3]) and best_distance <= jump_limit:
         return best
+
+    valid_candidates = [candidate for candidate in candidates if np.isfinite(candidate[3])]
+    if len(valid_candidates) >= 2:
+        resistances = np.array([candidate[3] for candidate in valid_candidates], dtype=float)
+        if float(np.max(resistances) - np.min(resistances)) <= consensus_limit:
+            accepted_voltage = float(np.median(np.array([candidate[0] for candidate in valid_candidates], dtype=float)))
+            accepted_current = float(np.median(np.array([candidate[1] for candidate in valid_candidates], dtype=float)))
+            accepted_temperature_candidates = [
+                candidate[2] for candidate in valid_candidates if np.isfinite(candidate[2])
+            ]
+            accepted_temperature = (
+                float(np.median(np.array(accepted_temperature_candidates, dtype=float)))
+                if accepted_temperature_candidates
+                else np.nan
+            )
+            accepted_resistance = float(np.median(resistances))
+            print(
+                f"Accepting stable retried measurement at {accepted_resistance:.4f} Ohm "
+                f"despite jump from previous {previous_resistance:.4f} Ohm."
+            )
+            return accepted_voltage, accepted_current, accepted_temperature, accepted_resistance
 
     print(
         f"Rejecting measurement after retries; best resistance {best[3]:.4f} Ohm "
