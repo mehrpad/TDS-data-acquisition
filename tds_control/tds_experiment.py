@@ -47,6 +47,7 @@ CONTROL_DEFAULTS = {
     "measurement_cooldown_confirm_samples": 1,
     "ignore_invalid_below_voltage": 0.05,
     "invalid_voltage_step_down": 0.02,
+    "invalid_reuse_hold_after": 8,
     "rate_limit_activation_band_c": 2.0,
     "under_target_no_decrease_band_c": 1.5,
     "autosave_flush_interval_s": 5.0,
@@ -694,6 +695,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
             program.initialize(max(temperature, t_zero))
             pid_controller.reset(measurement=temperature)
             invalid_measurements = 0
+            invalid_reuse_streak = 0
             temperature_history = [float(temperature)]
             filtered_temperature = _temperature_filter(
                 temperature_history,
@@ -818,6 +820,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                         and abs(measured_current) <= config["max_current"]
                     )
                     if can_reuse_last_temperature:
+                        invalid_reuse_streak += 1
                         recovery_temperature = previous_temperature
                         setpoint, phase, finished = program.update(recovery_temperature, loop_time)
 
@@ -839,6 +842,12 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             config=config,
                             loop_time=loop_time,
                         )
+                        if invalid_reuse_streak >= max(int(config.get("invalid_reuse_hold_after", 8)), 1):
+                            # Prevent runaway voltage escalation when we are reusing stale temperature for too long.
+                            pid_voltage = min(
+                                pid_voltage,
+                                applied_voltage - 0.5 * config.get("invalid_voltage_step_down", config["max_voltage_step_up"]),
+                            )
                         recovery_under_target_band = float(
                             config.get("under_target_no_decrease_band_c", config.get("temperature_tolerance_c", 2.0))
                         )
@@ -878,6 +887,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                         elif (
                             not low_signal_state
                             and pid_voltage >= applied_voltage
+                            and invalid_reuse_streak < max(int(config.get("invalid_reuse_hold_after", 8)), 1)
                             and (
                                 recovery_current_limited
                                 or recovery_temperature >= setpoint - recovery_under_target_band
@@ -928,6 +938,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                         continue
 
                     invalid_measurements += 1
+                    invalid_reuse_streak = 0
                     pid_controller.reset(measurement=previous_temperature)
                     pid_voltage = _clamp(
                         applied_voltage - config.get("invalid_voltage_step_down", config["max_voltage_step_down"]),
@@ -964,6 +975,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     continue
 
                 invalid_measurements = 0
+                invalid_reuse_streak = 0
                 filtered_temperature = _temperature_filter(
                     temperature_history,
                     temperature,

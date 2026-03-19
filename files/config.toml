@@ -151,6 +151,9 @@ ignore_invalid_below_voltage = 0.05
 # Backoff step used when an invalid reading appears too hot.
 invalid_voltage_step_down = 0.02
 
+# After this many reused invalid cycles, stop increasing voltage and hold/back off.
+invalid_reuse_hold_after = 8
+
 # Autosave
 # How often buffered data is flushed to disk.
 autosave_flush_interval_s = 5

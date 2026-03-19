@@ -70,6 +70,7 @@ CONFIG_GROUPS = [
             ("measurement_cooldown_confirm_samples", "How many downward jump confirmations are required before accepting cooldown."),
             ("ignore_invalid_below_voltage", "Below this PSU voltage, invalid readings are treated more leniently."),
             ("invalid_voltage_step_down", "Backoff step used when an invalid reading appears too hot."),
+            ("invalid_reuse_hold_after", "After this many reused invalid cycles, stop increasing voltage and hold/back off."),
         ],
     ),
     (
