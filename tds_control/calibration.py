@@ -167,6 +167,8 @@ def _find_stable_current_voltage(
         _sleep_with_stop(settle_time_s, emitter)
 
         samples = []
+        consecutive_invalid_samples = 0
+        invalid_advance_count = max(int(config.get("stable_current_invalid_advance_count", 5)), 1)
         attempts = 0
         max_attempts = max(int(stable_samples) * 3, int(stable_samples) + config["measurement_fail_limit"] * 3)
         while len(samples) < int(stable_samples) and attempts < max_attempts:
@@ -211,6 +213,7 @@ def _find_stable_current_voltage(
             )
 
             if valid_sample:
+                consecutive_invalid_samples = 0
                 samples.append(
                     {
                         "voltage": float(measured_voltage),
@@ -220,9 +223,16 @@ def _find_stable_current_voltage(
                     }
                 )
             else:
+                consecutive_invalid_samples += 1
                 if samples:
                     print(f"{label}: unstable sample detected, restarting stability check at {voltage:.4f} V.")
                 samples = []
+                if consecutive_invalid_samples >= invalid_advance_count:
+                    print(
+                        f"{label}: received {consecutive_invalid_samples} invalid samples at {voltage:.4f} V, "
+                        "increasing search voltage."
+                    )
+                    break
 
             _sleep_with_stop(sample_interval_s, emitter)
 

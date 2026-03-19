@@ -61,6 +61,7 @@ CONFIG_GROUPS = [
             ("measurement_retry_attempts", "How many extra measurements are taken after a resistance jump."),
             ("measurement_retry_delay_s", "Delay between retry measurements after a resistance jump."),
             ("measurement_retry_consensus_ohm", "Allowed spread for stable retry consensus."),
+            ("stable_current_invalid_advance_count", "How many invalid search samples at one voltage are allowed before stepping higher."),
             ("measurement_temp_jump_c", "Legacy symmetric temperature-jump threshold kept for compatibility."),
             ("measurement_temp_jump_up_c", "Upward temperature jump threshold before a reading is questioned."),
             ("measurement_temp_jump_down_c", "Downward temperature jump threshold before a reading is questioned."),

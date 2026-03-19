@@ -124,6 +124,9 @@ measurement_retry_delay_s = 0.15
 # Allowed spread for stable retry consensus.
 measurement_retry_consensus_ohm = 0.015
 
+# How many invalid search samples at one voltage are allowed before stepping higher.
+stable_current_invalid_advance_count = 5
+
 # Legacy symmetric temperature-jump threshold kept for compatibility.
 measurement_temp_jump_c = 8
 
