@@ -36,6 +36,8 @@
   "tuning_temperature_window_c": 40.0,
   "tuning_target_rise_c": 3.0,
   "tuning_min_temperature_rise_c": 1.5,
+  "tuning_no_response_timeout_s": 25.0,
+  "tuning_min_observable_rise_c": 0.5,
   "t0_calibration_voltage": 0.1,
   "t0_voltage_search_start": 0.01,
   "t0_voltage_step": 0.01,

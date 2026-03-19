@@ -75,6 +75,7 @@ def _filter_room_temperature_samples(samples):
 
 def _check_stop(emitter):
     if emitter is not None and getattr(emitter, "stopped", False):
+        print("Calibration or PID tuning stop requested by user.")
         raise CalibrationCancelled("Stopped by user.")
 
 
@@ -525,6 +526,7 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
                 temperature_interp,
                 calibration=True,
             )
+            resistance = _calculate_resistance(measured_voltage, measured_current)
             _emit_live_measurement(
                 emitter,
                 target_temperature=base_temperature_hint,
@@ -541,6 +543,10 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
                     lower_bound=temperature_lower_bound,
                     upper_bound=temperature_upper_bound,
                 )
+            )
+            print(
+                f"PID baseline sample: T={temperature}, R={resistance}, "
+                f"V={measured_voltage}, I={measured_current}, Vps={step_voltage:.4f}"
             )
             if valid_baseline:
                 baseline_temperatures.append(float(temperature))
@@ -577,6 +583,7 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
                 temperature_interp,
                 calibration=True,
             )
+            resistance = _calculate_resistance(measured_voltage, measured_current)
             _emit_live_measurement(
                 emitter,
                 target_temperature=base_temperature + desired_rise,
@@ -623,12 +630,31 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
                     "elapsed_s": elapsed_s,
                     "temperature": temperature,
                     "current": measured_current,
+                    "measured_voltage": measured_voltage,
+                    "resistance": resistance,
                 }
             )
+            peak_rise_so_far = max(sample["temperature"] for sample in response) - base_temperature
+            recent_temperatures = np.array(
+                [sample["temperature"] for sample in response[-min(5, len(response)):]],
+                dtype=float,
+            )
+            smoothed_rise_so_far = float(np.median(recent_temperatures) - base_temperature)
             print(
                 f"Tuning sample: t={elapsed_s:.1f} s, T={temperature:.2f} C, "
-                f"I={measured_current:.4e} A, Vstep={step_voltage:.4f} V"
+                f"R={resistance:.4f} Ohm, V={measured_voltage:.6f} V, "
+                f"I={measured_current:.4e} A, Vps={step_voltage:.4f} V"
             )
+
+            if (
+                elapsed_s >= config["tuning_no_response_timeout_s"]
+                and smoothed_rise_so_far < config["tuning_min_observable_rise_c"]
+            ):
+                raise ValueError(
+                    f"PID tuning stopped early: only {smoothed_rise_so_far:.2f} C smoothed rise at "
+                    f"{step_voltage:.4f} V after {elapsed_s:.1f} s. Increase tuning_search_max_voltage "
+                    "carefully if you need a stronger tuning step."
+                )
 
             if temperature >= base_temperature + desired_rise:
                 break
