@@ -24,11 +24,11 @@ CONTROL_DEFAULTS = {
     "safety_temp_margin_c": 15.0,
     "soft_temp_rate_margin_c_min": 1.0,
     "hard_temp_rate_margin_c_min": 4.0,
-    "measurement_fail_limit": 3,
+    "measurement_fail_limit": 5,
     "minimum_current_a": 5e-4,
     "minimum_voltage_change": 1e-4,
     "measurement_voltage_floor": 0.01,
-    "measurement_filter_samples": 5,
+    "measurement_filter_samples": 3,
     "resistance_range_margin_ratio": 0.0,
     "resistance_range_margin_ohm": 0.01,
     "warmup_stable_samples": 3,
@@ -36,17 +36,19 @@ CONTROL_DEFAULTS = {
     "measurement_retry_attempts": 2,
     "measurement_retry_delay_s": 0.15,
     "measurement_retry_consensus_ohm": 0.015,
+    "measurement_temp_jump_c": 8.0,
+    "invalid_voltage_step_down": 0.02,
     "rate_limit_activation_band_c": 5.0,
     "autosave_flush_interval_s": 5.0,
     "autosave_batch_size": 10,
     "tuning_voltage_step": 0.01,
     "tuning_start_voltage": 0.1,
     "tuning_search_max_voltage": 0.5,
-    "tuning_settle_time_s": 0.5,
+    "tuning_settle_time_s": 0.3,
     "tuning_response_voltage_step": 0.05,
-    "tuning_between_attempts_s": 1.0,
+    "tuning_between_attempts_s": 0.5,
     "tuning_max_duration_s": 180.0,
-    "tuning_baseline_samples": 3,
+    "tuning_baseline_samples": 2,
     "tuning_stable_current_samples": 3,
     "tuning_stable_current_a": 1e-4,
     "tuning_temperature_window_c": 40.0,
@@ -54,8 +56,10 @@ CONTROL_DEFAULTS = {
     "tuning_min_temperature_rise_c": 0.8,
     "tuning_no_response_timeout_s": 25.0,
     "tuning_min_observable_rise_c": 0.25,
-    "tuning_plateau_timeout_s": 20.0,
-    "tuning_plateau_idle_timeout_s": 8.0,
+    "tuning_plateau_timeout_s": 15.0,
+    "tuning_plateau_idle_timeout_s": 6.0,
+    "max_voltage_step_up_far": 0.02,
+    "aggressive_step_band_c": 6.0,
     "tuning_plateau_growth_c": 0.08,
     "t0_calibration_voltage": 0.1,
     "t0_voltage_search_start": 0.01,
@@ -395,6 +399,13 @@ def _compute_next_voltage(
     if not np.isfinite(delta_voltage):
         raise ExperimentSafetyError("PID requested a non-finite voltage change.")
 
+    far_below_setpoint = temperature <= setpoint - config.get("aggressive_step_band_c", 6.0)
+    if far_below_setpoint and delta_voltage > 0.0:
+        delta_voltage = min(
+            config.get("max_voltage_step_up_far", config["max_voltage_step_up"]),
+            max(delta_voltage * 2.0, config["max_voltage_step_up"]),
+        )
+
     if temperature >= setpoint + config["temperature_tolerance_c"]:
         delta_voltage = min(delta_voltage, 0.0)
 
@@ -536,7 +547,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
             filtered_temperature = _temperature_filter(
                 temperature_history,
                 temperature,
-                config.get("measurement_filter_samples", 5),
+                config.get("measurement_filter_samples", 3),
             )
             previous_temperature = filtered_temperature
             previous_resistance = initial_resistance
@@ -554,15 +565,31 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     previous_resistance=previous_resistance,
                 )
 
+                if (
+                    np.isfinite(temperature)
+                    and previous_temperature is not None
+                    and np.isfinite(previous_temperature)
+                    and abs(temperature - previous_temperature) > config.get("measurement_temp_jump_c", 8.0)
+                ):
+                    print(
+                        f"Temperature jump detected: previous={previous_temperature:.2f} C, "
+                        f"new={temperature:.2f} C. Treating this reading as invalid."
+                    )
+                    temperature = np.nan
+
                 if not _is_valid_measurement(measured_voltage, measured_current, temperature, config):
                     invalid_measurements += 1
                     pid_controller.reset(measurement=previous_temperature)
-                    pid_voltage = measurement_voltage_floor
+                    pid_voltage = _clamp(
+                        applied_voltage - config.get("invalid_voltage_step_down", config["max_voltage_step_down"]),
+                        measurement_voltage_floor,
+                        config["max_voltage"],
+                    )
                     previous_voltage = _set_voltage_if_needed(power_supply, pid_voltage, previous_voltage, config)
                     print(
                         "Invalid measurement received. "
                         f"Measured Vsample={measured_voltage}, I={measured_current} while PSU was {applied_voltage:.4f} V. "
-                        f"Holding sensing voltage at {pid_voltage:.4f} V (attempt {invalid_measurements})."
+                        f"Reducing PSU to {pid_voltage:.4f} V (attempt {invalid_measurements})."
                     )
                     if invalid_measurements >= config["measurement_fail_limit"]:
                         raise ExperimentSafetyError("Too many invalid measurements in a row.")
@@ -591,7 +618,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                 filtered_temperature = _temperature_filter(
                     temperature_history,
                     temperature,
-                    config.get("measurement_filter_samples", 5),
+                    config.get("measurement_filter_samples", 3),
                 )
                 temp_rate_c_min = _temperature_rate_c_min(filtered_temperature, previous_temperature, loop_time)
                 setpoint, phase, finished = program.update(filtered_temperature, loop_time)

@@ -473,6 +473,12 @@ class Ui_TDS(object):
         self.legend.addItem(self.temperature_vis_line, f"Diff: "
                                                        f"{abs(self.target_temperature - self.temperature):.2f}°C")
 
+        self.diff_label = self.legend.items[0][1]
+        self.diff_label.setText(
+            f"Diff: {abs(self.target_temperature - self.temperature):.2f}Â°C",
+            color="#000000",
+        )
+
         # Add Axis Labels
         self.styles = {"color": "#f00", "font-size": "12px"}
         self.temperature_vis.setLabel("left", "Temperature", units='°C', **self.styles)
@@ -855,7 +861,10 @@ class Ui_TDS(object):
             self.temperature_y_target.append(self.target_temperature)
         self.temperature_vis_line_target.setData(self.temperature_x, self.temperature_y_target)
         self.temperature_vis_line.setData(self.temperature_x, self.temperature_y)
-        self.legend.items[0][1].setText(f"Diff: {abs(self.target_temperature - self.temperature):.2f}°C")
+        self.diff_label.setText(
+            f"Diff: {abs(self.target_temperature - self.temperature):.2f}°C",
+            color="#000000",
+        )
 
         # Update the heat flux graph
         if self.index_plot < len(self.h_flux_y):
