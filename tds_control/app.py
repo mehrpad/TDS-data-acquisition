@@ -766,19 +766,25 @@ class Ui_TDS(object):
         Calibrate the base temperature
         """
         if self.require_loaded_curve('calibrating T. Zero'):
+            self.emitter.reset_stop()
             self.calibrate_botton_base_t.setEnabled(False)
             self.calibrate_botton_pid.setEnabled(False)
             self.find_csv_botton.setEnabled(False)
             self.load_csv_botton.setEnabled(False)
             self.start_botton.setEnabled(False)
-            self.stop_botton.setEnabled(False)
+            self.stop_botton.setEnabled(True)
             try:
                 base_temperature = float(self.calib_temperature.text())
                 self.calibration_worker = CalibrationWorkerThread(
-                    calibration.calibrate_temperature_curve, self.r_vs_t, base_temperature, self.config
+                    calibration.calibrate_temperature_curve,
+                    self.emitter,
+                    self.r_vs_t,
+                    base_temperature,
+                    self.config,
                 )
                 self.calibration_worker.finished.connect(self.calibration_finished)
                 self.calibration_worker.start()
+                self.error_message('Running T. Zero calibration. Press Stop to cancel.', color='black')
             except ValueError:
                 self.error_message('Invalid base temperature', color='red')
                 self.calibrate_botton_base_t.setEnabled(True)
@@ -799,8 +805,11 @@ class Ui_TDS(object):
         self.start_botton.setEnabled(True)
         self.stop_botton.setEnabled(True)
         self.calibration_worker = None
+        self.emitter.reset_stop()
 
-        if isinstance(result, Exception):
+        if isinstance(result, calibration.CalibrationCancelled):
+            self.error_message('T. Zero calibration stopped.', color='black')
+        elif isinstance(result, Exception):
             self.t_zero_calibrated = False
             self.error_message(f'Calibration failed: {result}', color='red')
         else:
@@ -823,6 +832,11 @@ class Ui_TDS(object):
         self.start_botton.setEnabled(True)
         self.stop_botton.setEnabled(True)
         self.calibration_worker = None
+        self.emitter.reset_stop()
+
+        if isinstance(result, calibration.CalibrationCancelled):
+            self.error_message('PID tuning stopped.', color='black')
+            return
 
         if isinstance(result, Exception):
             self.error_message(f'PID tuning failed: {result}', color='red')
@@ -846,21 +860,29 @@ class Ui_TDS(object):
 
         try:
             self.experiment_params = self.parse_experiment_params()
+            base_temperature = float(self.calib_temperature.text())
         except ValueError as exc:
             self.error_message(str(exc), color='red')
             return
 
+        self.emitter.reset_stop()
         self.calibrate_botton_base_t.setEnabled(False)
-        self.calibrate_botton_pid.setEnabled(True)
+        self.calibrate_botton_pid.setEnabled(False)
         self.find_csv_botton.setEnabled(False)
         self.load_csv_botton.setEnabled(False)
         self.start_botton.setEnabled(False)
-        self.stop_botton.setEnabled(False)
+        self.stop_botton.setEnabled(True)
         self.calibration_worker = CalibrationWorkerThread(
-            calibration.tune_pid, self.experiment_params[0], self.config, self.r_vs_t
+            calibration.tune_pid,
+            self.emitter,
+            self.experiment_params[0],
+            self.config,
+            self.r_vs_t,
+            base_temperature,
         )
         self.calibration_worker.finished.connect(self.pid_tuning_finished)
         self.calibration_worker.start()
+        self.error_message('Running PID tuning. Press Stop to cancel.', color='black')
 
     def start_clicked(self):
         """
@@ -891,6 +913,7 @@ class Ui_TDS(object):
             self.current_experiment_dir = None
             self.error_message(f'Cannot start autosave: {exc}', color='red')
             return
+        self.emitter.reset_stop()
         self.start_botton.setEnabled(False)
         self.stop_botton.setEnabled(True)
         self.calibrate_botton_base_t.setEnabled(False)
@@ -911,9 +934,13 @@ class Ui_TDS(object):
         """
         Sends a stop signal to the thread and disables the Stop button.
         """
-        if self.worker_thread is not None:
+        if (
+            (self.worker_thread is not None and self.worker_thread.isRunning())
+            or (self.calibration_worker is not None and self.calibration_worker.isRunning())
+        ):
             self.emitter.emit_stop()
             self.stop_botton.setEnabled(False)
+            self.error_message('Stopping current operation...', color='black')
             print('Stop signal sent')
 
     def thread_finished(self, finished):
@@ -934,7 +961,7 @@ class Ui_TDS(object):
         self.load_csv_botton.setEnabled(True)
         self.ex_name.setEnabled(True)
 
-        self.emitter.stopped = False
+        self.emitter.reset_stop()
         self.worker_thread = None
 
         self.voltage_lcd.display(0)
@@ -1035,16 +1062,17 @@ class WorkerThread(QThread):
 class CalibrationWorkerThread(QThread):
     finished = pyqtSignal(object)  # Signal emitted when the function is done (can be result or error)
 
-    def __init__(self, func, *args, **kwargs):
+    def __init__(self, func, emitter, *args, **kwargs):
         super().__init__()
         self.func = func
+        self.emitter = emitter
         self.args = args
         self.kwargs = kwargs
 
     def run(self):
         try:
             # Execute the function and get the return value
-            result = self.func(*self.args, **self.kwargs)
+            result = self.func(*self.args, emitter=self.emitter, **self.kwargs)
             self.finished.emit(result)  # Emit the result when finished successfully
         except Exception as e:
             self.finished.emit(e)  # Emit the exception if any error occurs
@@ -1063,6 +1091,9 @@ class SignalEmitter(QtCore.QObject):
     def emit_stop(self):
         self.stopped = True
         self.stop_signal.emit()
+
+    def reset_stop(self):
+        self.stopped = False
 
 
 class TDSMainWindow(QtWidgets.QMainWindow):

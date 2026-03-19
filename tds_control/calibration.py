@@ -8,6 +8,10 @@ from . import siglent
 from . import tds_experiment
 
 
+class CalibrationCancelled(RuntimeError):
+    """Raised when the user stops calibration or PID tuning from the GUI."""
+
+
 def _prepare_curve_interpolators(r_vs_t):
     curve = np.asarray(r_vs_t, dtype=float)
     if curve.shape[0] != 2 or curve.shape[1] < 2:
@@ -69,7 +73,139 @@ def _filter_room_temperature_samples(samples):
     return filtered
 
 
-def calibrate_temperature_curve(r_vs_t, room_temp, config=None):
+def _check_stop(emitter):
+    if emitter is not None and getattr(emitter, "stopped", False):
+        raise CalibrationCancelled("Stopped by user.")
+
+
+def _sleep_with_stop(duration_s, emitter):
+    remaining = max(float(duration_s), 0.0)
+    while remaining > 0:
+        _check_stop(emitter)
+        sleep_chunk = min(0.1, remaining)
+        time.sleep(sleep_chunk)
+        remaining -= sleep_chunk
+
+
+def _temperature_is_in_window(temperature, lower_bound=None, upper_bound=None):
+    if not np.isfinite(temperature):
+        return False
+    if lower_bound is not None and temperature < lower_bound:
+        return False
+    if upper_bound is not None and temperature > upper_bound:
+        return False
+    return True
+
+
+def _current_series_is_stable(currents, minimum_current):
+    if not currents:
+        return False
+
+    current_array = np.asarray(currents, dtype=float)
+    if not np.all(np.isfinite(current_array)):
+        return False
+    if np.any(current_array <= minimum_current):
+        return False
+
+    median_current = float(np.median(current_array))
+    allowed_spread = max(0.15 * median_current, 5.0 * minimum_current)
+    return float(np.max(np.abs(current_array - median_current))) <= allowed_spread
+
+
+def _find_stable_current_voltage(
+    *,
+    dmm_v,
+    dmm_i,
+    power_supply,
+    temperature_interp,
+    config,
+    start_voltage,
+    max_voltage,
+    step_voltage,
+    settle_time_s,
+    stable_samples,
+    minimum_current,
+    emitter,
+    label,
+    temperature_lower_bound=None,
+    temperature_upper_bound=None,
+):
+    sample_interval_s = max(0.5, 1.0 / config["experiment_frequency"])
+    voltage = max(start_voltage, config["min_voltage"], 0.005)
+    search_upper_bound = min(max_voltage, config["max_voltage"])
+    voltage_step = max(step_voltage, config["minimum_voltage_change"])
+
+    while voltage <= search_upper_bound + 1e-12:
+        _check_stop(emitter)
+        siglent.set_voltage(power_supply, voltage=voltage)
+        print(f"{label}: trying {voltage:.4f} V")
+        _sleep_with_stop(settle_time_s, emitter)
+
+        samples = []
+        attempts = 0
+        max_attempts = max(int(stable_samples) * 3, int(stable_samples) + config["measurement_fail_limit"] * 3)
+        while len(samples) < int(stable_samples) and attempts < max_attempts:
+            _check_stop(emitter)
+            attempts += 1
+            measured_voltage, measured_current, temperature = tds_experiment.measure_resistivity(
+                dmm_v,
+                dmm_i,
+                siglent,
+                temperature_interp,
+                calibration=True,
+            )
+            resistance = _calculate_resistance(measured_voltage, measured_current)
+            print(
+                f"{label} sample: T={temperature}, V={measured_voltage}, "
+                f"I={measured_current}, R={resistance}"
+            )
+
+            if abs(measured_current) > config["max_current"]:
+                raise tds_experiment.ExperimentSafetyError(
+                    f"{label}: measured current {measured_current:.4e} A exceeded max_current."
+                )
+
+            valid_sample = (
+                tds_experiment._is_valid_measurement(measured_voltage, measured_current, temperature, config)
+                and measured_current > minimum_current
+                and np.isfinite(resistance)
+                and _temperature_is_in_window(
+                    temperature,
+                    lower_bound=temperature_lower_bound,
+                    upper_bound=temperature_upper_bound,
+                )
+            )
+
+            if valid_sample:
+                samples.append(
+                    {
+                        "voltage": float(measured_voltage),
+                        "current": float(measured_current),
+                        "temperature": float(temperature),
+                        "resistance": float(resistance),
+                    }
+                )
+            else:
+                if samples:
+                    print(f"{label}: unstable sample detected, restarting stability check at {voltage:.4f} V.")
+                samples = []
+
+            _sleep_with_stop(sample_interval_s, emitter)
+
+        currents = [sample["current"] for sample in samples]
+        if len(samples) >= int(stable_samples) and _current_series_is_stable(currents, minimum_current):
+            print(f"{label}: stable positive current found at {voltage:.4f} V")
+            return float(voltage), samples
+
+        voltage += voltage_step
+
+    raise ValueError(
+        f"{label}: could not find a stable positive current between {start_voltage:.4f} V "
+        f"and {search_upper_bound:.4f} V."
+    )
+
+
+def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
     """
     Shift the resistivity curve so the measured room-temperature resistance lines
     up with the loaded calibration table.
@@ -91,20 +227,31 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None):
         power_supply.read_termination = "\n"
 
         siglent.set_output(power_supply, state="ON")
-        time.sleep(0.04)
+        _sleep_with_stop(0.04, emitter)
         siglent.set_mode_speed(dmm_i, "CURR", config["DMM_speed"])
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
-        time.sleep(1.0)
+        _sleep_with_stop(1.0, emitter)
 
-        calibration_voltage = min(
-            config["max_voltage"],
-            max(config["t0_calibration_voltage"], config["min_voltage"], 0.005),
+        calibration_voltage, _ = _find_stable_current_voltage(
+            dmm_v=dmm_v,
+            dmm_i=dmm_i,
+            power_supply=power_supply,
+            temperature_interp=temperature_interp,
+            config=config,
+            start_voltage=config["t0_voltage_search_start"],
+            max_voltage=max(config["t0_calibration_voltage"], config["t0_voltage_search_start"]),
+            step_voltage=config["t0_voltage_step"],
+            settle_time_s=config["t0_settle_time_s"],
+            stable_samples=config["t0_stable_current_samples"],
+            minimum_current=config["t0_stable_current_a"],
+            emitter=emitter,
+            label="T0 search",
+            temperature_lower_bound=room_temp - config["t0_max_temp_error_c"],
+            temperature_upper_bound=room_temp + config["t0_max_temp_error_c"],
         )
         print(f"Using T0 calibration voltage: {calibration_voltage:.4f} V")
-        siglent.set_voltage(power_supply, voltage=calibration_voltage)
 
         sample_interval_s = max(0.5, 1.0 / config["experiment_frequency"])
-        time.sleep(max(config["t0_settle_time_s"], sample_interval_s))
 
         accepted_samples = []
         warmup_remaining = max(int(config["t0_warmup_samples"]), 0)
@@ -115,6 +262,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None):
             target_samples + warmup_remaining + config["measurement_fail_limit"] * 6,
         )
         while len(accepted_samples) < target_samples and attempts < max_attempts:
+            _check_stop(emitter)
             attempts += 1
             measured_voltage, measured_current, temperature = tds_experiment.measure_resistivity(
                 dmm_v,
@@ -128,7 +276,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None):
             )
             if not tds_experiment._is_valid_measurement(measured_voltage, measured_current, temperature, config):
                 print("Rejected room-temperature calibration sample: invalid measurement.")
-                time.sleep(sample_interval_s)
+                _sleep_with_stop(sample_interval_s, emitter)
                 continue
 
             if abs(measured_current) > config["max_current"]:
@@ -139,7 +287,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None):
             resistance = _calculate_resistance(measured_voltage, measured_current)
             if not np.isfinite(resistance):
                 print("Rejected room-temperature calibration sample: invalid resistance.")
-                time.sleep(sample_interval_s)
+                _sleep_with_stop(sample_interval_s, emitter)
                 continue
 
             if abs(temperature - room_temp) > config["t0_max_temp_error_c"]:
@@ -148,7 +296,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None):
                     f"|T-room_temp|={abs(temperature - room_temp):.2f} C exceeds "
                     f"{config['t0_max_temp_error_c']:.2f} C."
                 )
-                time.sleep(sample_interval_s)
+                _sleep_with_stop(sample_interval_s, emitter)
                 continue
 
             if warmup_remaining > 0:
@@ -157,7 +305,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None):
                     f"R={resistance:.4f} Ohm, T={temperature:.2f} C"
                 )
                 warmup_remaining -= 1
-                time.sleep(sample_interval_s)
+                _sleep_with_stop(sample_interval_s, emitter)
                 continue
 
             accepted_samples.append(
@@ -168,7 +316,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None):
                     "resistance": resistance,
                 }
             )
-            time.sleep(sample_interval_s)
+            _sleep_with_stop(sample_interval_s, emitter)
 
         if len(accepted_samples) < 3:
             raise ValueError("Could not collect enough stable room-temperature calibration samples.")
@@ -180,9 +328,15 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None):
                 "after resistance outlier filtering."
             )
 
-        measured_current = float(np.median(np.array([sample["current"] for sample in filtered_samples], dtype=float)))
-        measured_voltage = float(np.median(np.array([sample["voltage"] for sample in filtered_samples], dtype=float)))
-        temperature = float(np.median(np.array([sample["temperature"] for sample in filtered_samples], dtype=float)))
+        measured_current = float(
+            np.median(np.array([sample["current"] for sample in filtered_samples], dtype=float))
+        )
+        measured_voltage = float(
+            np.median(np.array([sample["voltage"] for sample in filtered_samples], dtype=float))
+        )
+        temperature = float(
+            np.median(np.array([sample["temperature"] for sample in filtered_samples], dtype=float))
+        )
         measured_resistivity = float(
             np.median(np.array([sample["resistance"] for sample in filtered_samples], dtype=float))
         )
@@ -217,7 +371,8 @@ def _estimate_pid_from_step(response, base_temperature, step_voltage, loop_time,
 
     if peak_rise < min_temp_rise:
         raise ValueError(
-            "PID tuning did not produce enough temperature change. Increase tuning_voltage_step carefully."
+            "PID tuning did not produce enough temperature change. Increase tuning_search_max_voltage "
+            "or tuning_voltage_step carefully."
         )
 
     threshold = max(0.1 * peak_rise, 0.5)
@@ -254,7 +409,7 @@ def _estimate_pid_from_step(response, base_temperature, step_voltage, loop_time,
     }
 
 
-def tune_pid(experiment_params, config, r_vs_t):
+def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emitter=None):
     """
     Tune conservative gains from a small guarded voltage step on the real setup.
     """
@@ -276,28 +431,77 @@ def tune_pid(experiment_params, config, r_vs_t):
         power_supply.read_termination = "\n"
 
         siglent.set_output(power_supply, state="ON")
-        time.sleep(0.04)
+        _sleep_with_stop(0.04, emitter)
         siglent.set_voltage(power_supply, voltage=0.0)
-        time.sleep(1.0)
+        _sleep_with_stop(1.0, emitter)
         siglent.set_mode_speed(dmm_i, "CURR", config["DMM_speed"])
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
 
-        baseline_temperatures = []
-        for _ in range(int(config["tuning_baseline_samples"])):
+        stable_temperature_window = config["tuning_temperature_window_c"]
+        temperature_lower_bound = None
+        temperature_upper_bound = None
+        if base_temperature_hint is not None:
+            temperature_lower_bound = base_temperature_hint - stable_temperature_window
+            temperature_upper_bound = base_temperature_hint + stable_temperature_window
+
+        step_voltage, stable_samples = _find_stable_current_voltage(
+            dmm_v=dmm_v,
+            dmm_i=dmm_i,
+            power_supply=power_supply,
+            temperature_interp=temperature_interp,
+            config=config,
+            start_voltage=config["tuning_start_voltage"],
+            max_voltage=max(config["tuning_start_voltage"], config["tuning_search_max_voltage"]),
+            step_voltage=config["tuning_voltage_step"],
+            settle_time_s=config["tuning_settle_time_s"],
+            stable_samples=config["tuning_stable_current_samples"],
+            minimum_current=config["tuning_stable_current_a"],
+            emitter=emitter,
+            label="PID tuning search",
+            temperature_lower_bound=temperature_lower_bound,
+            temperature_upper_bound=temperature_upper_bound,
+        )
+        print(f"Using PID tuning voltage: {step_voltage:.4f} V")
+
+        baseline_temperatures = [
+            sample["temperature"]
+            for sample in stable_samples
+            if _temperature_is_in_window(
+                sample["temperature"],
+                lower_bound=temperature_lower_bound,
+                upper_bound=temperature_upper_bound,
+            )
+        ]
+        sample_interval_s = max(loop_time, 0.5)
+        invalid_measurements = 0
+        while len(baseline_temperatures) < int(config["tuning_baseline_samples"]):
+            _check_stop(emitter)
             measured_voltage, measured_current, temperature = tds_experiment.measure_resistivity(
                 dmm_v,
                 dmm_i,
                 siglent,
                 temperature_interp,
+                calibration=True,
             )
-            if tds_experiment._is_valid_measurement(measured_voltage, measured_current, temperature, config):
-                baseline_temperatures.append(temperature)
-            time.sleep(loop_time)
+            valid_baseline = (
+                tds_experiment._is_valid_measurement(measured_voltage, measured_current, temperature, config)
+                and measured_current > config["tuning_stable_current_a"]
+                and _temperature_is_in_window(
+                    temperature,
+                    lower_bound=temperature_lower_bound,
+                    upper_bound=temperature_upper_bound,
+                )
+            )
+            if valid_baseline:
+                baseline_temperatures.append(float(temperature))
+                invalid_measurements = 0
+            else:
+                invalid_measurements += 1
+                if invalid_measurements >= config["measurement_fail_limit"]:
+                    raise ValueError("Could not get a stable baseline temperature for PID tuning.")
+            _sleep_with_stop(sample_interval_s, emitter)
 
-        if not baseline_temperatures:
-            raise ValueError("Could not get a stable baseline temperature for PID tuning.")
-
-        base_temperature = float(np.mean(np.array(baseline_temperatures)))
+        base_temperature = float(np.median(np.array(baseline_temperatures, dtype=float)))
         available_rise = max(0.0, experiment_params["target_T"] - base_temperature)
         desired_rise = min(config["tuning_target_rise_c"], available_rise)
         if desired_rise < config["tuning_min_temperature_rise_c"] and available_rise > 0:
@@ -309,30 +513,44 @@ def tune_pid(experiment_params, config, r_vs_t):
             experiment_params["target_T"],
             base_temperature + desired_rise + config["temperature_tolerance_c"],
         )
-        step_voltage = min(config["tuning_voltage_step"], config["max_voltage"])
-        step_voltage = max(step_voltage, config["max_voltage_step_up"])
-
-        siglent.set_voltage(power_supply, voltage=step_voltage)
         response = []
         invalid_measurements = 0
         start_time = time.time()
 
         while time.time() - start_time < config["tuning_max_duration_s"]:
+            _check_stop(emitter)
             loop_started = time.time()
             measured_voltage, measured_current, temperature = tds_experiment.measure_resistivity(
                 dmm_v,
                 dmm_i,
                 siglent,
                 temperature_interp,
+                calibration=True,
             )
 
-            if not tds_experiment._is_valid_measurement(measured_voltage, measured_current, temperature, config):
+            if np.isfinite(temperature) and temperature > safe_temperature_limit:
+                print(
+                    f"PID tuning stopped at the safety temperature limit: "
+                    f"T={temperature:.2f} C, limit={safe_temperature_limit:.2f} C"
+                )
+                break
+
+            valid_response = (
+                tds_experiment._is_valid_measurement(measured_voltage, measured_current, temperature, config)
+                and measured_current > config["tuning_stable_current_a"]
+                and _temperature_is_in_window(
+                    temperature,
+                    lower_bound=temperature_lower_bound,
+                    upper_bound=safe_temperature_limit,
+                )
+            )
+            if not valid_response:
                 invalid_measurements += 1
                 if invalid_measurements >= config["measurement_fail_limit"]:
                     raise ValueError("Too many invalid measurements during PID tuning.")
                 elapsed = time.time() - loop_started
                 if elapsed < loop_time:
-                    time.sleep(loop_time - elapsed)
+                    _sleep_with_stop(loop_time - elapsed, emitter)
                 continue
 
             invalid_measurements = 0
@@ -340,8 +558,6 @@ def tune_pid(experiment_params, config, r_vs_t):
                 raise tds_experiment.ExperimentSafetyError(
                     f"Measured current {measured_current:.4e} A exceeded max_current during tuning."
                 )
-            if temperature > safe_temperature_limit:
-                break
 
             elapsed_s = time.time() - start_time
             response.append(
@@ -361,7 +577,7 @@ def tune_pid(experiment_params, config, r_vs_t):
 
             elapsed = time.time() - loop_started
             if elapsed < loop_time:
-                time.sleep(loop_time - elapsed)
+                _sleep_with_stop(loop_time - elapsed, emitter)
 
         siglent.set_voltage(power_supply, voltage=0.0)
         tuned = _estimate_pid_from_step(
