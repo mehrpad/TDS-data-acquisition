@@ -29,6 +29,11 @@
   "tuning_max_duration_s": 180.0,
   "tuning_baseline_samples": 5,
   "tuning_target_rise_c": 3.0,
-  "tuning_min_temperature_rise_c": 1.5
+  "tuning_min_temperature_rise_c": 1.5,
+  "t0_calibration_voltage": 0.1,
+  "t0_settle_time_s": 3.0,
+  "t0_calibration_samples": 5,
+  "t0_warmup_samples": 1,
+  "t0_max_temp_error_c": 80.0
 }
 

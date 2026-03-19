@@ -59,6 +59,8 @@ Important fields:
 - `experiment_frequency`: control loop frequency in Hz
 - `max_voltage`: absolute software voltage limit
 - `max_current`: absolute software current limit
+- `t0_calibration_voltage`: dedicated output voltage used during `Calibrate T. Zero`
+- `t0_settle_time_s`: how long the wire is allowed to settle before `T0` samples are accepted
 
 The software also stores PID and autosave defaults in this file after you run the GUI.
 
@@ -163,7 +165,14 @@ Autosave runs in a background thread so disk writing does not block experiment c
 ### `Calibrate T. Zero`
 
 This function does not shift the temperature setpoint directly.
-It measures the sample resistance at a very low voltage near room temperature and rescales the loaded resistivity curve so the measured room-temperature point matches the entered `Zero Temperature`.
+It measures the sample resistance near room temperature and rescales the loaded resistivity curve so the measured room-temperature point matches the entered `Zero Temperature`.
+
+During this step the software now:
+
+- uses `t0_calibration_voltage` instead of the experiment startup voltage,
+- waits `t0_settle_time_s` before collecting data,
+- discards warmup readings,
+- rejects obviously wrong outliers before calculating the final scale.
 
 ### `Tune PID`
 

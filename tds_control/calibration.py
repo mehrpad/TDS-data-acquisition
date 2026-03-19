@@ -38,6 +38,37 @@ def _prepare_curve_interpolators(r_vs_t):
     return curve, resistivity_interp, temperature_interp
 
 
+def _calculate_resistance(measured_voltage, measured_current):
+    if not np.isfinite(measured_voltage) or not np.isfinite(measured_current):
+        return np.nan
+    if abs(measured_current) < 1e-12:
+        return np.nan
+    resistance = measured_voltage / measured_current
+    if not np.isfinite(resistance) or resistance <= 0:
+        return np.nan
+    return float(resistance)
+
+
+def _filter_room_temperature_samples(samples):
+    if len(samples) < 3:
+        return samples
+
+    resistances = np.array([sample["resistance"] for sample in samples], dtype=float)
+    median_resistance = float(np.median(resistances))
+    deviations = np.abs(resistances - median_resistance)
+    mad = float(np.median(deviations))
+    resistance_window = max(6.0 * mad, 0.02 * median_resistance, 0.05)
+
+    filtered = [
+        sample
+        for sample in samples
+        if abs(sample["resistance"] - median_resistance) <= resistance_window
+    ]
+    if len(filtered) < 3:
+        return samples
+    return filtered
+
+
 def calibrate_temperature_curve(r_vs_t, room_temp, config=None):
     """
     Shift the resistivity curve so the measured room-temperature resistance lines
@@ -61,20 +92,29 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None):
 
         siglent.set_output(power_supply, state="ON")
         time.sleep(0.04)
-        low_voltage = min(config["startup_voltage"], config["tuning_voltage_step"], config["max_voltage"])
-        low_voltage = max(low_voltage, 0.005)
-        siglent.set_voltage(power_supply, voltage=low_voltage)
-        time.sleep(max(2.0, 1.0 / config["experiment_frequency"]))
         siglent.set_mode_speed(dmm_i, "CURR", config["DMM_speed"])
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
         time.sleep(1.0)
 
-        measured_currents = []
-        measured_voltages = []
-        temperatures = []
+        calibration_voltage = min(
+            config["max_voltage"],
+            max(config["t0_calibration_voltage"], config["min_voltage"], 0.005),
+        )
+        print(f"Using T0 calibration voltage: {calibration_voltage:.4f} V")
+        siglent.set_voltage(power_supply, voltage=calibration_voltage)
+
+        sample_interval_s = max(0.5, 1.0 / config["experiment_frequency"])
+        time.sleep(max(config["t0_settle_time_s"], sample_interval_s))
+
+        accepted_samples = []
+        warmup_remaining = max(int(config["t0_warmup_samples"]), 0)
+        target_samples = max(int(config["t0_calibration_samples"]), 3)
         attempts = 0
-        max_attempts = max(10, config["measurement_fail_limit"] * 5)
-        while len(measured_currents) < 5 and attempts < max_attempts:
+        max_attempts = max(
+            12,
+            target_samples + warmup_remaining + config["measurement_fail_limit"] * 6,
+        )
+        while len(accepted_samples) < target_samples and attempts < max_attempts:
             attempts += 1
             measured_voltage, measured_current, temperature = tds_experiment.measure_resistivity(
                 dmm_v,
@@ -86,23 +126,69 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None):
             print(
                 f"Room-temperature calibration sample: T={temperature}, V={measured_voltage}, I={measured_current}"
             )
-            if tds_experiment._is_valid_measurement(measured_voltage, measured_current, temperature, config):
-                if abs(measured_current) <= config["max_current"]:
-                    measured_currents.append(measured_current)
-                    measured_voltages.append(measured_voltage)
-                    temperatures.append(temperature)
-            time.sleep(max(0.5, 1.0 / config["experiment_frequency"]))
+            if not tds_experiment._is_valid_measurement(measured_voltage, measured_current, temperature, config):
+                print("Rejected room-temperature calibration sample: invalid measurement.")
+                time.sleep(sample_interval_s)
+                continue
 
-        if len(measured_currents) < 3:
+            if abs(measured_current) > config["max_current"]:
+                raise tds_experiment.ExperimentSafetyError(
+                    f"Measured current {measured_current:.4e} A exceeded max_current during T0 calibration."
+                )
+
+            resistance = _calculate_resistance(measured_voltage, measured_current)
+            if not np.isfinite(resistance):
+                print("Rejected room-temperature calibration sample: invalid resistance.")
+                time.sleep(sample_interval_s)
+                continue
+
+            if abs(temperature - room_temp) > config["t0_max_temp_error_c"]:
+                print(
+                    "Rejected room-temperature calibration sample: "
+                    f"|T-room_temp|={abs(temperature - room_temp):.2f} C exceeds "
+                    f"{config['t0_max_temp_error_c']:.2f} C."
+                )
+                time.sleep(sample_interval_s)
+                continue
+
+            if warmup_remaining > 0:
+                print(
+                    "Discarding room-temperature calibration warmup sample: "
+                    f"R={resistance:.4f} Ohm, T={temperature:.2f} C"
+                )
+                warmup_remaining -= 1
+                time.sleep(sample_interval_s)
+                continue
+
+            accepted_samples.append(
+                {
+                    "voltage": float(measured_voltage),
+                    "current": float(measured_current),
+                    "temperature": float(temperature),
+                    "resistance": resistance,
+                }
+            )
+            time.sleep(sample_interval_s)
+
+        if len(accepted_samples) < 3:
             raise ValueError("Could not collect enough stable room-temperature calibration samples.")
 
-        measured_current = float(np.mean(np.array(measured_currents)))
-        measured_voltage = float(np.mean(np.array(measured_voltages)))
-        temperature = float(np.mean(np.array(temperatures)))
+        filtered_samples = _filter_room_temperature_samples(accepted_samples)
+        if len(filtered_samples) != len(accepted_samples):
+            print(
+                f"Using {len(filtered_samples)} of {len(accepted_samples)} room-temperature samples "
+                "after resistance outlier filtering."
+            )
+
+        measured_current = float(np.median(np.array([sample["current"] for sample in filtered_samples], dtype=float)))
+        measured_voltage = float(np.median(np.array([sample["voltage"] for sample in filtered_samples], dtype=float)))
+        temperature = float(np.median(np.array([sample["temperature"] for sample in filtered_samples], dtype=float)))
+        measured_resistivity = float(
+            np.median(np.array([sample["resistance"] for sample in filtered_samples], dtype=float))
+        )
         print(f"Final room-temperature sample: T={temperature}, V={measured_voltage}, I={measured_current}")
 
-        measured_resistivity = measured_voltage / measured_current
-        if measured_resistivity <= 0:
+        if not np.isfinite(measured_resistivity) or measured_resistivity <= 0:
             print(f"Measured resistivity {measured_resistivity:.4f} Ohm is invalid.")
             return None
 

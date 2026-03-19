@@ -1,0 +1,9 @@
+Hi Oliver,
+For input to the Mass Spec Interface Unit (MSIU) you can use the auxiliary input devices. There are two available on your instrument and these have a limit from -10 to +10V. We have other inputs available but these would require firmware upgrades and other hardware devices as well. Please see the document 131-524 and the PIC User Manual 085188 section 7.3 for information about setting this up.
+
+If a voltage output would be acceptable you could use the Count Rate to Voltage Converter included with the instrument which would provide a voltage 0-10V depending on the signal detected, via MSC05. Please see the PIC User Manual 085188 section 7.3.2 for more information.
+If using MASsoft then you could use the sockets interface to create a link to the data and this could be written with C or Python. I've attached the sockets reference manual 085109 along with an example client utility. You can also test the functionality using PuTTY or similar.
+
+We also have LabVIEW drivers available on the USB flash drive if this would be easier for integration.
+Best regards,
+Will
