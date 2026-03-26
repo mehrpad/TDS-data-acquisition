@@ -1,5 +1,6 @@
 import time
 from dataclasses import dataclass
+from typing import Optional, Tuple
 
 import numpy as np
 import pyvisa
@@ -11,6 +12,7 @@ from . import siglent
 
 CONTROL_DEFAULTS = {
     "controller_mode": "PI",
+    "experiment_mode": "CONTROLLED",
     "pid_kp": 0.008,
     "pid_ki": 0.0004,
     "pid_kd": 0.0,
@@ -55,6 +57,7 @@ CONTROL_DEFAULTS = {
     "invalid_voltage_step_down": 0.01,
     "invalid_reuse_hold_after": 8,
     "invalid_max_drop_from_recent_peak_v": 0.1,
+    "invalid_reuse_stop_after": 30,
     "rate_limit_activation_band_c": 2.0,
     "under_target_no_decrease_band_c": 1.5,
     "autosave_flush_interval_s": 5.0,
@@ -88,6 +91,8 @@ CONTROL_DEFAULTS = {
     "t0_stable_current_samples": 3,
     "t0_stable_current_a": 1e-4,
     "t0_max_temp_error_c": 80.0,
+    "curve_sweep_start_voltage": 0.01,
+    "curve_sweep_voltage_step": 0.005,
 }
 
 
@@ -117,15 +122,41 @@ def get_controller_mode(config):
     return mode if mode in {"PI", "PID"} else CONTROL_DEFAULTS["controller_mode"]
 
 
+def get_experiment_mode(config):
+    raw_mode = config.get("experiment_mode", config.get("measurement_conversion_mode", "CONTROLLED"))
+    mode = str(raw_mode).strip().upper()
+    if mode == "LINEAR_TEMP":
+        return "CURVE_SWEEP"
+    if mode == "INTERPOLATE":
+        return "CONTROLLED"
+    return mode if mode in {"CONTROLLED", "CURVE_SWEEP"} else CONTROL_DEFAULTS["experiment_mode"]
+
+
 def build_control_config(config):
     merged = dict(config)
     for key, value in CONTROL_DEFAULTS.items():
         merged.setdefault(key, value)
     merged["controller_mode"] = get_controller_mode(merged)
+    merged["experiment_mode"] = get_experiment_mode(merged)
     return merged
 
 
-def build_temperature_interpolator(r_vs_t):
+@dataclass
+class ResistanceTemperatureModel:
+    mode: str
+    resistance_axis: np.ndarray
+    interpolator: object = None
+    linear_coefficients: Optional[Tuple[float, float]] = None
+
+    @property
+    def x(self):
+        return self.resistance_axis
+
+    def __call__(self, resistance):
+        return self.interpolator(resistance)
+
+
+def build_temperature_interpolator(r_vs_t, config=None):
     curve = np.asarray(r_vs_t, dtype=float)
     if curve.shape[0] != 2 or curve.shape[1] < 2:
         raise ValueError("R vs. T data must have shape 2 x N with at least two points.")
@@ -134,11 +165,15 @@ def build_temperature_interpolator(r_vs_t):
     resistance_curve = curve[:, resistance_order]
     _, unique_indices = np.unique(resistance_curve[0, :], return_index=True)
     resistance_curve = resistance_curve[:, np.sort(unique_indices)]
-    return interp1d(
-        resistance_curve[0, :],
-        resistance_curve[1, :],
-        kind="linear",
-        fill_value="extrapolate",
+    return ResistanceTemperatureModel(
+        mode="INTERPOLATE",
+        resistance_axis=np.asarray(resistance_curve[0, :], dtype=float),
+        interpolator=interp1d(
+            resistance_curve[0, :],
+            resistance_curve[1, :],
+            kind="linear",
+            fill_value="extrapolate",
+        ),
     )
 
 
@@ -409,7 +444,7 @@ def _measure_with_retry(
                 f"Accepting stable retried measurement at {accepted_resistance:.4f} Ohm "
                 f"despite jump from previous {previous_resistance:.4f} Ohm."
             )
-            return accepted_voltage, accepted_current, accepted_temperature, accepted_resistance, True
+    return accepted_voltage, accepted_current, accepted_temperature, accepted_resistance, True
 
     print(
         f"Rejecting measurement after retries; best resistance {best[3]:.4f} Ohm "
@@ -423,6 +458,44 @@ def _set_voltage_if_needed(power_supply, voltage, previous_voltage, config):
         siglent.set_voltage(power_supply, voltage=voltage)
         return voltage
     return previous_voltage
+
+
+def _curve_ordered_temperature_profile(r_vs_t):
+    curve = np.asarray(r_vs_t, dtype=float)
+    temperature_order = np.argsort(curve[1, :])
+    ordered = curve[:, temperature_order]
+    _, unique_indices = np.unique(ordered[1, :], return_index=True)
+    ordered = ordered[:, np.sort(unique_indices)]
+    return ordered[0, :], ordered[1, :]
+
+
+def build_curve_shaped_voltage_schedule(r_vs_t, start_voltage, end_voltage, steps):
+    if steps < 2:
+        raise ValueError("Curve sweep requires at least two voltage points.")
+
+    resistance_axis, temperature_axis = _curve_ordered_temperature_profile(r_vs_t)
+    if temperature_axis.size < 2:
+        raise ValueError("R vs. T data must contain at least two unique temperature points.")
+
+    target_temperatures = np.linspace(float(temperature_axis[0]), float(temperature_axis[-1]), steps)
+    target_resistances = np.interp(target_temperatures, temperature_axis, resistance_axis)
+
+    resistance_span = float(np.max(target_resistances) - np.min(target_resistances))
+    if resistance_span <= 1e-12:
+        voltage_fractions = np.linspace(0.0, 1.0, steps)
+    else:
+        if target_resistances[-1] >= target_resistances[0]:
+            voltage_fractions = (target_resistances - float(np.min(target_resistances))) / resistance_span
+        else:
+            voltage_fractions = (float(np.max(target_resistances)) - target_resistances) / resistance_span
+        voltage_fractions = np.maximum.accumulate(np.clip(voltage_fractions, 0.0, 1.0))
+        voltage_fractions[0] = 0.0
+        voltage_fractions[-1] = 1.0
+
+    voltages = start_voltage + voltage_fractions * (end_voltage - start_voltage)
+    voltages = np.maximum.accumulate(np.asarray(voltages, dtype=float))
+    voltages[-1] = end_voltage
+    return voltages, target_temperatures
 
 
 def _compute_next_voltage(
@@ -642,6 +715,116 @@ def _shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager):
             print(f"An error occurred while closing the VISA resource manager: {exc}")
 
 
+def curve_sweep(emitter, sweep_params, r_vs_t, config, data_saver=None):
+    if r_vs_t is None:
+        raise ValueError("A resistivity-versus-temperature table must be loaded before starting a curve sweep.")
+
+    config = build_control_config(config)
+    loop_time = 1.0 / config["experiment_frequency"]
+    max_voltage = min(float(config["max_voltage"]), float(sweep_params.get("max_voltage", config["max_voltage"])))
+    start_voltage = max(
+        float(config.get("curve_sweep_start_voltage", 0.01)),
+        float(config.get("measurement_voltage_floor", 0.01)),
+        0.01,
+    )
+    start_voltage = _clamp(start_voltage, float(config["min_voltage"]), max_voltage)
+    voltage_step = max(float(config.get("curve_sweep_voltage_step", 0.005)), 1e-6)
+    requested_steps = max(2, int(np.ceil(max_voltage / voltage_step)))
+
+    resource_manager = None
+    dmm_v = None
+    dmm_i = None
+    power_supply = None
+
+    try:
+        resource_manager = pyvisa.ResourceManager()
+        dmm_v = resource_manager.open_resource(config["DMM_v"])
+        dmm_i = resource_manager.open_resource(config["DMM_i"])
+        power_supply = resource_manager.open_resource(config["PS"])
+        power_supply.write_termination = "\n"
+        power_supply.read_termination = "\n"
+
+        siglent.set_output(power_supply, state="ON")
+        time.sleep(0.04)
+        siglent.set_voltage(power_supply, voltage=0.0)
+        time.sleep(1.0)
+        siglent.configure_dc_range_from_limits(dmm_v, "VOLT", config.get("max_voltage"))
+        siglent.configure_dc_range_from_limits(dmm_i, "CURR", config.get("max_current"))
+        siglent.set_mode_speed(dmm_i, "CURR", config["DMM_speed"])
+        siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
+
+        temperature_interp = build_temperature_interpolator(r_vs_t, config=config)
+        schedule_voltages, schedule_temperatures = build_curve_shaped_voltage_schedule(
+            r_vs_t,
+            start_voltage=start_voltage,
+            end_voltage=max_voltage,
+            steps=requested_steps,
+        )
+        print(
+            f"Curve sweep: start={start_voltage:.4f} V, end={max_voltage:.4f} V, "
+            f"steps={requested_steps}, step_basis={voltage_step:.4f} V"
+        )
+
+        previous_voltage = None
+        previous_resistance = None
+        for target_temperature, target_voltage in zip(schedule_temperatures, schedule_voltages):
+            if emitter.stopped:
+                print("Stop signal received.")
+                break
+
+            loop_started = time.time()
+            previous_voltage = _set_voltage_if_needed(power_supply, float(target_voltage), previous_voltage, config)
+            time.sleep(max(loop_time, 0.2))
+
+            measured_voltage, measured_current, temperature, measured_resistance, _ = _measure_with_retry(
+                dmm_v,
+                dmm_i,
+                siglent,
+                temperature_interp,
+                config=config,
+                previous_resistance=previous_resistance,
+            )
+            if abs(measured_current) > config["max_current"]:
+                raise ExperimentSafetyError(
+                    f"Measured current {measured_current:.4e} A exceeded max_current {config['max_current']:.4e} A."
+                )
+
+            if np.isfinite(measured_resistance):
+                previous_resistance = measured_resistance
+
+            print(
+                f"Curve sweep, T: {temperature:.2f} C, Target curve T: {target_temperature:.2f} C, "
+                f"Vsample: {measured_voltage:.6f} V, Current: {measured_current:.4e} A, "
+                f"PSU: {previous_voltage:.4f} V"
+            )
+            _persist_measurement(
+                data_saver,
+                float(target_temperature),
+                temperature,
+                measured_voltage,
+                measured_current,
+                float(previous_voltage),
+            )
+            _emit_measurement(
+                emitter,
+                float(target_temperature),
+                temperature,
+                measured_voltage,
+                measured_current,
+                float(previous_voltage),
+            )
+
+            elapsed = time.time() - loop_started
+            if elapsed < loop_time:
+                time.sleep(loop_time - elapsed)
+
+    finally:
+        _shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager)
+        if data_saver is not None:
+            data_saver.finalize()
+        print("Curve sweep thread finished.")
+
+
 def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
     if r_vs_t is None:
         raise ValueError("A resistivity-versus-temperature table must be loaded before starting an experiment.")
@@ -671,7 +854,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
         siglent.set_mode_speed(dmm_i, "CURR", config["DMM_speed"])
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
 
-        temperature_interp = build_temperature_interpolator(r_vs_t)
+        temperature_interp = build_temperature_interpolator(r_vs_t, config=config)
 
         previous_voltage = None
         for ex_param in experiment_params:
@@ -883,6 +1066,13 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     )
                     if can_reuse_last_temperature:
                         invalid_reuse_streak += 1
+                        invalid_reuse_stop_after = max(int(config.get("invalid_reuse_stop_after", 30)), 1)
+                        if invalid_reuse_streak >= invalid_reuse_stop_after:
+                            raise ExperimentSafetyError(
+                                "Persistent invalid measurement loop detected while reusing the last trusted "
+                                f"temperature {previous_temperature:.2f} C for {invalid_reuse_streak} cycles. "
+                                "Stopping to avoid blind control on corrupted data."
+                            )
                         if invalid_recovery_peak_voltage is None or not np.isfinite(invalid_recovery_peak_voltage):
                             invalid_recovery_peak_voltage = float(applied_voltage)
                         else:

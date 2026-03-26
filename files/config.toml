@@ -8,6 +8,9 @@
 # Choose "PI" or "PID". PI is the default and recommended starting mode.
 controller_mode = "PI"
 
+# Choose "CONTROLLED" for the PID-based temperature program or "CURVE_SWEEP" for open-loop voltage sweeping.
+experiment_mode = "CURVE_SWEEP"
+
 # Control loop frequency in Hz.
 experiment_frequency = 1
 
@@ -71,6 +74,12 @@ rate_limit_activation_band_c = 2
 
 # Below this band the controller avoids decreasing voltage.
 under_target_no_decrease_band_c = 1.5
+
+# Starting PSU voltage used in CURVE_SWEEP mode.
+curve_sweep_start_voltage = 0.01
+
+# Voltage increment basis used to derive the number of CURVE_SWEEP steps from the GUI Max Voltage.
+curve_sweep_voltage_step = 0.005
 
 # Safety, filtering, and invalid-reading handling
 # Main temperature tolerance around the setpoint.
@@ -169,6 +178,9 @@ invalid_reuse_hold_after = 8
 # During one invalid-reading recovery episode, never back off more than this much below the recent touched PSU voltage.
 invalid_max_drop_from_recent_peak_v = 0.1
 
+# Stop the experiment if the controller has to reuse the last trusted temperature this many times in a row.
+invalid_reuse_stop_after = 100
+
 # Autosave
 # How often buffered data is flushed to disk.
 autosave_flush_interval_s = 5
@@ -258,3 +270,10 @@ t0_stable_current_a = 0.0001
 
 # Largest allowed mismatch from the entered base temperature during T0 calibration.
 t0_max_temp_error_c = 80
+
+# Additional settings
+# Extra setting preserved by the application.
+dmm_current_range = "AUTO"
+
+# Extra setting preserved by the application.
+dmm_voltage_range = "AUTO"

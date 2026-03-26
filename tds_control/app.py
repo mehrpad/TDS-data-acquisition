@@ -176,6 +176,24 @@ class Ui_TDS(object):
                                        "                                            ")
         self.max_current.setObjectName("max_current")
         self.gridLayout.addWidget(self.max_current, 4, 1, 1, 1)
+        self.label_179 = QtWidgets.QLabel(parent=self.centralwidget)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Minimum)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.label_179.sizePolicy().hasHeightForWidth())
+        self.label_179.setSizePolicy(sizePolicy)
+        self.label_179.setObjectName("label_179")
+        self.gridLayout.addWidget(self.label_179, 5, 0, 1, 1)
+        self.measurement_conversion_mode = QtWidgets.QComboBox(parent=self.centralwidget)
+        self.measurement_conversion_mode.setMinimumSize(QtCore.QSize(100, 20))
+        self.measurement_conversion_mode.setStyleSheet("QComboBox{\n"
+                                                       "                                                background: rgb(223,223,233)\n"
+                                                       "                                                }\n"
+                                                       "                                            ")
+        self.measurement_conversion_mode.setObjectName("measurement_conversion_mode")
+        self.measurement_conversion_mode.addItem("")
+        self.measurement_conversion_mode.addItem("")
+        self.gridLayout.addWidget(self.measurement_conversion_mode, 5, 1, 1, 1)
         self.gridLayout_5.addLayout(self.gridLayout, 0, 0, 1, 1)
         self.gridLayout_4 = QtWidgets.QGridLayout()
         self.gridLayout_4.setObjectName("gridLayout_4")
@@ -444,7 +462,8 @@ class Ui_TDS(object):
         TDS.setTabOrder(self.ex_name, self.calib_temperature)
         TDS.setTabOrder(self.calib_temperature, self.max_voltage)
         TDS.setTabOrder(self.max_voltage, self.max_current)
-        TDS.setTabOrder(self.max_current, self.parameters_text)
+        TDS.setTabOrder(self.max_current, self.measurement_conversion_mode)
+        TDS.setTabOrder(self.measurement_conversion_mode, self.parameters_text)
         TDS.setTabOrder(self.parameters_text, self.start_botton)
         TDS.setTabOrder(self.start_botton, self.stop_botton)
         TDS.setTabOrder(self.stop_botton, self.find_csv_botton)
@@ -517,11 +536,16 @@ class Ui_TDS(object):
 
         self.max_voltage.editingFinished.connect(self.update_max_voltage)
         self.max_current.editingFinished.connect(self.update_max_current)
+        self.measurement_conversion_mode.currentIndexChanged.connect(self.update_experiment_mode)
         self.calib_temperature.textEdited.connect(self.invalidate_t_zero_calibration)
 
         # from config file put max voltage and current
         self.max_voltage.setText(str(self.config['max_voltage']))
         self.max_current.setText(str(self.config['max_current']))
+        self.measurement_conversion_mode.setCurrentText(
+            tds_experiment.get_experiment_mode(self.config)
+        )
+        self.apply_experiment_mode_ui()
 
 
         self.voltage_lcd.setDigitCount(8)
@@ -543,6 +567,9 @@ class Ui_TDS(object):
         self.max_voltage.setText(_translate("TDS", "10"))
         self.label_178.setText(_translate("TDS", "Max Current (A)"))
         self.max_current.setText(_translate("TDS", "5"))
+        self.label_179.setText(_translate("TDS", "Experiment Mode"))
+        self.measurement_conversion_mode.setItemText(0, _translate("TDS", "CONTROLLED"))
+        self.measurement_conversion_mode.setItemText(1, _translate("TDS", "CURVE_SWEEP"))
         self.label_4.setText(_translate("TDS", "Target Temp. (°C)    "))
         self.label_1.setText(_translate("TDS", "Measured Temp (°C)"))
         self.label_2.setText(_translate("TDS", "Voltage (V)              "))
@@ -580,6 +607,27 @@ class Ui_TDS(object):
         self.config['max_current'] = float(self.max_current.text())
         self.emitter.max_current_signal.emit(self.config['max_current'])
         self.save_config()
+    def update_experiment_mode(self):
+        """
+        Update the selected experiment mode.
+        """
+        self.config['experiment_mode'] = self.measurement_conversion_mode.currentText()
+        self.apply_experiment_mode_ui()
+        self.save_config()
+
+    def apply_experiment_mode_ui(self):
+        """
+        Enable or disable controls based on the selected experiment mode.
+        """
+        curve_sweep = tds_experiment.get_experiment_mode(self.config) == "CURVE_SWEEP"
+        self.calib_temperature.setEnabled(not curve_sweep)
+        self.calibrate_botton_base_t.setEnabled(not curve_sweep)
+        self.calibrate_botton_pid.setEnabled(not curve_sweep)
+        self.parameters_text.setEnabled(not curve_sweep)
+        if curve_sweep:
+            self.parameters_text.setPlaceholderText("Disabled in CURVE_SWEEP mode")
+        else:
+            self.parameters_text.setPlaceholderText("")
     def find_csv_clicked(self):
         """
         Opens a file dialog in a separate thread to avoid blocking the UI.
@@ -627,8 +675,11 @@ class Ui_TDS(object):
 
             self.r_vs_t = np.vstack((curve_df['resistivity'].to_numpy(), curve_df['temperature'].to_numpy()))
             self.t_zero_calibrated = False
-            self.calibrate_botton_pid.setEnabled(True)
-            self.error_message('R vs. T loaded. Run Calibrate T. Zero before Tune PI/PID or Start.', color='black')
+            self.apply_experiment_mode_ui()
+            if tds_experiment.get_experiment_mode(self.config) == "CURVE_SWEEP":
+                self.error_message('R vs. T loaded. Curve sweep mode is ready to start.', color='black')
+            else:
+                self.error_message('R vs. T loaded. Run Calibrate T. Zero before Tune PI/PID or Start.', color='black')
         else:
             raise ValueError("Invalid file type")
 
@@ -666,6 +717,14 @@ class Ui_TDS(object):
         if not parsed_params:
             raise ValueError('No experiment parameters found')
         return parsed_params
+
+    def parse_curve_sweep_params(self):
+        """
+        Build curve sweep settings from GUI limits and config.
+        """
+        return {
+            'max_voltage': float(self.max_voltage.text()),
+        }
 
     def save_config(self):
         """
@@ -992,6 +1051,7 @@ class Ui_TDS(object):
         self.stop_botton.setEnabled(True)
         self.calibration_worker = None
         self.emitter.reset_stop()
+        self.apply_experiment_mode_ui()
 
         if isinstance(result, calibration.CalibrationCancelled):
             self.error_message('T. Zero calibration stopped.', color='black')
@@ -1020,6 +1080,7 @@ class Ui_TDS(object):
         self.stop_botton.setEnabled(True)
         self.calibration_worker = None
         self.emitter.reset_stop()
+        self.apply_experiment_mode_ui()
 
         if isinstance(result, calibration.CalibrationCancelled):
             print(f"{controller_mode} tuning stopped by user.")
@@ -1088,15 +1149,25 @@ class Ui_TDS(object):
         """
         Starts a new thread to execute the main functionality (replace with your logic).
         """
-        if not self.require_loaded_curve_and_t0('starting the experiment'):
-            return
-
-        try:
-            self.experiment_params = self.parse_experiment_params()
-            t_zero = float(self.calib_temperature.text())
-        except ValueError as exc:
-            self.error_message(str(exc), color='red')
-            return
+        experiment_mode = tds_experiment.get_experiment_mode(self.config)
+        if experiment_mode == "CURVE_SWEEP":
+            if not self.require_loaded_curve('starting the curve sweep'):
+                return
+            try:
+                self.experiment_params = self.parse_curve_sweep_params()
+                t_zero = None
+            except ValueError as exc:
+                self.error_message(str(exc), color='red')
+                return
+        else:
+            if not self.require_loaded_curve_and_t0('starting the experiment'):
+                return
+            try:
+                self.experiment_params = self.parse_experiment_params()
+                t_zero = float(self.calib_temperature.text())
+            except ValueError as exc:
+                self.error_message(str(exc), color='red')
+                return
 
         self.data_list = []
         self.experiment_name = self.sanitize_experiment_name(self.ex_name.text().strip() or 'TDS_test')
@@ -1123,13 +1194,32 @@ class Ui_TDS(object):
         self.load_csv_botton.setEnabled(False)
         self.ex_name.setEnabled(False)
 
-        self.worker_thread = WorkerThread(tds_experiment.tds, emitter=self.emitter,
-                                          experiment_params=self.experiment_params, r_vs_t=self.r_vs_t,
-                                          config=self.config, t_zero=t_zero, data_saver=self.data_saver)
+        if experiment_mode == "CURVE_SWEEP":
+            self.worker_thread = WorkerThread(
+                tds_experiment.curve_sweep,
+                emitter=self.emitter,
+                sweep_params=self.experiment_params,
+                r_vs_t=self.r_vs_t,
+                config=self.config,
+                data_saver=self.data_saver,
+            )
+        else:
+            self.worker_thread = WorkerThread(
+                tds_experiment.tds,
+                emitter=self.emitter,
+                experiment_params=self.experiment_params,
+                r_vs_t=self.r_vs_t,
+                config=self.config,
+                t_zero=t_zero,
+                data_saver=self.data_saver,
+            )
         self.worker_thread.finished.connect(self.thread_finished)
         self.worker_thread.start()
         self.update_timer.start(500)
-        self.error_message(f'Experiment started. Autosaving to {self.current_experiment_dir}', color='black')
+        if experiment_mode == "CURVE_SWEEP":
+            self.error_message(f'Curve sweep started. Autosaving to {self.current_experiment_dir}', color='black')
+        else:
+            self.error_message(f'Experiment started. Autosaving to {self.current_experiment_dir}', color='black')
 
     def stop_clicked(self):
         """
@@ -1160,6 +1250,7 @@ class Ui_TDS(object):
         self.find_csv_botton.setEnabled(True)
         self.load_csv_botton.setEnabled(True)
         self.ex_name.setEnabled(True)
+        self.apply_experiment_mode_ui()
 
         self.emitter.reset_stop()
         self.worker_thread = None

@@ -33,12 +33,7 @@ def _prepare_curve_interpolators(r_vs_t):
         kind="linear",
         fill_value="extrapolate",
     )
-    temperature_interp = interp1d(
-        resistance_curve[0, :],
-        resistance_curve[1, :],
-        kind="linear",
-        fill_value="extrapolate",
-    )
+    temperature_interp = tds_experiment.build_temperature_interpolator(curve)
     return curve, resistivity_interp, temperature_interp
 
 
@@ -277,7 +272,8 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
     up with the loaded calibration table.
     """
     config = tds_experiment.build_control_config(config or {})
-    curve, resistivity_interp, temperature_interp = _prepare_curve_interpolators(r_vs_t)
+    curve, resistivity_interp, _ = _prepare_curve_interpolators(r_vs_t)
+    temperature_interp = tds_experiment.build_temperature_interpolator(curve, config=config)
 
     resource_manager = None
     dmm_v = None
@@ -764,7 +760,8 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
     config = tds_experiment.build_control_config(config)
     controller_mode = tds_experiment.get_controller_mode(config)
     loop_time = 1.0 / config["experiment_frequency"]
-    _, _, temperature_interp = _prepare_curve_interpolators(r_vs_t)
+    curve, _, _ = _prepare_curve_interpolators(r_vs_t)
+    temperature_interp = tds_experiment.build_temperature_interpolator(curve, config=config)
 
     resource_manager = None
     dmm_v = None

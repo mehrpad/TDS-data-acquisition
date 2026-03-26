@@ -80,6 +80,7 @@ If you still have an older `files/config.json`, the app will import it automatic
 Important fields:
 
 - `controller_mode`: choose `"PI"` or `"PID"`
+- `experiment_mode`: choose `"CONTROLLED"` or `"CURVE_SWEEP"`
 - `DMM_v`: VISA address for the voltage DMM
 - `DMM_i`: VISA address for the current DMM
 - `PS`: VISA address for the power supply
@@ -92,12 +93,23 @@ Important fields:
 - `tuning_start_voltage`: starting voltage for the PI/PID tuning search
 - `tuning_search_max_voltage`: highest voltage the PI/PID tuning search is allowed to use
 - `tuning_response_voltage_step`: how much each PI/PID tuning attempt increases above the safe baseline voltage
+- `curve_sweep_voltage_step`: basis used to derive the number of open-loop sweep steps from the GUI `Max Voltage`
 
 Controller mode notes:
 
 - `controller_mode = "PI"` is the default and recommended starting point
 - set `controller_mode = "PID"` if you want derivative action enabled
 - the `Tune PI/PID` button uses the selected mode from `config.toml`
+
+Experiment mode notes:
+
+- `experiment_mode = "CONTROLLED"` is the default mode
+- `CONTROLLED` uses the loaded `R vs. T` curve, optional `T0` calibration, and PI/PID control to follow the programmed temperature path
+- `CURVE_SWEEP` disables `Calibrate T. Zero`, disables `Tune PI/PID`, ignores the experiment-program text box, and performs an open-loop voltage sweep
+- in `CURVE_SWEEP`, the sweep starts from `curve_sweep_start_voltage` and ends at the smaller of the GUI `Max Voltage` and the software limit from `config.toml`
+- the number of sweep points is calculated automatically as `ceil(Max Voltage / curve_sweep_voltage_step)`
+- the loaded `R(T)` curve is used only to shape the voltage progression, not to claim a true physical `V(T)` law
+- the shaping idea is simple: the software samples the loaded curve across temperature, converts that sampled curve into normalized fractions, and then maps those fractions onto the voltage range so the early and late parts of the sweep follow the same general order as the calibration curve
 
 The software also stores tuned controller gains and autosave defaults in this file after you run the GUI.
 
@@ -145,6 +157,15 @@ python TDS.py
 5. Enter the experiment program in the text box.
 6. Set software limits for `Max Voltage` and `Max Current`.
 7. Click `Start`.
+
+For `CURVE_SWEEP` mode:
+
+1. Click `Find R vs. T` and select the calibration file.
+2. Choose `CURVE_SWEEP` in the `Experiment Mode` selector.
+3. Set the GUI `Max Voltage` and `Max Current`.
+4. Click `Start`.
+
+In this mode the program text box is disabled because the sweep shape comes from the loaded curve and the sweep resolution comes from `curve_sweep_voltage_step`.
 
 ## Experiment Program Format
 

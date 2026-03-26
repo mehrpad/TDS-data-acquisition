@@ -13,6 +13,7 @@ CONFIG_GROUPS = [
         "Controller mode and hardware",
         [
             ("controller_mode", 'Choose "PI" or "PID". PI is the default and recommended starting mode.'),
+            ("experiment_mode", 'Choose "CONTROLLED" for the PID-based temperature program or "CURVE_SWEEP" for open-loop voltage sweeping.'),
             ("experiment_frequency", "Control loop frequency in Hz."),
             ("max_voltage", "Absolute software voltage limit for the power supply."),
             ("max_current", "Absolute software current limit in amps."),
@@ -39,6 +40,8 @@ CONFIG_GROUPS = [
             ("aggressive_step_band_c", "Temperature gap below the setpoint that enables aggressive catch-up."),
             ("rate_limit_activation_band_c", "Band around the setpoint where heating-rate limiting becomes active."),
             ("under_target_no_decrease_band_c", "Below this band the controller avoids decreasing voltage."),
+            ("curve_sweep_start_voltage", "Starting PSU voltage used in CURVE_SWEEP mode."),
+            ("curve_sweep_voltage_step", "Voltage increment basis used to derive the number of CURVE_SWEEP steps from the GUI Max Voltage."),
         ],
     ),
     (
@@ -76,6 +79,7 @@ CONFIG_GROUPS = [
             ("invalid_voltage_step_down", "Backoff step used when an invalid reading appears too hot."),
             ("invalid_reuse_hold_after", "After this many reused invalid cycles, stop increasing voltage and hold/back off."),
             ("invalid_max_drop_from_recent_peak_v", "During one invalid-reading recovery episode, never back off more than this much below the recent touched PSU voltage."),
+            ("invalid_reuse_stop_after", "Stop the experiment if the controller has to reuse the last trusted temperature this many times in a row."),
         ],
     ),
     (
