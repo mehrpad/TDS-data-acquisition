@@ -20,12 +20,10 @@ max_current = 3
 # Measurement speed setting sent to both DMMs.
 DMM_speed = 10
 
-# DC voltage range for the voltage DMM. Use "AUTO" or a fixed value like
-# 0.2, 2, 20, or 200.
+# DC voltage range for the voltage DMM. Use "AUTO" or a fixed value like 0.2, 2, 20, or 200.
 dmm_voltage_range = "AUTO"
 
-# DC current range for the current DMM. Use "AUTO" or a fixed value like
-# 0.2, 2, or 10 depending on expected current.
+# DC current range for the current DMM. Use "AUTO" or a fixed value like 0.2, 2, or 10 depending on expected current.
 dmm_current_range = "AUTO"
 
 # VISA address of the voltage DMM.
@@ -39,10 +37,10 @@ PS = "USB0::0xF4EC::0x1410::SPD13DCC4R0058::INSTR"
 
 # Controller gains and output shaping
 # Proportional gain used by the live controller.
-pid_kp = 0.00223890399236555
+pid_kp = 0.00340893242345198
 
 # Integral gain used by the live controller.
-pid_ki = 0.0020486587377582
+pid_ki = 0.00219501812004466
 
 # Derivative gain used only when controller_mode = "PID".
 pid_kd = 0
@@ -59,10 +57,8 @@ startup_voltage = 0.1
 # Lowest voltage the controller may request.
 min_voltage = 0
 
-# Optional fixed series resistance to subtract from V/I in all resistance
-# calculations. Keep this at 0 unless you intentionally want software
-# compensation for known wiring/contact resistance.
-fixed_series_resistance_ohm = 1.3
+# Optional fixed series resistance to subtract from V/I in all resistance calculations.
+fixed_series_resistance_ohm = 0
 
 # Largest normal upward voltage step per loop.
 max_voltage_step_up = 0.01
@@ -176,8 +172,7 @@ invalid_voltage_step_down = 0.01
 # After this many reused invalid cycles, stop increasing voltage and hold/back off.
 invalid_reuse_hold_after = 8
 
-# During one invalid-reading recovery episode, never back off more than this
-# much below the recent touched PSU voltage.
+# During one invalid-reading recovery episode, never back off more than this much below the recent touched PSU voltage.
 invalid_max_drop_from_recent_peak_v = 0.1
 
 # Autosave
