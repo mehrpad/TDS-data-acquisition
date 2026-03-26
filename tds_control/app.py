@@ -816,7 +816,10 @@ class Ui_TDS(object):
         if self._is_finite_number(resistivity):
             self.resistivity = float(resistivity)
         elif self._is_finite_number(self.voltage) and self._is_finite_number(self.current) and abs(self.current) > 1e-12:
-            self.resistivity = float(self.voltage / self.current)
+            corrected_resistance = float(self.voltage / self.current) - float(
+                self.config.get("fixed_series_resistance_ohm", 0.0)
+            )
+            self.resistivity = corrected_resistance if np.isfinite(corrected_resistance) and corrected_resistance > 0 else 0
 
         if self._is_finite_number(self.voltage):
             self.voltage_lcd.display(self._format_lcd_value(self.voltage, decimals=4))

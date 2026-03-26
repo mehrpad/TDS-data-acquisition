@@ -16,8 +16,11 @@ CONTROL_DEFAULTS = {
     "pid_kd": 0.0,
     "pid_integral_limit": 400.0,
     "pid_derivative_filter": 0.6,
+    "dmm_voltage_range": "AUTO",
+    "dmm_current_range": "AUTO",
     "startup_voltage": 0.01,
     "min_voltage": 0.0,
+    "fixed_series_resistance_ohm": 0.0,
     "max_voltage_step_up": 0.01,
     "max_voltage_step_down": 0.01,
     "temperature_tolerance_c": 2.0,
@@ -51,6 +54,7 @@ CONTROL_DEFAULTS = {
     "ignore_invalid_below_voltage": 0.05,
     "invalid_voltage_step_down": 0.01,
     "invalid_reuse_hold_after": 8,
+    "invalid_max_drop_from_recent_peak_v": 0.1,
     "rate_limit_activation_band_c": 2.0,
     "under_target_no_decrease_band_c": 1.5,
     "autosave_flush_interval_s": 5.0,
@@ -287,12 +291,14 @@ def _temperature_filter(history, temperature, window):
     return float(np.median(np.array(history, dtype=float)))
 
 
-def _calculate_resistance(measured_voltage, measured_current):
+def _calculate_resistance(measured_voltage, measured_current, config=None):
     if not np.isfinite(measured_voltage) or not np.isfinite(measured_current):
         return np.nan
     if abs(measured_current) < 1e-12:
         return np.nan
     resistance = measured_voltage / measured_current
+    if config is not None:
+        resistance -= float(config.get("fixed_series_resistance_ohm", 0.0))
     if not np.isfinite(resistance) or resistance <= 0:
         return np.nan
     return float(resistance)
@@ -339,7 +345,7 @@ def _measure_with_retry(
         temperature_interp,
         config=config,
     )
-    resistance = _calculate_resistance(measured_voltage, measured_current)
+    resistance = _calculate_resistance(measured_voltage, measured_current, config=config)
     jump_limit = _resistance_jump_limit(previous_resistance, config)
     consensus_limit = max(
         float(config.get("measurement_retry_consensus_ohm", 0.015)),
@@ -371,7 +377,7 @@ def _measure_with_retry(
             temperature_interp,
             config=config,
         )
-        retry_resistance = _calculate_resistance(retry_voltage, retry_current)
+        retry_resistance = _calculate_resistance(retry_voltage, retry_current, config=config)
         candidates.append((retry_voltage, retry_current, retry_temperature, retry_resistance))
         if np.isfinite(retry_resistance):
             retry_distance = abs(retry_resistance - previous_resistance)
@@ -660,6 +666,8 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
         time.sleep(0.04)
         siglent.set_voltage(power_supply, voltage=0.0)
         time.sleep(1.0)
+        siglent.configure_dc_range(dmm_v, "VOLT", config.get("dmm_voltage_range", "AUTO"))
+        siglent.configure_dc_range(dmm_i, "CURR", config.get("dmm_current_range", "AUTO"))
         siglent.set_mode_speed(dmm_i, "CURR", config["DMM_speed"])
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
 
@@ -714,7 +722,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     f"(attempt {initial_attempt + 1}/{config['measurement_fail_limit']})."
                 )
                 time.sleep(loop_time)
-            initial_resistance = _calculate_resistance(measured_voltage, measured_current)
+            initial_resistance = _calculate_resistance(measured_voltage, measured_current, config=config)
             if not _is_valid_measurement(measured_voltage, measured_current, temperature, config):
                 raise ExperimentSafetyError(
                     "Unable to acquire a valid initial measurement after repeated attempts."
@@ -729,6 +737,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
             pid_controller.reset(measurement=temperature)
             invalid_measurements = 0
             invalid_reuse_streak = 0
+            invalid_recovery_peak_voltage = None
             temperature_history = [float(temperature)]
             filtered_temperature = _temperature_filter(
                 temperature_history,
@@ -874,6 +883,10 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     )
                     if can_reuse_last_temperature:
                         invalid_reuse_streak += 1
+                        if invalid_recovery_peak_voltage is None or not np.isfinite(invalid_recovery_peak_voltage):
+                            invalid_recovery_peak_voltage = float(applied_voltage)
+                        else:
+                            invalid_recovery_peak_voltage = max(float(invalid_recovery_peak_voltage), float(applied_voltage))
                         recovery_temperature = previous_temperature
                         setpoint, phase, finished = program.update(recovery_temperature, loop_time)
 
@@ -954,6 +967,12 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             config["max_voltage"],
                             config,
                         )
+                        max_invalid_drop = max(float(config.get("invalid_max_drop_from_recent_peak_v", 0.1)), 0.0)
+                        invalid_recovery_floor = max(
+                            measurement_voltage_floor,
+                            float(invalid_recovery_peak_voltage) - max_invalid_drop,
+                        )
+                        pid_voltage = max(pid_voltage, invalid_recovery_floor)
                         previous_voltage = _set_voltage_if_needed(power_supply, pid_voltage, previous_voltage, config)
                         invalid_measurements = 0
                         if resistance_confirmed and np.isfinite(measured_resistance):
@@ -998,6 +1017,10 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
 
                     invalid_measurements += 1
                     invalid_reuse_streak = 0
+                    if invalid_recovery_peak_voltage is None or not np.isfinite(invalid_recovery_peak_voltage):
+                        invalid_recovery_peak_voltage = float(applied_voltage)
+                    else:
+                        invalid_recovery_peak_voltage = max(float(invalid_recovery_peak_voltage), float(applied_voltage))
                     pid_controller.reset(measurement=previous_temperature)
                     pid_voltage = _clamp(
                         applied_voltage - config.get("invalid_voltage_step_down", config["max_voltage_step_down"]),
@@ -1011,6 +1034,12 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                         config["max_voltage"],
                         config,
                     )
+                    max_invalid_drop = max(float(config.get("invalid_max_drop_from_recent_peak_v", 0.1)), 0.0)
+                    invalid_recovery_floor = max(
+                        measurement_voltage_floor,
+                        float(invalid_recovery_peak_voltage) - max_invalid_drop,
+                    )
+                    pid_voltage = max(pid_voltage, invalid_recovery_floor)
                     previous_voltage = _set_voltage_if_needed(power_supply, pid_voltage, previous_voltage, config)
                     print(
                         "Invalid measurement received. "
@@ -1042,6 +1071,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
 
                 invalid_measurements = 0
                 invalid_reuse_streak = 0
+                invalid_recovery_peak_voltage = None
                 filtered_temperature = _temperature_filter(
                     temperature_history,
                     temperature,
@@ -1134,7 +1164,7 @@ def measure_resistivity(dmm_v, dmm_i, siglent_module, temperature_interp, calibr
     if not np.isfinite(measured_voltage) or not np.isfinite(measured_current) or abs(measured_current) < 1e-12:
         return measured_voltage, measured_current, np.nan
 
-    resistance = measured_voltage / measured_current
+    resistance = _calculate_resistance(measured_voltage, measured_current, config=config)
     if not np.isfinite(resistance) or resistance <= 0:
         print(f"Invalid resistance calculated from V={measured_voltage}, I={measured_current}")
         return measured_voltage, measured_current, np.nan

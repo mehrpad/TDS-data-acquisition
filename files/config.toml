@@ -20,6 +20,14 @@ max_current = 3
 # Measurement speed setting sent to both DMMs.
 DMM_speed = 10
 
+# DC voltage range for the voltage DMM. Use "AUTO" or a fixed value like
+# 0.2, 2, 20, or 200.
+dmm_voltage_range = "AUTO"
+
+# DC current range for the current DMM. Use "AUTO" or a fixed value like
+# 0.2, 2, or 10 depending on expected current.
+dmm_current_range = "AUTO"
+
 # VISA address of the voltage DMM.
 DMM_v = "USB0::0xF4EC::0xEE38::SDM35FAC4R0253::INSTR"
 
@@ -50,6 +58,11 @@ startup_voltage = 0.1
 
 # Lowest voltage the controller may request.
 min_voltage = 0
+
+# Optional fixed series resistance to subtract from V/I in all resistance
+# calculations. Keep this at 0 unless you intentionally want software
+# compensation for known wiring/contact resistance.
+fixed_series_resistance_ohm = 1.3
 
 # Largest normal upward voltage step per loop.
 max_voltage_step_up = 0.01
@@ -162,6 +175,10 @@ invalid_voltage_step_down = 0.01
 
 # After this many reused invalid cycles, stop increasing voltage and hold/back off.
 invalid_reuse_hold_after = 8
+
+# During one invalid-reading recovery episode, never back off more than this
+# much below the recent touched PSU voltage.
+invalid_max_drop_from_recent_peak_v = 0.1
 
 # Autosave
 # How often buffered data is flushed to disk.
