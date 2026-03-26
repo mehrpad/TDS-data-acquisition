@@ -42,12 +42,14 @@ def _prepare_curve_interpolators(r_vs_t):
     return curve, resistivity_interp, temperature_interp
 
 
-def _calculate_resistance(measured_voltage, measured_current):
+def _calculate_resistance(measured_voltage, measured_current, config=None):
     if not np.isfinite(measured_voltage) or not np.isfinite(measured_current):
         return np.nan
     if abs(measured_current) < 1e-12:
         return np.nan
     resistance = measured_voltage / measured_current
+    if config is not None:
+        resistance -= float(config.get("fixed_series_resistance_ohm", 0.0))
     if not np.isfinite(resistance) or resistance <= 0:
         return np.nan
     return float(resistance)
@@ -184,7 +186,7 @@ def _find_stable_current_voltage(
                 calibration=True,
                 config=config,
             )
-            resistance = _calculate_resistance(measured_voltage, measured_current)
+            resistance = _calculate_resistance(measured_voltage, measured_current, config=config)
             _emit_live_measurement(
                 emitter,
                 target_temperature=display_target_temperature,
@@ -292,6 +294,8 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
 
         siglent.set_output(power_supply, state="ON")
         _sleep_with_stop(0.04, emitter)
+        siglent.configure_dc_range(dmm_v, "VOLT", config.get("dmm_voltage_range", "AUTO"))
+        siglent.configure_dc_range(dmm_i, "CURR", config.get("dmm_current_range", "AUTO"))
         siglent.set_mode_speed(dmm_i, "CURR", config["DMM_speed"])
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
         _sleep_with_stop(1.0, emitter)
@@ -360,7 +364,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
                 _sleep_with_stop(sample_interval_s, emitter)
                 continue
 
-            resistance = _calculate_resistance(measured_voltage, measured_current)
+            resistance = _calculate_resistance(measured_voltage, measured_current, config=config)
             if not np.isfinite(resistance):
                 print("Rejected room-temperature calibration sample: invalid resistance.")
                 _sleep_with_stop(sample_interval_s, emitter)
@@ -549,7 +553,7 @@ def _collect_pid_baseline(
             calibration=True,
             config=config,
         )
-        resistance = _calculate_resistance(measured_voltage, measured_current)
+        resistance = _calculate_resistance(measured_voltage, measured_current, config=config)
         _emit_live_measurement(
             emitter,
             target_temperature=target_temperature,
@@ -619,7 +623,7 @@ def _run_pid_tuning_attempt(
             calibration=True,
             config=config,
         )
-        resistance = _calculate_resistance(measured_voltage, measured_current)
+        resistance = _calculate_resistance(measured_voltage, measured_current, config=config)
         _emit_live_measurement(
             emitter,
             target_temperature=base_temperature + desired_rise,
@@ -779,6 +783,8 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
         _sleep_with_stop(0.04, emitter)
         siglent.set_voltage(power_supply, voltage=0.0)
         _sleep_with_stop(1.0, emitter)
+        siglent.configure_dc_range(dmm_v, "VOLT", config.get("dmm_voltage_range", "AUTO"))
+        siglent.configure_dc_range(dmm_i, "CURR", config.get("dmm_current_range", "AUTO"))
         siglent.set_mode_speed(dmm_i, "CURR", config["DMM_speed"])
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
 

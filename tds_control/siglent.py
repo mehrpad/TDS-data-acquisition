@@ -30,6 +30,27 @@ def set_mode_speed(DMM, mode, speed):
     # SCPI command to set speed
     DMM.write(f"{mode}:DC:NPLC {speed}")
 
+
+def configure_dc_range(DMM, mode, range_value):
+    mode = str(mode).strip().upper()
+    if mode not in {"VOLT", "CURR"}:
+        raise ValueError(f"Unsupported DMM mode for range configuration: {mode}")
+
+    if range_value is None:
+        return
+
+    if isinstance(range_value, str) and range_value.strip().upper() == "AUTO":
+        DMM.write(f"CONF:{mode}:DC AUTO")
+        return
+
+    try:
+        numeric_range = float(range_value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid DMM range value for {mode}: {range_value!r}") from exc
+
+    DMM.write(f"CONF:{mode}:DC {numeric_range}")
+
+
 def read_DMM(DMM):
     # SCPI command to read
     return DMM.query("READ?")
