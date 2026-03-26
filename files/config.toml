@@ -15,7 +15,7 @@ experiment_frequency = 1
 max_voltage = 30
 
 # Absolute software current limit in amps.
-max_current = 5
+max_current = 3
 
 # Measurement speed setting sent to both DMMs.
 DMM_speed = 10
@@ -31,10 +31,10 @@ PS = "USB0::0xF4EC::0x1410::SPD13DCC4R0058::INSTR"
 
 # Controller gains and output shaping
 # Proportional gain used by the live controller.
-pid_kp = 0.008
+pid_kp = 0.00223890399236555
 
 # Integral gain used by the live controller.
-pid_ki = 0.0004
+pid_ki = 0.0020486587377582
 
 # Derivative gain used only when controller_mode = "PID".
 pid_kd = 0
@@ -46,7 +46,7 @@ pid_integral_limit = 400
 pid_derivative_filter = 0.6
 
 # Initial PSU voltage at the start of an experiment.
-startup_voltage = 0.01
+startup_voltage = 0.1
 
 # Lowest voltage the controller may request.
 min_voltage = 0
