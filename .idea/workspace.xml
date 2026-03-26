@@ -4,14 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f27a4a2d-b362-467a-a90a-7e87fe15fbec" name="Changes" comment="update the control loop">
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/files/config.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/files/gui.png" beforeDir="false" afterPath="$PROJECT_DIR$/files/gui.png" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pyproject.toml" beforeDir="false" afterPath="$PROJECT_DIR$/pyproject.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tds_control/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/tds_control/app.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tds_control/paths.py" beforeDir="false" afterPath="$PROJECT_DIR$/tds_control/paths.py" afterDir="false" />
+    <list default="true" id="f27a4a2d-b362-467a-a90a-7e87fe15fbec" name="Changes" comment="refactor and improve control">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/files/304 Resistivity curve literature.xlsx" beforeDir="false" afterPath="$PROJECT_DIR$/files/304 Resistivity curve literature.xlsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/files/config.toml" beforeDir="false" afterPath="$PROJECT_DIR$/files/config.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/files/experiment_counter.txt" beforeDir="false" afterPath="$PROJECT_DIR$/files/experiment_counter.txt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -56,6 +53,9 @@
   &quot;associatedIndex&quot;: 0
 }</component>
   <component name="ProjectId" id="2rZhLqV7i2numzRgYPZo1iThgQk" />
+  <component name="ProjectLevelVcsManager">
+    <OptionsSetting value="false" id="Update" />
+  </component>
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
@@ -476,7 +476,15 @@
       <option name="project" value="LOCAL" />
       <updated>1773925540247</updated>
     </task>
-    <option name="localTasksCounter" value="13" />
+    <task id="LOCAL-00013" summary="refactor and improve control">
+      <option name="closed" value="true" />
+      <created>1773928918749</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1773928918749</updated>
+    </task>
+    <option name="localTasksCounter" value="14" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -493,10 +501,10 @@
     <MESSAGE value="pid tuning" />
     <MESSAGE value="return of calibration" />
     <MESSAGE value="lcd set digits" />
-    <MESSAGE value="refactor and improve control" />
     <MESSAGE value="diagram" />
     <MESSAGE value="update the control loop" />
-    <option name="LAST_COMMIT_MESSAGE" value="update the control loop" />
+    <MESSAGE value="refactor and improve control" />
+    <option name="LAST_COMMIT_MESSAGE" value="refactor and improve control" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/TDS$tds_experiment__1_.coverage" NAME="tds_experiment (1) Coverage Results" MODIFIED="1737642376275" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
