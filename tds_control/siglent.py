@@ -3,6 +3,19 @@ import pyvisa
 from scipy.interpolate import interp1d
 
 
+def _pick_sdm3055_dc_range(expected_max, allowed_ranges):
+    try:
+        value = abs(float(expected_max))
+    except (TypeError, ValueError):
+        return None
+    if value <= 0 or not value < float("inf"):
+        return None
+    for candidate in allowed_ranges:
+        if value <= candidate:
+            return candidate
+    return allowed_ranges[-1]
+
+
 def measV(DMM, acdc):
     cmd1 = f'MEAS:VOLT:{acdc}? AUTO'
     return float(DMM.query(cmd1))  # No need to parse manually
@@ -49,6 +62,21 @@ def configure_dc_range(DMM, mode, range_value):
         raise ValueError(f"Invalid DMM range value for {mode}: {range_value!r}") from exc
 
     DMM.write(f"CONF:{mode}:DC {numeric_range}")
+
+
+def configure_dc_range_from_limits(DMM, mode, expected_max):
+    mode = str(mode).strip().upper()
+    if mode == "VOLT":
+        picked_range = _pick_sdm3055_dc_range(expected_max, [0.2, 2.0, 20.0, 200.0, 1000.0])
+    elif mode == "CURR":
+        picked_range = _pick_sdm3055_dc_range(expected_max, [0.2, 2.0, 10.0])
+    else:
+        raise ValueError(f"Unsupported DMM mode for range configuration: {mode}")
+
+    if picked_range is None:
+        configure_dc_range(DMM, mode, "AUTO")
+    else:
+        configure_dc_range(DMM, mode, picked_range)
 
 
 def read_DMM(DMM):

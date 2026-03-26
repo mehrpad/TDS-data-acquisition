@@ -20,12 +20,6 @@ max_current = 3
 # Measurement speed setting sent to both DMMs.
 DMM_speed = 10
 
-# DC voltage range for the voltage DMM. Use "AUTO" or a fixed value like 0.2, 2, 20, or 200.
-dmm_voltage_range = "AUTO"
-
-# DC current range for the current DMM. Use "AUTO" or a fixed value like 0.2, 2, or 10 depending on expected current.
-dmm_current_range = "AUTO"
-
 # VISA address of the voltage DMM.
 DMM_v = "USB0::0xF4EC::0xEE38::SDM35FAC4R0253::INSTR"
 

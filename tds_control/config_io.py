@@ -17,8 +17,6 @@ CONFIG_GROUPS = [
             ("max_voltage", "Absolute software voltage limit for the power supply."),
             ("max_current", "Absolute software current limit in amps."),
             ("DMM_speed", "Measurement speed setting sent to both DMMs."),
-            ("dmm_voltage_range", 'DC voltage range for the voltage DMM. Use "AUTO" or a fixed value like 0.2, 2, 20, or 200.'),
-            ("dmm_current_range", 'DC current range for the current DMM. Use "AUTO" or a fixed value like 0.2, 2, or 10 depending on expected current.'),
             ("DMM_v", "VISA address of the voltage DMM."),
             ("DMM_i", "VISA address of the current DMM."),
             ("PS", "VISA address of the power supply."),

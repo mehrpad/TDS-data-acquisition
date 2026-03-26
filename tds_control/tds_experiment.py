@@ -666,8 +666,8 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
         time.sleep(0.04)
         siglent.set_voltage(power_supply, voltage=0.0)
         time.sleep(1.0)
-        siglent.configure_dc_range(dmm_v, "VOLT", config.get("dmm_voltage_range", "AUTO"))
-        siglent.configure_dc_range(dmm_i, "CURR", config.get("dmm_current_range", "AUTO"))
+        siglent.configure_dc_range_from_limits(dmm_v, "VOLT", config.get("max_voltage"))
+        siglent.configure_dc_range_from_limits(dmm_i, "CURR", config.get("max_current"))
         siglent.set_mode_speed(dmm_i, "CURR", config["DMM_speed"])
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
 
