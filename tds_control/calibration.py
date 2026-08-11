@@ -288,12 +288,14 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
         power_supply.write_termination = "\n"
         power_supply.read_termination = "\n"
 
-        siglent.set_output(power_supply, state="ON")
+        siglent.set_output(power_supply, state="OFF")
         _sleep_with_stop(0.04, emitter)
+        siglent.set_voltage(power_supply, voltage=0.0)
         siglent.configure_dc_range_from_limits(dmm_v, "VOLT", config.get("max_voltage"))
         siglent.configure_dc_range_from_limits(dmm_i, "CURR", config.get("max_current"))
         siglent.set_mode_speed(dmm_i, "CURR", config["DMM_speed"])
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
+        siglent.set_output(power_supply, state="ON")
         _sleep_with_stop(1.0, emitter)
 
         calibration_voltage, _ = _find_stable_current_voltage(
@@ -776,14 +778,15 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
         power_supply.write_termination = "\n"
         power_supply.read_termination = "\n"
 
-        siglent.set_output(power_supply, state="ON")
+        siglent.set_output(power_supply, state="OFF")
         _sleep_with_stop(0.04, emitter)
         siglent.set_voltage(power_supply, voltage=0.0)
-        _sleep_with_stop(1.0, emitter)
         siglent.configure_dc_range_from_limits(dmm_v, "VOLT", config.get("max_voltage"))
         siglent.configure_dc_range_from_limits(dmm_i, "CURR", config.get("max_current"))
         siglent.set_mode_speed(dmm_i, "CURR", config["DMM_speed"])
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
+        siglent.set_output(power_supply, state="ON")
+        _sleep_with_stop(1.0, emitter)
 
         stable_temperature_window = config["tuning_temperature_window_c"]
         temperature_lower_bound = None

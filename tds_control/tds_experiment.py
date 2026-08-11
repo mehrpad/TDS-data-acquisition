@@ -18,8 +18,6 @@ CONTROL_DEFAULTS = {
     "pid_kd": 0.0,
     "pid_integral_limit": 400.0,
     "pid_derivative_filter": 0.6,
-    "dmm_voltage_range": "AUTO",
-    "dmm_current_range": "AUTO",
     "startup_voltage": 0.01,
     "min_voltage": 0.0,
     "fixed_series_resistance_ohm": 0.0,
@@ -744,14 +742,15 @@ def curve_sweep(emitter, sweep_params, r_vs_t, config, data_saver=None):
         power_supply.write_termination = "\n"
         power_supply.read_termination = "\n"
 
-        siglent.set_output(power_supply, state="ON")
+        siglent.set_output(power_supply, state="OFF")
         time.sleep(0.04)
         siglent.set_voltage(power_supply, voltage=0.0)
-        time.sleep(1.0)
         siglent.configure_dc_range_from_limits(dmm_v, "VOLT", config.get("max_voltage"))
         siglent.configure_dc_range_from_limits(dmm_i, "CURR", config.get("max_current"))
         siglent.set_mode_speed(dmm_i, "CURR", config["DMM_speed"])
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
+        siglent.set_output(power_supply, state="ON")
+        time.sleep(1.0)
 
         temperature_interp = build_temperature_interpolator(r_vs_t, config=config)
         schedule_voltages, schedule_temperatures = build_curve_shaped_voltage_schedule(
@@ -845,14 +844,15 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
         power_supply.write_termination = "\n"
         power_supply.read_termination = "\n"
 
-        siglent.set_output(power_supply, state="ON")
+        siglent.set_output(power_supply, state="OFF")
         time.sleep(0.04)
         siglent.set_voltage(power_supply, voltage=0.0)
-        time.sleep(1.0)
         siglent.configure_dc_range_from_limits(dmm_v, "VOLT", config.get("max_voltage"))
         siglent.configure_dc_range_from_limits(dmm_i, "CURR", config.get("max_current"))
         siglent.set_mode_speed(dmm_i, "CURR", config["DMM_speed"])
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
+        siglent.set_output(power_supply, state="ON")
+        time.sleep(1.0)
 
         temperature_interp = build_temperature_interpolator(r_vs_t, config=config)
 
