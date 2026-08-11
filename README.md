@@ -11,27 +11,43 @@ The application is written with PyQt6 and PyVISA. It controls the power supply, 
 
 ![TDS GUI](files/gui.png)
 
-## Wiring
+![Measurement map](files/map.jpg)
 
-Use the instruments as shown below:
+## Wiring: required four-wire (Kelvin) connection
 
-![Wiring diagram](files/diagram.png)
+Use a true Kelvin connection. The current path and voltage-sense path must be separate all the way to the sample:
 
-What the diagram means:
+```text
+                                  CURRENT PATH
+PS+ -- Ammeter -- force cable -- o======== SAMPLE ========o -- force cable -- PS-
+                                  |                        |
+                              V+ sense                  V- sense
+                                  \                        /
+                                   \---- voltage DMM -----/
+                                      high-impedance sense wires
+```
 
-- The ammeter must be in series with the sample, so all current from the power supply flows through the current meter first and then through the wire.
-- The voltmeter must be in parallel with the sample, so it measures the voltage drop directly across the wire or resistor under test.
-- The power supply positive output goes to the ammeter input, then from the ammeter to the top side of the sample.
-- The bottom side of the sample returns to the power supply negative output.
-- The voltmeter connects across the two sample terminals, not in series.
+- `DMM_i` is the ammeter in series, so all source current flows through it and the two force leads.
+- `DMM_v` is the voltage DMM. Connect its `V+` and `V-` leads directly to the sample, ideally to separate sense contacts inside the current contacts.
+- Do **not** connect the voltage DMM at the power-supply ends of the cables, at the ammeter terminals, or at other points outside the sample contacts.
+- The voltage DMM draws negligible current, so the resistance of its own sense wires is practically irrelevant.
 
-For this software that means:
+With cable-end/two-wire voltage sensing, the reading includes unwanted lead and contact resistance:
 
-- `DMM_i` is the Siglent DMM wired as the ammeter in series.
-- `DMM_v` is the Siglent DMM wired as the voltmeter across the sample.
-- `PS` is the Siglent DC power supply driving the sample.
+```text
+R_measured = R_sample + R_contacts + R_cables
+```
 
-Do not connect the current meter in parallel across the sample, because that can short the source and damage the setup.
+With the required Kelvin connection, the voltage DMM measures the sample drop:
+
+```text
+V_DMM ≈ I × R_sample
+R_sample = V_DMM / I
+```
+
+Do not connect the current meter in parallel across the sample, because that can short the source and damage the setup. Keep `fixed_series_resistance_ohm = 0` for a Kelvin measurement unless a real, separately verified series component must be removed from the calculation. The loaded `R vs. T` calibration must represent the same Kelvin sample resistance.
+
+See [the measurement setup guide](docs/MEASUREMENT_SETUP.md) for the wiring checklist and the prohibited two-wire layout.
 
 ## Features
 
@@ -95,6 +111,12 @@ Important fields:
 - `tuning_response_voltage_step`: how much each PI/PID tuning attempt increases above the safe baseline voltage
 - `curve_sweep_voltage_step`: basis used to derive the number of open-loop sweep steps from the GUI `Max Voltage`
 
+### Fixed DMM range policy
+
+Auto-ranging must remain **off** on both DMMs. Before power-supply output is enabled, the software locks the voltage DMM and current DMM to the smallest supported fixed DC range that covers `max_voltage` and `max_current`, respectively. It does not request `AUTO` range during a run.
+
+Set `max_voltage` and `max_current` to positive, realistic limits before starting. For example, the current configuration (`30 V`, `3 A`) selects fixed `200 V` and `10 A` ranges. Verify the selected fixed ranges are appropriate for the installed DMMs and the expected measurement before every run; do not enable Auto Range manually on either meter.
+
 Controller mode notes:
 
 - `controller_mode = "PI"` is the default and recommended starting point
@@ -155,15 +177,17 @@ python TDS.py
    The software performs a guarded low-voltage step test with a small temperature rise and stores the tuned gains in `files/config.toml`.
    By default this tunes a PI controller because `controller_mode = "PI"` is the default.
 5. Enter the experiment program in the text box.
-6. Set software limits for `Max Voltage` and `Max Current`.
-7. Click `Start`.
+6. Confirm the four-wire Kelvin contacts and set positive, conservative `Max Voltage` and `Max Current` limits. Verify both DMMs are on fixed DC ranges, not Auto Range.
+7. Set an independent current limit/OCP on the power supply.
+8. Click `Start`.
 
 For `CURVE_SWEEP` mode:
 
 1. Click `Find R vs. T` and select the calibration file.
 2. Choose `CURVE_SWEEP` in the `Experiment Mode` selector.
-3. Set the GUI `Max Voltage` and `Max Current`.
-4. Click `Start`.
+3. Confirm the four-wire Kelvin contacts, set the GUI `Max Voltage` and `Max Current`, and verify both DMMs use fixed ranges.
+4. Set an independent current limit/OCP on the power supply.
+5. Click `Start`.
 
 In this mode the program text box is disabled because the sweep shape comes from the loaded curve and the sweep resolution comes from `curve_sweep_voltage_step`.
 
@@ -197,11 +221,11 @@ The control loop now includes:
 - voltage step-up and step-down limits
 - PID anti-windup
 - rate limiting when temperature rises too quickly
-- current protection using `max_current`
+- software current cutoff using `max_current`
 - invalid-measurement detection
 - automatic voltage shutdown at the end of the run
 
-Even with these protections, first runs on a new sample should be done with conservative limits and supervision.
+`max_current` is a software stop threshold after the current DMM is read; it is not a hardware current limiter. Set an independent current limit/OCP on the power supply before each run. Even with these protections, first runs on a new sample should be done with conservative limits and supervision.
 
 ## Data Output
 

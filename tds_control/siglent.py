@@ -1,28 +1,26 @@
+import math
 import time
 import pyvisa
 from scipy.interpolate import interp1d
 
 
+_SDM3055_DC_RANGES = {
+    "VOLT": (0.2, 2.0, 20.0, 200.0, 1000.0),
+    "CURR": (0.2, 2.0, 10.0),
+}
+
+
 def _pick_sdm3055_dc_range(expected_max, allowed_ranges):
     try:
-        value = abs(float(expected_max))
+        value = float(expected_max)
     except (TypeError, ValueError):
         return None
-    if value <= 0 or not value < float("inf"):
+    if value <= 0 or not math.isfinite(value):
         return None
     for candidate in allowed_ranges:
         if value <= candidate:
             return candidate
-    return allowed_ranges[-1]
-
-
-def measV(DMM, acdc):
-    cmd1 = f'MEAS:VOLT:{acdc}? AUTO'
-    return float(DMM.query(cmd1))  # No need to parse manually
-
-def measI(DMM, acdc):
-    cmd1 = f'MEAS:CURR:{acdc}? AUTO'
-    return float(DMM.query(cmd1))  # No need to parse manually
+    return None
 
 # Function to set voltage on the power supply
 def set_voltage(ps, voltage):
@@ -46,37 +44,46 @@ def set_mode_speed(DMM, mode, speed):
 
 def configure_dc_range(DMM, mode, range_value):
     mode = str(mode).strip().upper()
-    if mode not in {"VOLT", "CURR"}:
+    if mode not in _SDM3055_DC_RANGES:
         raise ValueError(f"Unsupported DMM mode for range configuration: {mode}")
 
-    if range_value is None:
-        return
-
     if isinstance(range_value, str) and range_value.strip().upper() == "AUTO":
-        DMM.write(f"CONF:{mode}:DC AUTO")
-        return
+        raise ValueError(
+            "DMM auto-ranging is disabled for resistivity measurements. "
+            "Use a supported fixed DC range."
+        )
 
     try:
         numeric_range = float(range_value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Invalid DMM range value for {mode}: {range_value!r}") from exc
 
+    allowed_ranges = _SDM3055_DC_RANGES[mode]
+    if not math.isfinite(numeric_range) or numeric_range not in allowed_ranges:
+        allowed_text = ", ".join(str(value) for value in allowed_ranges)
+        raise ValueError(
+            f"Unsupported fixed {mode} DC range {range_value!r}. "
+            f"Supported ranges are: {allowed_text}."
+        )
+
     DMM.write(f"CONF:{mode}:DC {numeric_range}")
+    return numeric_range
 
 
 def configure_dc_range_from_limits(DMM, mode, expected_max):
     mode = str(mode).strip().upper()
-    if mode == "VOLT":
-        picked_range = _pick_sdm3055_dc_range(expected_max, [0.2, 2.0, 20.0, 200.0, 1000.0])
-    elif mode == "CURR":
-        picked_range = _pick_sdm3055_dc_range(expected_max, [0.2, 2.0, 10.0])
-    else:
+    if mode not in _SDM3055_DC_RANGES:
         raise ValueError(f"Unsupported DMM mode for range configuration: {mode}")
 
+    allowed_ranges = _SDM3055_DC_RANGES[mode]
+    picked_range = _pick_sdm3055_dc_range(expected_max, allowed_ranges)
     if picked_range is None:
-        configure_dc_range(DMM, mode, "AUTO")
-    else:
-        configure_dc_range(DMM, mode, picked_range)
+        raise ValueError(
+            f"{mode} limit {expected_max!r} is not a positive finite value within the "
+            f"largest supported fixed range ({allowed_ranges[-1]}). "
+            "DMM auto-ranging is disabled."
+        )
+    return configure_dc_range(DMM, mode, picked_range)
 
 
 def read_DMM(DMM):
