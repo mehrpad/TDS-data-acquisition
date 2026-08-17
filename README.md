@@ -126,12 +126,13 @@ Controller mode notes:
 Experiment mode notes:
 
 - `experiment_mode = "CONTROLLED"` is the default mode
-- `CONTROLLED` uses the loaded `R vs. T` curve, optional `T0` calibration, and PI/PID control to follow the programmed temperature path
-- `CURVE_SWEEP` disables `Calibrate T. Zero`, disables `Tune PI/PID`, ignores the experiment-program text box, and performs an open-loop voltage sweep
+- `CONTROLLED` uses the loaded `R vs. T` curve, `T0` calibration, and PI/PID control to follow the programmed temperature path
+- `CURVE_SWEEP` keeps `Calibrate T. Zero` available and requires it before `Start`, disables `Tune PI/PID`, ignores the experiment-program text box, and performs an open-loop voltage sweep
 - in `CURVE_SWEEP`, the sweep starts from `curve_sweep_start_voltage` and ends at the smaller of the GUI `Max Voltage` and the software limit from `config.toml`
 - the number of sweep points is calculated automatically as `ceil(Max Voltage / curve_sweep_voltage_step)`
 - the loaded `R(T)` curve is used only to shape the voltage progression, not to claim a true physical `V(T)` law
 - the shaping idea is simple: the software samples the loaded curve across temperature, converts that sampled curve into normalized fractions, and then maps those fractions onto the voltage range so the early and late parts of the sweep follow the same general order as the calibration curve
+- `T0` calibration rescales that curve to the actual four-wire resistance of the current wire, so the live `R -> T` conversion uses the current wire rather than the unscaled reference values
 
 The software also stores tuned controller gains and autosave defaults in this file after you run the GUI.
 
@@ -171,7 +172,7 @@ python TDS.py
    The file is loaded automatically.
 2. Check the `Zero Temperature (°C)` value.
    This should be the actual room or base temperature.
-3. Optional: click `Calibrate T. Zero`.
+3. Click `Calibrate T. Zero`.
    This rescales the loaded resistivity curve so the measured low-voltage room-temperature resistance matches the entered `Zero Temperature`.
 4. Optional: click `Tune PI/PID`.
    The software performs a guarded low-voltage step test with a small temperature rise and stores the tuned gains in `files/config.toml`.
@@ -185,9 +186,10 @@ For `CURVE_SWEEP` mode:
 
 1. Click `Find R vs. T` and select the calibration file.
 2. Choose `CURVE_SWEEP` in the `Experiment Mode` selector.
-3. Confirm the four-wire Kelvin contacts, set the GUI `Max Voltage` and `Max Current`, and verify both DMMs use fixed ranges.
-4. Set an independent current limit/OCP on the power supply.
-5. Click `Start`.
+3. Enter the actual equilibrated wire temperature in `Zero Temperature` and click `Calibrate T. Zero`.
+4. Confirm the four-wire Kelvin contacts, set the GUI `Max Voltage` and `Max Current`, and verify both DMMs use fixed ranges.
+5. Set an independent current limit/OCP on the power supply.
+6. Click `Start`.
 
 In this mode the program text box is disabled because the sweep shape comes from the loaded curve and the sweep resolution comes from `curve_sweep_voltage_step`.
 
@@ -249,6 +251,7 @@ Autosave runs in a background thread so disk writing does not block experiment c
 
 This function does not shift the temperature setpoint directly.
 It measures the sample resistance near room temperature and rescales the loaded resistivity curve so the measured room-temperature point matches the entered `Zero Temperature`.
+For the current wire, it constructs `R_cal(T) = R0 * rho_ref(T) / rho_ref(T0)` and then uses that calibrated `R(T)` curve for the live resistance-to-temperature conversion.
 
 During this step the software now:
 
