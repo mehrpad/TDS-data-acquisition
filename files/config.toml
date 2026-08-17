@@ -54,6 +54,9 @@ startup_voltage = 0.1
 # Lowest voltage the controller may request.
 min_voltage = 0
 
+# Keeps PSU CH1 enabled between calibration/experiment runs without materially heating the sample.
+psu_keepalive_voltage = 0.001
+
 # Optional verified external series resistance to subtract from V/I. Keep this at 0 for a Kelvin sample measurement.
 fixed_series_resistance_ohm = 0
 
