@@ -24,13 +24,32 @@ def _pick_sdm3055_dc_range(expected_max, allowed_ranges):
 
 # Function to set voltage on the power supply
 def set_voltage(ps, voltage):
-    # SCPI command to set voltage
-    ps.write(f"VOLT {voltage}")
+    """Set the PSU voltage and make sure CH1 output is enabled when needed."""
+    numeric_voltage = float(voltage)
+    ps.write(f"VOLT {numeric_voltage}")
+
+    # An operator can turn the output off on the front panel between runs.
+    # Reassert the output state before every non-zero setpoint so all experiment
+    # paths recover automatically without energising the supply for a 0 V command.
+    if abs(numeric_voltage) > 0:
+        set_output(ps, state="ON")
 
 
 def set_output(ps, state):
-    # SCPI command to turn on output
-    ps.write(f"OUTP CH1,{state}")
+    """Set the Siglent SPD CH1 output state using the documented SCPI command."""
+    normalized_state = str(state).strip().upper()
+    if normalized_state not in {"ON", "OFF"}:
+        raise ValueError(f"Unsupported power-supply output state: {state!r}")
+
+    command = f"OUTP CH1,{normalized_state}"
+    try:
+        ps.write(command)
+    except Exception as exc:
+        raise RuntimeError(f"Could not set power-supply CH1 output {normalized_state}.") from exc
+
+    # Siglent recommends allowing a short delay after single write commands.
+    time.sleep(0.05)
+    print(f"Power supply CH1 output command sent: {normalized_state}")
 
 def read_current(ps):
     # SCPI command to read current
