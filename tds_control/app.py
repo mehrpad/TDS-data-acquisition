@@ -32,6 +32,7 @@ class Ui_TDS(object):
         self.data_list = []
         self.worker_thread = None
         self.calibration_worker = None
+        self._operation_running = False
         self.data_saver = None
         self.current_experiment_dir = None
         self.file_path = None
@@ -176,6 +177,27 @@ class Ui_TDS(object):
                                        "                                            ")
         self.max_current.setObjectName("max_current")
         self.gridLayout.addWidget(self.max_current, 4, 1, 1, 1)
+        self.label_calibration_start_voltage = QtWidgets.QLabel(parent=self.centralwidget)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Minimum)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.label_calibration_start_voltage.sizePolicy().hasHeightForWidth())
+        self.label_calibration_start_voltage.setSizePolicy(sizePolicy)
+        self.label_calibration_start_voltage.setObjectName("label_calibration_start_voltage")
+        self.gridLayout.addWidget(self.label_calibration_start_voltage, 5, 0, 1, 1)
+        self.calibration_start_voltage = QtWidgets.QLineEdit(parent=self.centralwidget)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Minimum)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.calibration_start_voltage.sizePolicy().hasHeightForWidth())
+        self.calibration_start_voltage.setSizePolicy(sizePolicy)
+        self.calibration_start_voltage.setMinimumSize(QtCore.QSize(100, 20))
+        self.calibration_start_voltage.setStyleSheet("QLineEdit{\n"
+                                                "                                                background: rgb(223,223,233)\n"
+                                                "                                                }\n"
+                                                "                                            ")
+        self.calibration_start_voltage.setObjectName("calibration_start_voltage")
+        self.gridLayout.addWidget(self.calibration_start_voltage, 5, 1, 1, 1)
         self.label_179 = QtWidgets.QLabel(parent=self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Minimum)
         sizePolicy.setHorizontalStretch(0)
@@ -183,7 +205,7 @@ class Ui_TDS(object):
         sizePolicy.setHeightForWidth(self.label_179.sizePolicy().hasHeightForWidth())
         self.label_179.setSizePolicy(sizePolicy)
         self.label_179.setObjectName("label_179")
-        self.gridLayout.addWidget(self.label_179, 5, 0, 1, 1)
+        self.gridLayout.addWidget(self.label_179, 6, 0, 1, 1)
         self.measurement_conversion_mode = QtWidgets.QComboBox(parent=self.centralwidget)
         self.measurement_conversion_mode.setMinimumSize(QtCore.QSize(100, 20))
         self.measurement_conversion_mode.setStyleSheet("QComboBox{\n"
@@ -193,7 +215,7 @@ class Ui_TDS(object):
         self.measurement_conversion_mode.setObjectName("measurement_conversion_mode")
         self.measurement_conversion_mode.addItem("")
         self.measurement_conversion_mode.addItem("")
-        self.gridLayout.addWidget(self.measurement_conversion_mode, 5, 1, 1, 1)
+        self.gridLayout.addWidget(self.measurement_conversion_mode, 6, 1, 1, 1)
         self.gridLayout_5.addLayout(self.gridLayout, 0, 0, 1, 1)
         self.gridLayout_4 = QtWidgets.QGridLayout()
         self.gridLayout_4.setObjectName("gridLayout_4")
@@ -462,7 +484,8 @@ class Ui_TDS(object):
         TDS.setTabOrder(self.ex_name, self.calib_temperature)
         TDS.setTabOrder(self.calib_temperature, self.max_voltage)
         TDS.setTabOrder(self.max_voltage, self.max_current)
-        TDS.setTabOrder(self.max_current, self.measurement_conversion_mode)
+        TDS.setTabOrder(self.max_current, self.calibration_start_voltage)
+        TDS.setTabOrder(self.calibration_start_voltage, self.measurement_conversion_mode)
         TDS.setTabOrder(self.measurement_conversion_mode, self.parameters_text)
         TDS.setTabOrder(self.parameters_text, self.start_botton)
         TDS.setTabOrder(self.start_botton, self.stop_botton)
@@ -536,17 +559,20 @@ class Ui_TDS(object):
 
         self.max_voltage.editingFinished.connect(self.update_max_voltage)
         self.max_current.editingFinished.connect(self.update_max_current)
+        self.calibration_start_voltage.editingFinished.connect(self.update_calibration_start_voltage)
         self.measurement_conversion_mode.currentIndexChanged.connect(self.update_experiment_mode)
         self.calib_temperature.textEdited.connect(self.invalidate_t_zero_calibration)
 
-        # from config file put max voltage and current
+        # Populate inputs from configuration.
         self.max_voltage.setText(str(self.config['max_voltage']))
         self.max_current.setText(str(self.config['max_current']))
+        self.calibration_start_voltage.setText(str(self.config['t0_voltage_search_start']))
         self.measurement_conversion_mode.setCurrentText(
             tds_experiment.get_experiment_mode(self.config)
         )
         self.apply_experiment_mode_ui()
-
+        self._update_file_tooltips()
+        self._set_operation_running(False)
 
         self.voltage_lcd.setDigitCount(8)
         self.current_lcd.setDigitCount(8)
@@ -567,6 +593,8 @@ class Ui_TDS(object):
         self.max_voltage.setText(_translate("TDS", "10"))
         self.label_178.setText(_translate("TDS", "Max Current (A)"))
         self.max_current.setText(_translate("TDS", "5"))
+        self.label_calibration_start_voltage.setText(_translate("TDS", "Initial Voltage (V)"))
+        self.calibration_start_voltage.setText(_translate("TDS", "0.01"))
         self.label_179.setText(_translate("TDS", "Experiment Mode"))
         self.measurement_conversion_mode.setItemText(0, _translate("TDS", "CONTROLLED"))
         self.measurement_conversion_mode.setItemText(1, _translate("TDS", "CURVE_SWEEP"))
@@ -607,6 +635,29 @@ class Ui_TDS(object):
         self.config['max_current'] = float(self.max_current.text())
         self.emitter.max_current_signal.emit(self.config['max_current'])
         self.save_config()
+
+    def update_calibration_start_voltage(self):
+        """Validate and save the shared initial voltage used by all operations."""
+        previous_value = float(self.config['t0_voltage_search_start'])
+        try:
+            voltage = float(self.calibration_start_voltage.text())
+            if not np.isfinite(voltage) or voltage < 0.005:
+                raise ValueError('Initial calibration voltage must be at least 0.005 V.')
+            if voltage > float(self.config['max_voltage']):
+                raise ValueError('Initial calibration voltage cannot exceed Max Voltage.')
+        except ValueError as exc:
+            self.calibration_start_voltage.setText(f'{previous_value:g}')
+            self.error_message(str(exc), color='red')
+            return False
+
+        self.config['t0_voltage_search_start'] = voltage
+        self.config['tuning_start_voltage'] = voltage
+        self.config['startup_voltage'] = voltage
+        self.config['curve_sweep_start_voltage'] = voltage
+        self.calibration_start_voltage.setText(f'{voltage:g}')
+        self.save_config()
+        return True
+
     def update_experiment_mode(self):
         """
         Update the selected experiment mode.
@@ -616,9 +667,9 @@ class Ui_TDS(object):
         self.save_config()
 
     def apply_experiment_mode_ui(self):
-        """
-        Enable or disable controls based on the selected experiment mode.
-        """
+        """Enable or disable controls based on the selected experiment mode."""
+        if self._operation_running:
+            return
         curve_sweep = tds_experiment.get_experiment_mode(self.config) == "CURVE_SWEEP"
         # T0 calibration anchors the loaded material curve to the current wire,
         # so it is required in both CONTROLLED and CURVE_SWEEP modes.
@@ -630,6 +681,54 @@ class Ui_TDS(object):
             self.parameters_text.setPlaceholderText("Disabled in CURVE_SWEEP mode")
         else:
             self.parameters_text.setPlaceholderText("")
+
+    def _set_operation_running(self, running):
+        """Lock setup controls while hardware is calibrating, tuning, or running."""
+        self._operation_running = bool(running)
+        setup_controls = (
+            self.ex_name,
+            self.calib_temperature,
+            self.max_voltage,
+            self.max_current,
+            self.calibration_start_voltage,
+            self.measurement_conversion_mode,
+            self.parameters_text,
+        )
+        action_controls = (
+            self.start_botton,
+            self.find_csv_botton,
+            self.load_csv_botton,
+            self.calibrate_botton_base_t,
+            self.calibrate_botton_pid,
+        )
+        for control in (*setup_controls, *action_controls):
+            control.setEnabled(not self._operation_running)
+        self.stop_botton.setEnabled(self._operation_running)
+        if not self._operation_running:
+            self.apply_experiment_mode_ui()
+
+    def _update_file_tooltips(self):
+        """Describe the R-vs-T file actions and show the selected file on hover."""
+        self.find_csv_botton.setToolTip(
+            'Choose the material R-vs-T reference file (.xlsx or .csv).\n'
+            'The file must contain resistivity and temperature columns, then run Calibrate T. Zero.'
+        )
+        selected_file = self.file_path or 'No R-vs-T file selected yet.'
+        self.load_csv_botton.setToolTip(
+            'Reload the currently selected R-vs-T reference file.\n'
+            f'Selected file: {selected_file}'
+        )
+        self.calibration_start_voltage.setToolTip(
+            'Shared starting PSU voltage for T0 calibration, PI/PID tuning, and experiments (default: 0.01 V).\n'
+            'Increase only when 0.01 V cannot produce a stable measurable current.'
+        )
+        self.calibrate_botton_base_t.setToolTip(
+            'Measure the current wire at the entered zero temperature and scale the loaded material curve.'
+        )
+        self.calibrate_botton_pid.setToolTip(
+            'Tune the PI/PID controller after a successful T. Zero calibration.'
+        )
+
     def find_csv_clicked(self):
         """
         Opens a file dialog in a separate thread to avoid blocking the UI.
@@ -639,6 +738,7 @@ class Ui_TDS(object):
         )
         if file_path:
             self.file_path = file_path
+            self._update_file_tooltips()
             try:
                 self.load_csv_clicked()
                 self.error_message(f"Loaded R vs. T file: {os.path.basename(file_path)}", color='black')
@@ -1009,52 +1109,37 @@ class Ui_TDS(object):
         self.refresh_plot_ranges()
 
     def calibrate_base_temperature(self):
-        """
-        Calibrate the base temperature
-        """
-        if self.require_loaded_curve('calibrating T. Zero'):
-            self.emitter.reset_stop()
-            self.calibrate_botton_base_t.setEnabled(False)
-            self.calibrate_botton_pid.setEnabled(False)
-            self.find_csv_botton.setEnabled(False)
-            self.load_csv_botton.setEnabled(False)
-            self.start_botton.setEnabled(False)
-            self.stop_botton.setEnabled(True)
-            try:
-                base_temperature = float(self.calib_temperature.text())
-                self.calibration_worker = CalibrationWorkerThread(
-                    calibration.calibrate_temperature_curve,
-                    self.emitter,
-                    self.r_vs_t,
-                    base_temperature,
-                    self.config,
-                )
-                self.calibration_worker.finished.connect(self.calibration_finished)
-                self.calibration_worker.start()
-                self.error_message('Running T. Zero calibration. Press Stop to cancel.', color='black')
-            except ValueError:
-                self.error_message('Invalid base temperature', color='red')
-                self.calibrate_botton_base_t.setEnabled(True)
-                self.calibrate_botton_pid.setEnabled(True)
-                self.find_csv_botton.setEnabled(True)
-                self.load_csv_botton.setEnabled(True)
-                self.start_botton.setEnabled(True)
-                self.stop_botton.setEnabled(True)
-                self.apply_experiment_mode_ui()
+        """Anchor the loaded R-vs-T curve to the current wire at T0."""
+        if not self.require_loaded_curve('calibrating T. Zero'):
+            return
+        try:
+            base_temperature = float(self.calib_temperature.text())
+        except ValueError:
+            self.error_message('Invalid base temperature', color='red')
+            return
+        if not self.update_calibration_start_voltage():
+            return
+
+        self.emitter.reset_stop()
+        self._set_operation_running(True)
+        self.calibration_worker = CalibrationWorkerThread(
+            calibration.calibrate_temperature_curve,
+            self.emitter,
+            self.r_vs_t,
+            base_temperature,
+            self.config,
+        )
+        self.calibration_worker.finished.connect(self.calibration_finished)
+        self.calibration_worker.start()
+        self.error_message('Running T. Zero calibration. Press Stop to cancel.', color='black')
 
     def calibration_finished(self, result):
         """
         Handles the result of the calibration worker thread.
         """
-        self.calibrate_botton_base_t.setEnabled(True)
-        self.calibrate_botton_pid.setEnabled(True)
-        self.find_csv_botton.setEnabled(True)
-        self.load_csv_botton.setEnabled(True)
-        self.start_botton.setEnabled(True)
-        self.stop_botton.setEnabled(True)
         self.calibration_worker = None
         self.emitter.reset_stop()
-        self.apply_experiment_mode_ui()
+        self._set_operation_running(False)
 
         if isinstance(result, calibration.CalibrationCancelled):
             self.error_message('T. Zero calibration stopped.', color='black')
@@ -1075,15 +1160,9 @@ class Ui_TDS(object):
         Handle the result of the guarded PID tuning worker.
         """
         controller_mode = tds_experiment.get_controller_mode(self.config)
-        self.calibrate_botton_base_t.setEnabled(True)
-        self.calibrate_botton_pid.setEnabled(True)
-        self.find_csv_botton.setEnabled(True)
-        self.load_csv_botton.setEnabled(True)
-        self.start_botton.setEnabled(True)
-        self.stop_botton.setEnabled(True)
         self.calibration_worker = None
         self.emitter.reset_stop()
-        self.apply_experiment_mode_ui()
+        self._set_operation_running(False)
 
         if isinstance(result, calibration.CalibrationCancelled):
             print(f"{controller_mode} tuning stopped by user.")
@@ -1130,12 +1209,7 @@ class Ui_TDS(object):
             return
 
         self.emitter.reset_stop()
-        self.calibrate_botton_base_t.setEnabled(False)
-        self.calibrate_botton_pid.setEnabled(False)
-        self.find_csv_botton.setEnabled(False)
-        self.load_csv_botton.setEnabled(False)
-        self.start_botton.setEnabled(False)
-        self.stop_botton.setEnabled(True)
+        self._set_operation_running(True)
         self.calibration_worker = CalibrationWorkerThread(
             calibration.tune_pid,
             self.emitter,
@@ -1189,13 +1263,7 @@ class Ui_TDS(object):
             return
         self.emitter.reset_stop()
         self._prepare_new_experiment_plots()
-        self.start_botton.setEnabled(False)
-        self.stop_botton.setEnabled(True)
-        self.calibrate_botton_base_t.setEnabled(False)
-        self.calibrate_botton_pid.setEnabled(False)
-        self.find_csv_botton.setEnabled(False)
-        self.load_csv_botton.setEnabled(False)
-        self.ex_name.setEnabled(False)
+        self._set_operation_running(True)
 
         if experiment_mode == "CURVE_SWEEP":
             self.worker_thread = WorkerThread(
@@ -1246,15 +1314,7 @@ class Ui_TDS(object):
         self.current = 0
         self.temperature = 0
         self.resistivity = 0
-        self.start_botton.setEnabled(True)
-        self.stop_botton.setEnabled(True)
-        self.calibrate_botton_base_t.setEnabled(True)
-        self.calibrate_botton_pid.setEnabled(True)
-        self.find_csv_botton.setEnabled(True)
-        self.load_csv_botton.setEnabled(True)
-        self.ex_name.setEnabled(True)
-        self.apply_experiment_mode_ui()
-
+        self._set_operation_running(False)
         self.emitter.reset_stop()
         self.worker_thread = None
 
