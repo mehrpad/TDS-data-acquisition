@@ -33,6 +33,7 @@ CONFIG_GROUPS = [
             ("pid_derivative_filter", "Low-pass filter factor for derivative smoothing."),
             ("startup_voltage", "Initial PSU voltage at the start of an experiment."),
             ("min_voltage", "Lowest voltage the controller may request."),
+            ("psu_keepalive_voltage", "Small non-zero PSU voltage that keeps CH1 enabled between operations."),
             ("fixed_series_resistance_ohm", "Optional verified external series resistance to subtract from V/I. Keep this at 0 for a Kelvin sample measurement."),
             ("max_voltage_step_up", "Largest normal upward voltage step per loop."),
             ("max_voltage_step_down", "Largest downward voltage step per loop."),

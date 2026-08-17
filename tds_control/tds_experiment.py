@@ -20,6 +20,7 @@ CONTROL_DEFAULTS = {
     "pid_derivative_filter": 0.6,
     "startup_voltage": 0.01,
     "min_voltage": 0.0,
+    "psu_keepalive_voltage": 0.001,
     "fixed_series_resistance_ohm": 0.0,
     "max_voltage_step_up": 0.01,
     "max_voltage_step_down": 0.01,
@@ -442,7 +443,7 @@ def _measure_with_retry(
                 f"Accepting stable retried measurement at {accepted_resistance:.4f} Ohm "
                 f"despite jump from previous {previous_resistance:.4f} Ohm."
             )
-    return accepted_voltage, accepted_current, accepted_temperature, accepted_resistance, True
+            return accepted_voltage, accepted_current, accepted_temperature, accepted_resistance, True
 
     print(
         f"Rejecting measurement after retries; best resistance {best[3]:.4f} Ohm "
@@ -689,17 +690,44 @@ def _confirmed_downward_temperature_jump(
     return abs(measured_current) >= minimum_confirm_current and applied_voltage >= minimum_confirm_voltage
 
 
-def _shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager):
+def _psu_keepalive_voltage(config):
+    try:
+        keepalive_voltage = float(config.get("psu_keepalive_voltage", 0.001))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("psu_keepalive_voltage must be a positive finite voltage.") from exc
+
+    max_voltage = float(config["max_voltage"])
+    if not np.isfinite(keepalive_voltage) or keepalive_voltage <= 0 or keepalive_voltage > max_voltage:
+        raise ValueError(
+            "psu_keepalive_voltage must be positive, finite, and no greater than max_voltage."
+        )
+    return keepalive_voltage
+
+
+def prepare_power_supply_output(power_supply, config):
+    """Keep CH1 enabled at a negligible voltage while a run is prepared."""
+    keepalive_voltage = _psu_keepalive_voltage(config)
+    siglent.set_voltage(power_supply, voltage=keepalive_voltage)
+    print(f"Power supply output enabled at keep-alive voltage {keepalive_voltage:.6f} V.")
+
+
+def _shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager, config=None):
     if power_supply is not None:
+        config = config or CONTROL_DEFAULTS
+        keepalive_voltage = None
         try:
-            siglent.set_voltage(power_supply, voltage=0.0)
+            keepalive_voltage = _psu_keepalive_voltage(config)
+            siglent.set_voltage(power_supply, voltage=keepalive_voltage)
         except Exception as exc:
-            print(f"An error occurred in setting voltage to zero: {exc}")
-        try:
+            print(f"An error occurred in setting the PSU keep-alive voltage: {exc}")
+        if keepalive_voltage is not None:
             time.sleep(0.1)
-            siglent.set_output(power_supply, state="OFF")
-        except Exception as exc:
-            print(f"An error occurred switching the power supply off: {exc}")
+            print(f"Power supply output left ON at {keepalive_voltage:.6f} V.")
+        else:
+            try:
+                siglent.set_output(power_supply, state="OFF")
+            except Exception as exc:
+                print(f"An error occurred switching the power supply off: {exc}")
     for instrument in (dmm_v, dmm_i, power_supply):
         if instrument is not None:
             try:
@@ -742,14 +770,11 @@ def curve_sweep(emitter, sweep_params, r_vs_t, config, data_saver=None):
         power_supply.write_termination = "\n"
         power_supply.read_termination = "\n"
 
-        siglent.set_output(power_supply, state="OFF")
-        time.sleep(0.04)
-        siglent.set_voltage(power_supply, voltage=0.0)
+        prepare_power_supply_output(power_supply, config)
         siglent.configure_dc_range_from_limits(dmm_v, "VOLT", config.get("max_voltage"))
         siglent.configure_dc_range_from_limits(dmm_i, "CURR", config.get("max_current"))
         siglent.set_mode_speed(dmm_i, "CURR", config["DMM_speed"])
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
-        siglent.set_output(power_supply, state="ON")
         time.sleep(1.0)
 
         temperature_interp = build_temperature_interpolator(r_vs_t, config=config)
@@ -818,7 +843,7 @@ def curve_sweep(emitter, sweep_params, r_vs_t, config, data_saver=None):
                 time.sleep(loop_time - elapsed)
 
     finally:
-        _shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager)
+        _shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager, config=config)
         if data_saver is not None:
             data_saver.finalize()
         print("Curve sweep thread finished.")
@@ -844,14 +869,11 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
         power_supply.write_termination = "\n"
         power_supply.read_termination = "\n"
 
-        siglent.set_output(power_supply, state="OFF")
-        time.sleep(0.04)
-        siglent.set_voltage(power_supply, voltage=0.0)
+        prepare_power_supply_output(power_supply, config)
         siglent.configure_dc_range_from_limits(dmm_v, "VOLT", config.get("max_voltage"))
         siglent.configure_dc_range_from_limits(dmm_i, "CURR", config.get("max_current"))
         siglent.set_mode_speed(dmm_i, "CURR", config["DMM_speed"])
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
-        siglent.set_output(power_supply, state="ON")
         time.sleep(1.0)
 
         temperature_interp = build_temperature_interpolator(r_vs_t, config=config)
@@ -1332,7 +1354,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                 break
 
     finally:
-        _shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager)
+        _shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager, config=config)
         if data_saver is not None:
             data_saver.finalize()
         print("TDS experiment thread finished.")
