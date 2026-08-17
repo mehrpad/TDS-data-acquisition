@@ -48,9 +48,9 @@ pid_integral_limit = 400
 # Low-pass filter factor for derivative smoothing.
 pid_derivative_filter = 0.6
 
-# Initial PSU voltage at the start of an experiment.
-startup_voltage = 0.1
-
+# Initial PSU voltage at the start of an experiment. Start gently from the
+# same low measurement floor used by PI/PID tuning.
+startup_voltage = 0.01
 # Lowest voltage the controller may request.
 min_voltage = 0
 
