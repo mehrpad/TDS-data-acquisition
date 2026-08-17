@@ -152,6 +152,7 @@ def _find_stable_current_voltage(
     temperature_upper_bound=None,
     display_target_temperature=None,
     allow_current_only_fallback=False,
+    stop_on_high_temperature=False,
 ):
     sample_interval_s = max(0.5, 1.0 / config["experiment_frequency"])
     voltage = max(start_voltage, config["min_voltage"], 0.005)
@@ -194,6 +195,18 @@ def _find_stable_current_voltage(
                 f"{label} sample: T={temperature}, V={measured_voltage}, "
                 f"I={measured_current}, R={resistance}"
             )
+
+            if (
+                stop_on_high_temperature
+                and temperature_upper_bound is not None
+                and np.isfinite(temperature)
+                and temperature > temperature_upper_bound
+            ):
+                raise tds_experiment.ExperimentSafetyError(
+                    f"{label}: inferred temperature {temperature:.2f} C exceeds the allowed "
+                    f"{temperature_upper_bound:.2f} C baseline window at {voltage:.4f} V. "
+                    "Lower tuning_start_voltage before tuning."
+                )
 
             if abs(measured_current) > config["max_current"]:
                 raise tds_experiment.ExperimentSafetyError(
@@ -806,6 +819,7 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
             temperature_lower_bound=temperature_lower_bound,
             temperature_upper_bound=temperature_upper_bound,
             display_target_temperature=base_temperature_hint,
+            stop_on_high_temperature=True,
         )
         baseline_voltage = step_voltage
         print(f"Using {controller_mode} baseline voltage: {baseline_voltage:.4f} V")

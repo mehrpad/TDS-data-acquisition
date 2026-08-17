@@ -195,8 +195,8 @@ autosave_batch_size = 10
 # Voltage increment while searching for the safe tuning baseline.
 tuning_voltage_step = 0.01
 
-# Starting PSU voltage for controller tuning.
-tuning_start_voltage = 0.1
+# Starting PSU voltage for controller tuning. Keep this low enough that the wire remains near T0.
+tuning_start_voltage = 0.01
 
 # Maximum PSU voltage allowed during controller tuning.
 tuning_search_max_voltage = 0.5
@@ -205,7 +205,7 @@ tuning_search_max_voltage = 0.5
 tuning_settle_time_s = 0.3
 
 # Step added above the baseline during each tuning attempt.
-tuning_response_voltage_step = 0.05
+tuning_response_voltage_step = 0.01
 
 # Pause between tuning attempts.
 tuning_between_attempts_s = 0.5
