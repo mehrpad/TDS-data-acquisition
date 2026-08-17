@@ -9,7 +9,7 @@
 controller_mode = "PI"
 
 # Choose "CONTROLLED" for the PID-based temperature program or "CURVE_SWEEP" for open-loop voltage sweeping.
-experiment_mode = "CURVE_SWEEP"
+experiment_mode = "CONTROLLED"
 
 # Control loop frequency in Hz.
 experiment_frequency = 1

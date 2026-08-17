@@ -620,8 +620,10 @@ class Ui_TDS(object):
         Enable or disable controls based on the selected experiment mode.
         """
         curve_sweep = tds_experiment.get_experiment_mode(self.config) == "CURVE_SWEEP"
-        self.calib_temperature.setEnabled(not curve_sweep)
-        self.calibrate_botton_base_t.setEnabled(not curve_sweep)
+        # T0 calibration anchors the loaded material curve to the current wire,
+        # so it is required in both CONTROLLED and CURVE_SWEEP modes.
+        self.calib_temperature.setEnabled(True)
+        self.calibrate_botton_base_t.setEnabled(True)
         self.calibrate_botton_pid.setEnabled(not curve_sweep)
         self.parameters_text.setEnabled(not curve_sweep)
         if curve_sweep:
@@ -677,7 +679,7 @@ class Ui_TDS(object):
             self.t_zero_calibrated = False
             self.apply_experiment_mode_ui()
             if tds_experiment.get_experiment_mode(self.config) == "CURVE_SWEEP":
-                self.error_message('R vs. T loaded. Curve sweep mode is ready to start.', color='black')
+                self.error_message('R vs. T loaded. Run Calibrate T. Zero before starting the curve sweep.', color='black')
             else:
                 self.error_message('R vs. T loaded. Run Calibrate T. Zero before Tune PI/PID or Start.', color='black')
         else:
@@ -1038,6 +1040,7 @@ class Ui_TDS(object):
                 self.load_csv_botton.setEnabled(True)
                 self.start_botton.setEnabled(True)
                 self.stop_botton.setEnabled(True)
+                self.apply_experiment_mode_ui()
 
     def calibration_finished(self, result):
         """
@@ -1151,7 +1154,7 @@ class Ui_TDS(object):
         """
         experiment_mode = tds_experiment.get_experiment_mode(self.config)
         if experiment_mode == "CURVE_SWEEP":
-            if not self.require_loaded_curve('starting the curve sweep'):
+            if not self.require_loaded_curve_and_t0('starting the curve sweep'):
                 return
             try:
                 self.experiment_params = self.parse_curve_sweep_params()
