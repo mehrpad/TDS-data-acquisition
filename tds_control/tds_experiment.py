@@ -36,6 +36,11 @@ CONTROL_DEFAULTS = {
     "measurement_filter_samples": 3,
     "resistance_range_margin_ratio": 0.0,
     "resistance_range_margin_ohm": 0.01,
+    "curve_extrapolation_enabled": True,
+    "curve_extrapolation_min_temperature_c": 0.0,
+    "curve_extrapolation_max_temperature_c": 600.0,
+    "curve_extrapolation_fit_points": 20,
+    "curve_extrapolation_max_monotonic_correction_ratio": 0.02,
     "warmup_stable_samples": 3,
     "resistance_glitch_jump_ohm": 0.03,
     "resistance_glitch_jump_ratio": 0.015,
@@ -146,6 +151,8 @@ class ResistanceTemperatureModel:
     resistance_axis: np.ndarray
     interpolator: object = None
     linear_coefficients: Optional[Tuple[float, float]] = None
+    temperature_bounds: Optional[Tuple[float, float]] = None
+    source_temperature_bounds: Optional[Tuple[float, float]] = None
 
     @property
     def x(self):
@@ -155,11 +162,125 @@ class ResistanceTemperatureModel:
         return self.interpolator(resistance)
 
 
-def build_temperature_interpolator(r_vs_t, config=None):
+def _temperature_sorted_curve(r_vs_t):
     curve = np.asarray(r_vs_t, dtype=float)
     if curve.shape[0] != 2 or curve.shape[1] < 2:
         raise ValueError("R vs. T data must have shape 2 x N with at least two points.")
+    if not np.all(np.isfinite(curve)):
+        raise ValueError("R vs. T data must contain only finite values.")
 
+    temperature_order = np.argsort(curve[1, :])
+    temperature_curve = curve[:, temperature_order]
+    _, unique_indices = np.unique(temperature_curve[1, :], return_index=True)
+    temperature_curve = temperature_curve[:, np.sort(unique_indices)]
+    if temperature_curve.shape[1] < 2:
+        raise ValueError("R vs. T data must contain at least two unique temperatures.")
+    return temperature_curve
+
+
+def _fit_endpoint_resistance(temperature_curve, target_temperature, fit_points, side):
+    requested_points = max(int(fit_points), 2)
+    point_count = min(requested_points, temperature_curve.shape[1])
+    while True:
+        endpoint = temperature_curve[:, :point_count] if side == "lower" else temperature_curve[:, -point_count:]
+        slope, intercept = np.polyfit(endpoint[1, :], endpoint[0, :], 1)
+        if np.isfinite(slope) and np.isfinite(intercept) and abs(slope) >= 1e-15:
+            if point_count > requested_points:
+                print(
+                    f"WARNING: expanded the {side} endpoint fit from {requested_points} to {point_count} "
+                    "points because the table endpoint was locally flat."
+                )
+            return float(slope * target_temperature + intercept), float(slope)
+        if point_count >= temperature_curve.shape[1]:
+            raise ValueError(f"Cannot extrapolate the {side} end of the R vs. T curve: invalid endpoint slope.")
+        point_count = min(temperature_curve.shape[1], max(point_count + 1, point_count * 2))
+
+
+def _extend_curve_for_configured_extrapolation(r_vs_t, config):
+    temperature_curve = _temperature_sorted_curve(r_vs_t)
+    source_min = float(temperature_curve[1, 0])
+    source_max = float(temperature_curve[1, -1])
+    source_bounds = (source_min, source_max)
+    if not bool(config.get("curve_extrapolation_enabled", False)):
+        return temperature_curve, source_bounds, source_bounds
+
+    allowed_min = float(config["curve_extrapolation_min_temperature_c"])
+    allowed_max = float(config["curve_extrapolation_max_temperature_c"])
+    if not np.isfinite(allowed_min) or not np.isfinite(allowed_max) or allowed_min >= allowed_max:
+        raise ValueError("Curve extrapolation temperature limits must be finite and increasing.")
+
+    configured_rows = (temperature_curve[1, :] >= allowed_min) & (temperature_curve[1, :] <= allowed_max)
+    temperature_curve = temperature_curve[:, configured_rows]
+    if temperature_curve.shape[1] < 2:
+        raise ValueError("R vs. T data must contain at least two rows inside the configured conversion range.")
+    source_min = float(temperature_curve[1, 0])
+    source_max = float(temperature_curve[1, -1])
+    source_bounds = (source_min, source_max)
+
+    original_resistance = np.asarray(temperature_curve[0, :], dtype=float)
+    overall_change = float(original_resistance[-1] - original_resistance[0])
+    direction = float(np.sign(overall_change))
+    resistance_span = float(np.ptp(original_resistance))
+    tolerance = max(resistance_span * 1e-12, 1e-15)
+    if direction == 0 or resistance_span <= tolerance:
+        raise ValueError("Curve extrapolation requires resistance to change monotonically with temperature.")
+
+    monotonic_resistance = (
+        np.maximum.accumulate(original_resistance)
+        if direction > 0
+        else np.minimum.accumulate(original_resistance)
+    )
+    maximum_correction = float(np.max(np.abs(monotonic_resistance - original_resistance)))
+    maximum_correction_ratio = float(
+        config.get("curve_extrapolation_max_monotonic_correction_ratio", 0.02)
+    )
+    if not np.isfinite(maximum_correction_ratio) or maximum_correction_ratio < 0:
+        raise ValueError("curve_extrapolation_max_monotonic_correction_ratio must be non-negative.")
+    if maximum_correction > resistance_span * maximum_correction_ratio + tolerance:
+        raise ValueError(
+            "Curve extrapolation found resistance reversals larger than the configured monotonic correction limit. "
+            "Clean the R vs. T file or disable curve_extrapolation_enabled."
+        )
+    if maximum_correction > tolerance:
+        print(
+            "WARNING: smoothed small non-monotonic resistance steps before extrapolation; "
+            f"maximum correction={maximum_correction:.6g} Ohm."
+        )
+        temperature_curve = temperature_curve.copy()
+        temperature_curve[0, :] = monotonic_resistance
+
+    fit_points = int(config.get("curve_extrapolation_fit_points", 20))
+    extended_points = [temperature_curve]
+    if allowed_min < source_min:
+        lower_resistance, lower_slope = _fit_endpoint_resistance(
+            temperature_curve, allowed_min, fit_points, "lower"
+        )
+        if direction * lower_slope <= 0 or direction * (temperature_curve[0, 0] - lower_resistance) <= 0:
+            raise ValueError("Lower curve extrapolation is not monotonic; use a better low-temperature curve.")
+        extended_points.insert(0, np.array([[lower_resistance], [allowed_min]], dtype=float))
+    if allowed_max > source_max:
+        upper_resistance, upper_slope = _fit_endpoint_resistance(
+            temperature_curve, allowed_max, fit_points, "upper"
+        )
+        if direction * upper_slope <= 0 or direction * (upper_resistance - temperature_curve[0, -1]) <= 0:
+            raise ValueError("Upper curve extrapolation is not monotonic; use a better high-temperature curve.")
+        extended_points.append(np.array([[upper_resistance], [allowed_max]], dtype=float))
+
+    extended_curve = np.hstack(extended_points)
+    print(
+        "WARNING: R vs. T extrapolation is enabled. "
+        f"Measured curve range={source_min:.2f}..{source_max:.2f} C; "
+        f"allowed conversion range={allowed_min:.2f}..{allowed_max:.2f} C. "
+        "Temperatures outside the measured curve are estimates."
+    )
+    return extended_curve, (allowed_min, allowed_max), source_bounds
+
+
+def build_temperature_interpolator(r_vs_t, config=None):
+    config = build_control_config(config or {})
+    curve, temperature_bounds, source_temperature_bounds = _extend_curve_for_configured_extrapolation(
+        r_vs_t, config
+    )
     resistance_order = np.argsort(curve[0, :])
     resistance_curve = curve[:, resistance_order]
     _, unique_indices = np.unique(resistance_curve[0, :], return_index=True)
@@ -167,6 +288,8 @@ def build_temperature_interpolator(r_vs_t, config=None):
     return ResistanceTemperatureModel(
         mode="INTERPOLATE",
         resistance_axis=np.asarray(resistance_curve[0, :], dtype=float),
+        temperature_bounds=temperature_bounds,
+        source_temperature_bounds=source_temperature_bounds,
         interpolator=interp1d(
             resistance_curve[0, :],
             resistance_curve[1, :],
@@ -174,6 +297,21 @@ def build_temperature_interpolator(r_vs_t, config=None):
             fill_value="extrapolate",
         ),
     )
+
+
+def _validate_temperature_program_bounds(experiment_params, temperature_interp):
+    bounds = getattr(temperature_interp, "temperature_bounds", None)
+    if bounds is None:
+        return
+    lower_bound, upper_bound = bounds
+    for index, parameters in enumerate(experiment_params, start=1):
+        for key in ("start_T", "target_T"):
+            temperature = float(parameters[key])
+            if temperature < lower_bound or temperature > upper_bound:
+                raise ValueError(
+                    f"Experiment step {index} {key}={temperature:.2f} C is outside the allowed "
+                    f"R vs. T conversion range {lower_bound:.2f}..{upper_bound:.2f} C."
+                )
 
 
 @dataclass
@@ -746,6 +884,7 @@ def curve_sweep(emitter, sweep_params, r_vs_t, config, data_saver=None):
         raise ValueError("A resistivity-versus-temperature table must be loaded before starting a curve sweep.")
 
     config = build_control_config(config)
+    temperature_interp = build_temperature_interpolator(r_vs_t, config=config)
     loop_time = 1.0 / config["experiment_frequency"]
     max_voltage = min(float(config["max_voltage"]), float(sweep_params.get("max_voltage", config["max_voltage"])))
     start_voltage = max(
@@ -777,7 +916,6 @@ def curve_sweep(emitter, sweep_params, r_vs_t, config, data_saver=None):
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
         time.sleep(1.0)
 
-        temperature_interp = build_temperature_interpolator(r_vs_t, config=config)
         schedule_voltages, schedule_temperatures = build_curve_shaped_voltage_schedule(
             r_vs_t,
             start_voltage=start_voltage,
@@ -811,6 +949,10 @@ def curve_sweep(emitter, sweep_params, r_vs_t, config, data_saver=None):
             if abs(measured_current) > config["max_current"]:
                 raise ExperimentSafetyError(
                     f"Measured current {measured_current:.4e} A exceeded max_current {config['max_current']:.4e} A."
+                )
+            if not np.isfinite(temperature):
+                raise ExperimentSafetyError(
+                    "Curve sweep produced a temperature outside the configured R vs. T conversion range."
                 )
 
             if np.isfinite(measured_resistance):
@@ -854,6 +996,8 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
         raise ValueError("A resistivity-versus-temperature table must be loaded before starting an experiment.")
 
     config = build_control_config(config)
+    temperature_interp = build_temperature_interpolator(r_vs_t, config=config)
+    _validate_temperature_program_bounds(experiment_params, temperature_interp)
     loop_time = 1.0 / config["experiment_frequency"]
 
     resource_manager = None
@@ -875,8 +1019,6 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
         siglent.set_mode_speed(dmm_i, "CURR", config["DMM_speed"])
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
         time.sleep(1.0)
-
-        temperature_interp = build_temperature_interpolator(r_vs_t, config=config)
 
         previous_voltage = None
         for ex_param in experiment_params:
@@ -1380,18 +1522,28 @@ def measure_resistivity(dmm_v, dmm_i, siglent_module, temperature_interp, calibr
     if not np.isfinite(resistance) or resistance <= 0:
         print(f"Invalid resistance calculated from V={measured_voltage}, I={measured_current}")
         return measured_voltage, measured_current, np.nan
-    if config is not None and not _resistance_in_curve_bounds(resistance, temperature_interp, config):
-        print(
-            f"Measured resistance {resistance:.6f} Ohm is outside the loaded R vs. T range; "
-            "treating it as invalid."
-        )
-        return measured_voltage, measured_current, np.nan
-
     try:
         temperature = float(temperature_interp(resistance))
     except Exception as exc:
         print(f"An error occurred interpolating temperature: {exc}")
         temperature = np.nan
+
+    if config is not None and not _resistance_in_curve_bounds(resistance, temperature_interp, config):
+        print(
+            f"Measured resistance {resistance:.6f} Ohm is outside the configured R vs. T range; "
+            "treating it as invalid."
+        )
+        return measured_voltage, measured_current, np.nan
+
+    temperature_bounds = getattr(temperature_interp, "temperature_bounds", None)
+    if np.isfinite(temperature) and temperature_bounds is not None:
+        lower_bound, upper_bound = temperature_bounds
+        if temperature < lower_bound or temperature > upper_bound:
+            print(
+                f"Calculated temperature {temperature:.2f} C is outside the configured conversion range "
+                f"{lower_bound:.2f}..{upper_bound:.2f} C; treating it as invalid."
+            )
+            temperature = np.nan
 
     if np.isfinite(temperature) and temperature < 0 and not calibration:
         print(f"Calculated temperature is {temperature}; treating it as invalid.")

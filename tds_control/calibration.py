@@ -12,20 +12,17 @@ class CalibrationCancelled(RuntimeError):
     """Raised when the user stops calibration or controller tuning from the GUI."""
 
 
-def _prepare_curve_interpolators(r_vs_t):
+def _prepare_curve_interpolators(r_vs_t, config=None):
     curve = np.asarray(r_vs_t, dtype=float)
-    if curve.shape[0] != 2 or curve.shape[1] < 2:
-        raise ValueError("R vs. T data must have shape 2 x N with at least two points.")
-
-    temperature_order = np.argsort(curve[1, :])
-    temperature_curve = curve[:, temperature_order]
-    _, unique_temperature_indices = np.unique(temperature_curve[1, :], return_index=True)
-    temperature_curve = temperature_curve[:, np.sort(unique_temperature_indices)]
-
-    resistance_order = np.argsort(curve[0, :])
-    resistance_curve = curve[:, resistance_order]
-    _, unique_resistance_indices = np.unique(resistance_curve[0, :], return_index=True)
-    resistance_curve = resistance_curve[:, np.sort(unique_resistance_indices)]
+    config = tds_experiment.build_control_config(config or {})
+    temperature_curve = tds_experiment._temperature_sorted_curve(curve)
+    if bool(config.get("curve_extrapolation_enabled", False)):
+        allowed_min = float(config["curve_extrapolation_min_temperature_c"])
+        allowed_max = float(config["curve_extrapolation_max_temperature_c"])
+        configured_rows = (temperature_curve[1, :] >= allowed_min) & (temperature_curve[1, :] <= allowed_max)
+        temperature_curve = temperature_curve[:, configured_rows]
+        if temperature_curve.shape[1] < 2:
+            raise ValueError("R vs. T data must contain at least two rows inside the configured conversion range.")
 
     resistivity_interp = interp1d(
         temperature_curve[1, :],
@@ -33,7 +30,7 @@ def _prepare_curve_interpolators(r_vs_t):
         kind="linear",
         fill_value="extrapolate",
     )
-    temperature_interp = tds_experiment.build_temperature_interpolator(curve)
+    temperature_interp = tds_experiment.build_temperature_interpolator(curve, config=config)
     return curve, resistivity_interp, temperature_interp
 
 
@@ -285,8 +282,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
     up with the loaded calibration table.
     """
     config = tds_experiment.build_control_config(config or {})
-    curve, resistivity_interp, _ = _prepare_curve_interpolators(r_vs_t)
-    temperature_interp = tds_experiment.build_temperature_interpolator(curve, config=config)
+    curve, resistivity_interp, temperature_interp = _prepare_curve_interpolators(r_vs_t, config=config)
 
     resource_manager = None
     dmm_v = None
@@ -772,8 +768,7 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
     config = tds_experiment.build_control_config(config)
     controller_mode = tds_experiment.get_controller_mode(config)
     loop_time = 1.0 / config["experiment_frequency"]
-    curve, _, _ = _prepare_curve_interpolators(r_vs_t)
-    temperature_interp = tds_experiment.build_temperature_interpolator(curve, config=config)
+    curve, _, temperature_interp = _prepare_curve_interpolators(r_vs_t, config=config)
 
     resource_manager = None
     dmm_v = None
