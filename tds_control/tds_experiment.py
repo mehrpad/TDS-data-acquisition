@@ -40,6 +40,7 @@ CONTROL_DEFAULTS = {
     "curve_extrapolation_min_temperature_c": 0.0,
     "curve_extrapolation_max_temperature_c": 600.0,
     "curve_extrapolation_fit_points": 20,
+    "curve_extrapolation_min_fit_span_c": 5.0,
     "curve_extrapolation_max_monotonic_correction_ratio": 0.02,
     "warmup_stable_samples": 3,
     "resistance_glitch_jump_ohm": 0.03,
@@ -178,21 +179,76 @@ def _temperature_sorted_curve(r_vs_t):
     return temperature_curve
 
 
-def _fit_endpoint_resistance(temperature_curve, target_temperature, fit_points, side):
+def _fit_endpoint_resistance(
+    temperature_curve,
+    target_temperature,
+    fit_points,
+    side,
+    expected_direction=None,
+    minimum_temperature_span=0.0,
+):
     requested_points = max(int(fit_points), 2)
-    point_count = min(requested_points, temperature_curve.shape[1])
+    temperatures = temperature_curve[1, :]
+    resistances = temperature_curve[0, :]
+    full_temperature_span = float(np.ptp(temperatures))
+    full_resistance_span = float(np.ptp(resistances))
+    if full_temperature_span <= 0:
+        raise ValueError("Cannot extrapolate an R vs. T curve with no temperature span.")
+
+    required_temperature_span = min(
+        max(float(minimum_temperature_span), 0.0),
+        full_temperature_span,
+    )
+    if side == "lower":
+        span_limit = temperatures[0] + required_temperature_span
+        span_points = int(np.searchsorted(temperatures, span_limit, side="left")) + 1
+        edge_resistance = float(resistances[0])
+        target_side = -1.0
+    elif side == "upper":
+        span_limit = temperatures[-1] - required_temperature_span
+        span_points = temperature_curve.shape[1] - int(
+            np.searchsorted(temperatures, span_limit, side="left")
+        )
+        edge_resistance = float(resistances[-1])
+        target_side = 1.0
+    else:
+        raise ValueError("Endpoint fit side must be 'lower' or 'upper'.")
+
+    point_count = min(
+        max(requested_points, span_points, 2),
+        temperature_curve.shape[1],
+    )
+    representative_slope = full_resistance_span / full_temperature_span
+    slope_tolerance = max(representative_slope * 1e-6, 1e-15)
     while True:
         endpoint = temperature_curve[:, :point_count] if side == "lower" else temperature_curve[:, -point_count:]
         slope, intercept = np.polyfit(endpoint[1, :], endpoint[0, :], 1)
-        if np.isfinite(slope) and np.isfinite(intercept) and abs(slope) >= 1e-15:
+        endpoint_resistance = float(slope * target_temperature + intercept)
+        direction_is_valid = (
+            expected_direction is None
+            or (
+                expected_direction * slope > slope_tolerance
+                and expected_direction * target_side * (endpoint_resistance - edge_resistance) > 0
+            )
+        )
+        if (
+            np.isfinite(slope)
+            and np.isfinite(intercept)
+            and np.isfinite(endpoint_resistance)
+            and abs(slope) >= slope_tolerance
+            and direction_is_valid
+        ):
             if point_count > requested_points:
                 print(
                     f"WARNING: expanded the {side} endpoint fit from {requested_points} to {point_count} "
-                    "points because the table endpoint was locally flat."
+                    "points to cover a meaningful temperature span and reject flat/noisy endpoint behavior."
                 )
-            return float(slope * target_temperature + intercept), float(slope)
+            return endpoint_resistance, float(slope)
         if point_count >= temperature_curve.shape[1]:
-            raise ValueError(f"Cannot extrapolate the {side} end of the R vs. T curve: invalid endpoint slope.")
+            raise ValueError(
+                f"Cannot extrapolate the {side} end of the R vs. T curve: "
+                "no non-flat endpoint fit follows the curve's overall direction."
+            )
         point_count = min(temperature_curve.shape[1], max(point_count + 1, point_count * 2))
 
 
@@ -250,17 +306,30 @@ def _extend_curve_for_configured_extrapolation(r_vs_t, config):
         temperature_curve[0, :] = monotonic_resistance
 
     fit_points = int(config.get("curve_extrapolation_fit_points", 20))
+    minimum_fit_span = float(config.get("curve_extrapolation_min_fit_span_c", 5.0))
+    if not np.isfinite(minimum_fit_span) or minimum_fit_span < 0:
+        raise ValueError("curve_extrapolation_min_fit_span_c must be finite and non-negative.")
     extended_points = [temperature_curve]
     if allowed_min < source_min:
         lower_resistance, lower_slope = _fit_endpoint_resistance(
-            temperature_curve, allowed_min, fit_points, "lower"
+            temperature_curve,
+            allowed_min,
+            fit_points,
+            "lower",
+            expected_direction=direction,
+            minimum_temperature_span=minimum_fit_span,
         )
         if direction * lower_slope <= 0 or direction * (temperature_curve[0, 0] - lower_resistance) <= 0:
             raise ValueError("Lower curve extrapolation is not monotonic; use a better low-temperature curve.")
         extended_points.insert(0, np.array([[lower_resistance], [allowed_min]], dtype=float))
     if allowed_max > source_max:
         upper_resistance, upper_slope = _fit_endpoint_resistance(
-            temperature_curve, allowed_max, fit_points, "upper"
+            temperature_curve,
+            allowed_max,
+            fit_points,
+            "upper",
+            expected_direction=direction,
+            minimum_temperature_span=minimum_fit_span,
         )
         if direction * upper_slope <= 0 or direction * (upper_resistance - temperature_curve[0, -1]) <= 0:
             raise ValueError("Upper curve extrapolation is not monotonic; use a better high-temperature curve.")

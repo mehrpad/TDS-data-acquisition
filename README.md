@@ -284,8 +284,10 @@ This is intended to reduce aggressive heating before the real experiment starts.
 `curve_extrapolation_enabled = true` extends a monotonic calibrated R-vs-T curve to the configured
 `curve_extrapolation_min_temperature_c` and `curve_extrapolation_max_temperature_c` limits. The
 measured portion remains piecewise-linear between adjacent file rows. Outside that portion, the
-software fits a straight line to `curve_extrapolation_fit_points` points at the corresponding end. Small
-resistance reversals caused by table rounding may be corrected only within the configured correction ratio.
+software fits a straight line to at least `curve_extrapolation_fit_points` points at the corresponding end.
+Each endpoint fit also covers at least `curve_extrapolation_min_fit_span_c`, so dense or noisy tables do not
+produce a false flat/reversed endpoint from only a tiny temperature interval. Small resistance reversals
+caused by table rounding or measurement noise may be corrected only within the configured correction ratio.
 
 The default configured conversion range is 0 to 600 C. Extrapolated temperatures are estimates,
 not measured calibration data. The application rejects non-monotonic curves and experiment targets

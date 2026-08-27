@@ -64,6 +64,7 @@ CONFIG_GROUPS = [
             ("curve_extrapolation_min_temperature_c", "Lowest temperature that extrapolation may return."),
             ("curve_extrapolation_max_temperature_c", "Highest temperature that extrapolation may return."),
             ("curve_extrapolation_fit_points", "Number of points at each end used for the endpoint linear fits."),
+            ("curve_extrapolation_min_fit_span_c", "Minimum temperature span used by each endpoint linear fit."),
             ("curve_extrapolation_max_monotonic_correction_ratio", "Largest small resistance reversal corrected before extrapolation, as a fraction of the curve span."),
             ("warmup_stable_samples", "How many stable warmup samples are needed before the main ramp starts."),
             ("resistance_glitch_jump_ohm", "Base resistance-jump threshold before a retry is triggered."),
