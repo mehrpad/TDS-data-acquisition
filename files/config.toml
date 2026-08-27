@@ -133,6 +133,9 @@ curve_extrapolation_max_temperature_c = 600
 # Number of points at each end used for the endpoint linear fits.
 curve_extrapolation_fit_points = 20
 
+# Minimum temperature span covered by each endpoint fit. Dense or noisy tables automatically use more points.
+curve_extrapolation_min_fit_span_c = 5
+
 # Largest small resistance reversal corrected before extrapolation, as a fraction of the curve span.
 curve_extrapolation_max_monotonic_correction_ratio = 0.02
 
