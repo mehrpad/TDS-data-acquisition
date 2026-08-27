@@ -242,6 +242,7 @@ Saved files:
 - `data.csv`: continuously appended human-readable data file
 - `data.h5`: continuously appended HDF5 data file
 - `r_vs_t.csv`: the exact calibration curve used for that run
+- `calibration_info.txt`: written when T0 calibration detected a large raw curve-to-T0 mismatch
 
 Autosave runs in a background thread so disk writing does not block experiment control.
 
@@ -258,8 +259,9 @@ During this step the software now:
 - starts at `t0_voltage_search_start` and increases only until a stable positive current is found,
 - never goes above `t0_calibration_voltage` during that search,
 - waits `t0_settle_time_s` before collecting data,
-- discards warmup readings,
-- rejects obviously wrong outliers before calculating the final scale.
+- treats the entered `Zero Temperature` as the calibration anchor instead of rejecting samples based on the uncalibrated curve,
+- shows and records a warning when the raw inferred temperature differs from T0 by more than `t0_max_temp_error_c`,
+- discards warmup readings and rejects invalid resistance/current readings or obvious resistance outliers before calculating the final scale.
 
 ### `Tune PI/PID`
 

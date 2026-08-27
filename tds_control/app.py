@@ -38,6 +38,7 @@ class Ui_TDS(object):
         self.file_path = None
         self.experiment_name = 'TDS_test'
         self.t_zero_calibrated = False
+        self.t0_calibration_warning = None
         ensure_runtime_dirs()
         if EXPERIMENT_COUNTER_PATH.exists():
             # Read the experiment counter
@@ -502,6 +503,7 @@ class Ui_TDS(object):
 
         self.emitter.experiment_signal.connect(self.update_experiment_signal)
         self.emitter.live_measurement_signal.connect(self.update_live_measurement)
+        self.emitter.calibration_warning_signal.connect(self.show_calibration_warning)
 
         self.find_csv_botton.clicked.connect(self.find_csv_clicked)
         self.load_csv_botton.clicked.connect(self.load_csv_clicked)
@@ -777,6 +779,7 @@ class Ui_TDS(object):
 
             self.r_vs_t = np.vstack((curve_df['resistivity'].to_numpy(), curve_df['temperature'].to_numpy()))
             self.t_zero_calibrated = False
+            self.t0_calibration_warning = None
             self.apply_experiment_mode_ui()
             if tds_experiment.get_experiment_mode(self.config) == "CURVE_SWEEP":
                 self.error_message('R vs. T loaded. Run Calibrate T. Zero before starting the curve sweep.', color='black')
@@ -1108,6 +1111,11 @@ class Ui_TDS(object):
         self.diff_label.setText("Diff: --", color="#000000")
         self.refresh_plot_ranges()
 
+    def show_calibration_warning(self, message):
+        """Display and retain a non-blocking T0 calibration warning."""
+        self.t0_calibration_warning = str(message)
+        self.error_message(f'WARNING: {message}', color='orange')
+
     def calibrate_base_temperature(self):
         """Anchor the loaded R-vs-T curve to the current wire at T0."""
         if not self.require_loaded_curve('calibrating T. Zero'):
@@ -1120,6 +1128,8 @@ class Ui_TDS(object):
         if not self.update_calibration_start_voltage():
             return
 
+        self.t0_calibration_warning = None
+        self.emitter.last_calibration_warning = None
         self.emitter.reset_stop()
         self._set_operation_running(True)
         self.calibration_worker = CalibrationWorkerThread(
@@ -1150,7 +1160,12 @@ class Ui_TDS(object):
             if result is not None:
                 self.r_vs_t = result  # Update r_vs_t with the calibrated values
                 self.t_zero_calibrated = True
-                self.error_message('Calibration successful!', color='green')
+                warning = self.t0_calibration_warning or self.emitter.last_calibration_warning
+                if warning:
+                    self.t0_calibration_warning = warning
+                    self.error_message(f'Calibration successful. WARNING: {warning}', color='orange')
+                else:
+                    self.error_message('Calibration successful!', color='green')
             else:
                 self.t_zero_calibrated = False
                 self.error_message('Calibration failed and returned None', color='red')
@@ -1253,6 +1268,7 @@ class Ui_TDS(object):
             self.data_saver = ExperimentDataSaver(
                 experiment_dir=self.current_experiment_dir,
                 r_vs_t=self.r_vs_t,
+                calibration_note=self.t0_calibration_warning,
                 flush_interval_s=self.config['autosave_flush_interval_s'],
                 batch_size=self.config['autosave_batch_size'],
             ).start()
@@ -1363,6 +1379,7 @@ class Ui_TDS(object):
         color_map = {
             'red': '#ff0000',
             'green': '#008000',
+            'orange': '#c45f00',
             'black': '#000000',
         }
         html_color = color_map.get(color, '#000000')
@@ -1443,12 +1460,14 @@ class SignalEmitter(QtCore.QObject):
     stop_signal = pyqtSignal()  # Signal to stop the thread
     experiment_signal = pyqtSignal(list)  # Signal to emit experiment data
     live_measurement_signal = pyqtSignal(object)  # Signal for calibration/tuning live readings
+    calibration_warning_signal = pyqtSignal(str)  # Non-blocking T0 mismatch warning
     max_voltage_signal = pyqtSignal(float)  # Signal to emit the maximum voltage
     max_current_signal = pyqtSignal(float)  # Signal to emit the maximum current
 
     def __init__(self):
         super().__init__()
         self.stopped = False
+        self.last_calibration_warning = None
 
     def emit_stop(self):
         self.stopped = True

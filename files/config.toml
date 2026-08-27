@@ -289,5 +289,5 @@ t0_stable_current_samples = 3
 # Minimum stable current for the T0 baseline.
 t0_stable_current_a = 0.0001
 
-# Largest allowed mismatch from the entered base temperature during T0 calibration.
+# Raw uncalibrated-temperature difference that triggers a warning. It does not reject T0 calibration.
 t0_max_temp_error_c = 80
