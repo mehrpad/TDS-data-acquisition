@@ -58,6 +58,11 @@ CONTROL_DEFAULTS = {
     "measurement_temp_jump_accept_setpoint_margin_c": 15.0,
     "measurement_cooldown_confirm_samples": 2,
     "measurement_heatup_confirm_samples": 2,
+    "measurement_jump_probe_threshold_c": 35.0,
+    "measurement_jump_probe_voltage_step": 0.002,
+    "measurement_jump_probe_temperature_tolerance_c": 50.0,
+    "measurement_jump_probe_resistance_ratio": 0.02,
+    "measurement_jump_probe_max_samples": 20,
     "ignore_invalid_below_voltage": 0.05,
     "invalid_voltage_step_down": 0.01,
     "invalid_reuse_hold_after": 8,
@@ -103,6 +108,28 @@ CONTROL_DEFAULTS = {
 
 class ExperimentSafetyError(RuntimeError):
     """Raised when the experiment should stop to protect the sample or setup."""
+
+
+@dataclass
+class TemperatureJumpProbe:
+    direction: Optional[str] = None
+    candidate_temperature: float = np.nan
+    candidate_resistance: float = np.nan
+    origin_voltage: float = np.nan
+    confirmations: int = 0
+    attempts: int = 0
+
+    @property
+    def active(self):
+        return self.direction in {"up", "down"}
+
+    def reset(self):
+        self.direction = None
+        self.candidate_temperature = np.nan
+        self.candidate_resistance = np.nan
+        self.origin_voltage = np.nan
+        self.confirmations = 0
+        self.attempts = 0
 
 
 def _clamp(value, lower, upper):
@@ -897,6 +924,152 @@ def _confirmed_downward_temperature_jump(
     return abs(measured_current) >= minimum_confirm_current and applied_voltage >= minimum_confirm_voltage
 
 
+def _temperature_jump_probe_eligible(
+    direction,
+    temperature,
+    previous_temperature,
+    measured_resistance,
+    previous_resistance,
+    measured_current,
+    applied_voltage,
+    resistance_confirmed,
+    config,
+):
+    if direction not in {"up", "down"} or not resistance_confirmed:
+        return False
+    if not all(
+        np.isfinite(value)
+        for value in (
+            temperature,
+            previous_temperature,
+            measured_resistance,
+            previous_resistance,
+            measured_current,
+            applied_voltage,
+        )
+    ):
+        return False
+
+    if direction == "up":
+        if temperature <= previous_temperature or measured_resistance <= previous_resistance:
+            return False
+    elif temperature >= previous_temperature or measured_resistance >= previous_resistance:
+        return False
+
+    minimum_confirm_current = max(
+        config["minimum_current_a"] * 20.0,
+        float(config.get("measurement_jump_confirm_min_current_a", 0.02)),
+    )
+    minimum_confirm_voltage = max(
+        config.get("ignore_invalid_below_voltage", 0.05) * 2.0,
+        float(config.get("measurement_jump_confirm_min_voltage", 0.1)),
+    )
+    return abs(measured_current) >= minimum_confirm_current and applied_voltage >= minimum_confirm_voltage
+
+
+def _temperature_jump_probe_voltage(direction, applied_voltage, measured_current, config):
+    step = max(
+        float(config.get("measurement_jump_probe_voltage_step", 0.002)),
+        float(config.get("minimum_voltage_change", 1e-4)),
+    )
+    lower_bound = max(
+        float(config["min_voltage"]),
+        float(config.get("measurement_voltage_floor", config["min_voltage"])),
+    )
+    if direction == "up":
+        return _clamp(applied_voltage - step, lower_bound, float(config["max_voltage"]))
+
+    if not np.isfinite(measured_current) or abs(measured_current) >= 0.95 * float(config["max_current"]):
+        return float(applied_voltage)
+    return _clamp(applied_voltage + step, lower_bound, float(config["max_voltage"]))
+
+
+def _advance_temperature_jump_probe(
+    probe,
+    direction,
+    temperature,
+    resistance,
+    applied_voltage,
+    measured_current,
+    config,
+):
+    required_confirmations = max(
+        int(
+            config.get(
+                "measurement_heatup_confirm_samples" if direction == "up" else "measurement_cooldown_confirm_samples",
+                2,
+            )
+        ),
+        2,
+    )
+    maximum_attempts = max(
+        int(config.get("measurement_jump_probe_max_samples", 20)),
+        required_confirmations,
+    )
+
+    if not probe.active or probe.direction != direction:
+        probe.direction = direction
+        probe.candidate_temperature = float(temperature)
+        probe.candidate_resistance = float(resistance)
+        probe.origin_voltage = float(applied_voltage)
+        probe.confirmations = 1
+        probe.attempts = 1
+    else:
+        probe.attempts += 1
+        temperature_tolerance = max(
+            float(config.get("measurement_jump_probe_temperature_tolerance_c", 50.0)),
+            0.0,
+        )
+        resistance_tolerance = max(
+            float(config.get("measurement_retry_consensus_ohm", 0.015)),
+            abs(probe.candidate_resistance)
+            * float(config.get("measurement_jump_probe_resistance_ratio", 0.02)),
+        )
+        voltage_step = max(
+            float(config.get("measurement_jump_probe_voltage_step", 0.002)),
+            float(config.get("minimum_voltage_change", 1e-4)),
+        )
+        minimum_probe_change = max(
+            float(config.get("minimum_voltage_change", 1e-4)),
+            voltage_step * 0.25,
+        )
+        voltage_was_probed = (
+            applied_voltage <= probe.origin_voltage - minimum_probe_change
+            if direction == "up"
+            else applied_voltage >= probe.origin_voltage + minimum_probe_change
+        )
+        candidate_is_consistent = (
+            abs(temperature - probe.candidate_temperature) <= temperature_tolerance
+            and abs(resistance - probe.candidate_resistance) <= resistance_tolerance
+        )
+
+        if candidate_is_consistent and voltage_was_probed:
+            probe.confirmations += 1
+        else:
+            # Keep the initial candidate and voltage as the fixed probe reference.
+            # An inconsistent reading does not slide the trusted temperature window.
+            probe.confirmations = 0
+
+    if probe.confirmations >= required_confirmations:
+        attempts = probe.attempts
+        probe.reset()
+        return True, None, attempts
+
+    if probe.attempts >= maximum_attempts:
+        raise ExperimentSafetyError(
+            "Large temperature/resistance jump did not stabilize during the controlled voltage probe "
+            f"after {probe.attempts} samples. Stopping instead of controlling from an uncertain temperature."
+        )
+
+    requested_voltage = _temperature_jump_probe_voltage(
+        direction,
+        float(applied_voltage),
+        float(measured_current),
+        config,
+    )
+    return False, requested_voltage, probe.attempts
+
+
 def _psu_keepalive_voltage(config):
     try:
         keepalive_voltage = float(config.get("psu_keepalive_voltage", 0.001))
@@ -915,6 +1088,7 @@ def prepare_power_supply_output(power_supply, config):
     """Keep CH1 enabled at a negligible voltage while a run is prepared."""
     keepalive_voltage = _psu_keepalive_voltage(config)
     siglent.set_voltage(power_supply, voltage=keepalive_voltage)
+    siglent.set_output(power_supply, state="ON")
     print(f"Power supply output enabled at keep-alive voltage {keepalive_voltage:.6f} V.")
 
 
@@ -1165,17 +1339,24 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
             previous_phase = None
             pending_cooldown_jump_count = 0
             pending_heatup_jump_count = 0
+            temperature_jump_probe = TemperatureJumpProbe()
 
             while not emitter.stopped:
                 loop_started = time.time()
                 applied_voltage = pid_voltage
+                measurement_resistance_reference = (
+                    temperature_jump_probe.candidate_resistance
+                    if temperature_jump_probe.active
+                    and np.isfinite(temperature_jump_probe.candidate_resistance)
+                    else previous_resistance
+                )
                 measured_voltage, measured_current, temperature, measured_resistance, resistance_confirmed = _measure_with_retry(
                     dmm_v,
                     dmm_i,
                     siglent,
                     temperature_interp,
                     config=config,
-                    previous_resistance=previous_resistance,
+                    previous_resistance=measurement_resistance_reference,
                 )
                 raw_temperature = temperature
                 low_signal_state = _is_low_signal_state(applied_voltage, config)
@@ -1202,6 +1383,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     config=config,
                 )
                 reset_temperature_reference = False
+                jump_probe_voltage_request = None
 
                 if (
                     np.isfinite(temperature)
@@ -1222,8 +1404,72 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             config.get("measurement_temp_jump_c", 8.0),
                         )
                     )
+                    probe_threshold = max(
+                        float(config.get("measurement_jump_probe_threshold_c", 35.0)),
+                        jump_up_limit,
+                        jump_down_limit,
+                    )
                     if temperature_delta < -jump_down_limit:
-                        if confirmed_downward_jump:
+                        large_jump = abs(temperature_delta) >= probe_threshold
+                        probe_eligible = _temperature_jump_probe_eligible(
+                            "down",
+                            temperature,
+                            previous_temperature,
+                            measured_resistance,
+                            previous_resistance,
+                            measured_current,
+                            applied_voltage,
+                            resistance_confirmed,
+                            config,
+                        )
+                        if large_jump:
+                            pending_cooldown_jump_count = 0
+                            pending_heatup_jump_count = 0
+                            if probe_eligible:
+                                probe_confirmed, jump_probe_voltage_request, probe_attempt = (
+                                    _advance_temperature_jump_probe(
+                                        temperature_jump_probe,
+                                        "down",
+                                        temperature,
+                                        measured_resistance,
+                                        applied_voltage,
+                                        measured_current,
+                                        config,
+                                    )
+                                )
+                                if probe_confirmed:
+                                    print(
+                                        f"Controlled downward-jump probe confirmed a stable new state after "
+                                        f"{probe_attempt} samples: previous={previous_temperature:.2f} C, "
+                                        f"new={temperature:.2f} C, R={measured_resistance:.4f} Ohm. "
+                                        "Accepting it and resetting the temperature filter."
+                                    )
+                                    temperature_history[:] = [float(temperature)]
+                                    reset_temperature_reference = True
+                                else:
+                                    probe_action = (
+                                        "increasing"
+                                        if jump_probe_voltage_request > applied_voltage + 1e-9
+                                        else "holding"
+                                    )
+                                    print(
+                                        f"Large downward temperature jump detected: previous={previous_temperature:.2f} C, "
+                                        f"candidate={temperature:.2f} C, R={measured_resistance:.4f} Ohm. "
+                                        f"Probe sample {probe_attempt}: {probe_action} PSU slightly from "
+                                        f"{applied_voltage:.4f} to {jump_probe_voltage_request:.4f} V before deciding."
+                                    )
+                                    temperature = np.nan
+                            else:
+                                temperature_jump_probe.reset()
+                                print(
+                                    f"Large downward temperature jump detected: previous={previous_temperature:.2f} C, "
+                                    f"candidate={temperature:.2f} C. Signal or resistance confirmation was insufficient; "
+                                    "treating this reading as invalid."
+                                )
+                                temperature = np.nan
+                        elif confirmed_downward_jump:
+                            if temperature_jump_probe.active:
+                                temperature_jump_probe.reset()
                             pending_cooldown_jump_count += 1
                             pending_heatup_jump_count = 0
                             required_cooldown_confirms = max(
@@ -1245,6 +1491,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                                 )
                                 temperature = np.nan
                         else:
+                            temperature_jump_probe.reset()
                             pending_cooldown_jump_count = 0
                             pending_heatup_jump_count = 0
                             print(
@@ -1253,7 +1500,66 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             )
                             temperature = np.nan
                     elif temperature_delta > jump_up_limit:
-                        if confirmed_upward_jump:
+                        large_jump = abs(temperature_delta) >= probe_threshold
+                        probe_eligible = _temperature_jump_probe_eligible(
+                            "up",
+                            temperature,
+                            previous_temperature,
+                            measured_resistance,
+                            previous_resistance,
+                            measured_current,
+                            applied_voltage,
+                            resistance_confirmed,
+                            config,
+                        )
+                        if large_jump:
+                            pending_cooldown_jump_count = 0
+                            pending_heatup_jump_count = 0
+                            if probe_eligible:
+                                probe_confirmed, jump_probe_voltage_request, probe_attempt = (
+                                    _advance_temperature_jump_probe(
+                                        temperature_jump_probe,
+                                        "up",
+                                        temperature,
+                                        measured_resistance,
+                                        applied_voltage,
+                                        measured_current,
+                                        config,
+                                    )
+                                )
+                                if probe_confirmed:
+                                    print(
+                                        f"Controlled upward-jump probe confirmed a stable new state after "
+                                        f"{probe_attempt} samples: previous={previous_temperature:.2f} C, "
+                                        f"new={temperature:.2f} C, R={measured_resistance:.4f} Ohm. "
+                                        "Accepting it and resetting the temperature filter."
+                                    )
+                                    temperature_history[:] = [float(temperature)]
+                                    reset_temperature_reference = True
+                                else:
+                                    probe_action = (
+                                        "decreasing"
+                                        if jump_probe_voltage_request < applied_voltage - 1e-9
+                                        else "holding"
+                                    )
+                                    print(
+                                        f"Large upward temperature jump detected: previous={previous_temperature:.2f} C, "
+                                        f"candidate={temperature:.2f} C, R={measured_resistance:.4f} Ohm. "
+                                        f"Probe sample {probe_attempt}: {probe_action} PSU slightly from "
+                                        f"{applied_voltage:.4f} to {jump_probe_voltage_request:.4f} V before deciding."
+                                    )
+                                    temperature = np.nan
+                            else:
+                                temperature_jump_probe.reset()
+                                print(
+                                    f"Large upward temperature jump detected: previous={previous_temperature:.2f} C, "
+                                    f"candidate={temperature:.2f} C. Signal or resistance confirmation was insufficient; "
+                                    "treating this reading as invalid."
+                                )
+                                temperature = np.nan
+                        elif confirmed_upward_jump:
+                            if temperature_jump_probe.active:
+                                temperature_jump_probe.reset()
                             pending_heatup_jump_count += 1
                             pending_cooldown_jump_count = 0
                             required_heatup_confirms = max(
@@ -1275,6 +1581,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                                 )
                                 temperature = np.nan
                         else:
+                            temperature_jump_probe.reset()
                             pending_cooldown_jump_count = 0
                             pending_heatup_jump_count = 0
                             print(
@@ -1283,12 +1590,36 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             )
                             temperature = np.nan
                     else:
+                        if temperature_jump_probe.active:
+                            print("Temperature-jump probe cancelled because the measurement returned to the trusted range.")
+                            temperature_jump_probe.reset()
                         pending_cooldown_jump_count = 0
                         pending_heatup_jump_count = 0
                 else:
                     pending_cooldown_jump_count = 0
                     pending_heatup_jump_count = 0
-
+                    if temperature_jump_probe.active:
+                        temperature_jump_probe.attempts += 1
+                        maximum_probe_attempts = max(
+                            int(config.get("measurement_jump_probe_max_samples", 20)),
+                            2,
+                        )
+                        if temperature_jump_probe.attempts >= maximum_probe_attempts:
+                            raise ExperimentSafetyError(
+                                "Large temperature/resistance jump probe could not obtain stable readings after "
+                                f"{temperature_jump_probe.attempts} samples. Stopping instead of controlling "
+                                "from an uncertain temperature."
+                            )
+                        jump_probe_voltage_request = _temperature_jump_probe_voltage(
+                            temperature_jump_probe.direction,
+                            applied_voltage,
+                            measured_current,
+                            config,
+                        )
+                        print(
+                            "Temperature-jump probe received an unusable measurement; repeating the small "
+                            f"voltage probe at {jump_probe_voltage_request:.4f} V."
+                        )
                 if not _is_valid_measurement(measured_voltage, measured_current, temperature, config):
                     can_reuse_last_temperature = (
                         previous_temperature is not None
@@ -1396,9 +1727,21 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             float(invalid_recovery_peak_voltage) - max_invalid_drop,
                         )
                         pid_voltage = max(pid_voltage, invalid_recovery_floor)
+                        if jump_probe_voltage_request is not None:
+                            pid_voltage = _limit_voltage_slew(
+                                jump_probe_voltage_request,
+                                applied_voltage,
+                                measurement_voltage_floor,
+                                config["max_voltage"],
+                                config,
+                            )
                         previous_voltage = _set_voltage_if_needed(power_supply, pid_voltage, previous_voltage, config)
                         invalid_measurements = 0
-                        if resistance_confirmed and np.isfinite(measured_resistance):
+                        if (
+                            resistance_confirmed
+                            and np.isfinite(measured_resistance)
+                            and not temperature_jump_probe.active
+                        ):
                             previous_resistance = measured_resistance
                         if pid_voltage > applied_voltage + 1e-9:
                             recovery_action = "continuing upward"

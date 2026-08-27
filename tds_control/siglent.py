@@ -24,15 +24,9 @@ def _pick_sdm3055_dc_range(expected_max, allowed_ranges):
 
 # Function to set voltage on the power supply
 def set_voltage(ps, voltage):
-    """Set the PSU voltage and make sure CH1 output is enabled when needed."""
+    """Set the PSU voltage without changing or reasserting the output state."""
     numeric_voltage = float(voltage)
     ps.write(f"VOLT {numeric_voltage}")
-
-    # An operator can turn the output off on the front panel between runs.
-    # Reassert the output state before every non-zero setpoint so all experiment
-    # paths recover automatically without energising the supply for a 0 V command.
-    if abs(numeric_voltage) > 0:
-        set_output(ps, state="ON")
 
 
 def set_output(ps, state):

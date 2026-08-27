@@ -50,12 +50,14 @@ Use an `R vs. T` calibration obtained with the same Kelvin setup. Leave `fixed_s
 
 Auto Range is not permitted for either DMM. It can insert range-change delays and transient readings that corrupt resistance calculations and the temperature-control loop.
 
-Before the PSU output is enabled, the software:
+At the start of T0 calibration, controller tuning, or an experiment, the software:
 
-1. switches the PSU output off and sends its setpoint to `0 V`,
+1. sends the small `psu_keepalive_voltage` setpoint and enables CH1 once,
 2. selects the smallest supported fixed DC voltage range that covers `max_voltage`,
 3. selects the smallest supported fixed DC current range that covers `max_current`, and
 4. configures the DMM integration speed.
+
+Ordinary voltage updates do not resend the PSU `ON` command. At the end, the software returns to `psu_keepalive_voltage` and intentionally leaves CH1 enabled.
 
 For the repository defaults of `max_voltage = 30` and `max_current = 3`, the selected fixed ranges are `200 V DC` and `10 A DC`. Confirm the limits and meter ranges before every experiment; never re-enable Auto Range on the DMM front panel during a run.
 

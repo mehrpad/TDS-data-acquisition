@@ -225,9 +225,12 @@ The control loop now includes:
 - rate limiting when temperature rises too quickly
 - software current cutoff using `max_current`
 - invalid-measurement detection
-- automatic voltage shutdown at the end of the run
+- controlled micro-voltage probing before a large resistance/temperature jump is accepted
+- one PSU output-enable command at operation start, followed by a 0.001 V keep-alive setpoint at the end
 
 `max_current` is a software stop threshold after the current DMM is read; it is not a hardware current limiter. Set an independent current limit/OCP on the power supply before each run. Even with these protections, first runs on a new sample should be done with conservative limits and supervision.
+
+When an inferred-temperature jump is at least `measurement_jump_probe_threshold_c`, the controller does not immediately trust it. An upward jump causes a small PSU decrease; a downward jump causes a small increase only while the measured current is safely below `max_current`. Follow-up temperatures must remain inside the fixed window centered on the first probe candidate (default +/-50 C), and resistance must also be consistent before a new reference is established. The reference window does not move when a sample is inconsistent. By default, an unstable probe may try for 20 cycles before stopping rather than continuing with stale data.
 
 ## Data Output
 

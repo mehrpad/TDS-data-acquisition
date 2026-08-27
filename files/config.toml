@@ -187,6 +187,21 @@ measurement_cooldown_confirm_samples = 2
 # How many upward jump confirmations are required before accepting heatup jumps.
 measurement_heatup_confirm_samples = 2
 
+# Temperature jump size that triggers a directed micro-voltage probe instead of immediate acceptance.
+measurement_jump_probe_threshold_c = 35
+
+# Small PSU change used by a jump probe: decrease after an upward jump, increase after a downward jump.
+measurement_jump_probe_voltage_step = 0.002
+
+# Fixed +/- temperature window around the first jump-probe candidate.
+measurement_jump_probe_temperature_tolerance_c = 50
+
+# Maximum relative resistance spread allowed between jump-probe confirmation samples.
+measurement_jump_probe_resistance_ratio = 0.02
+
+# Stop with a specific safety error if a jump probe does not stabilize within this many samples.
+measurement_jump_probe_max_samples = 20
+
 # Below this PSU voltage, invalid readings are treated more leniently.
 ignore_invalid_below_voltage = 0.05
 
