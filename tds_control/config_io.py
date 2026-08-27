@@ -130,7 +130,7 @@ CONFIG_GROUPS = [
             ("t0_warmup_samples", "How many initial T0 samples are discarded as warmup."),
             ("t0_stable_current_samples", "How many stable-current samples define the T0 baseline."),
             ("t0_stable_current_a", "Minimum stable current for the T0 baseline."),
-            ("t0_max_temp_error_c", "Largest allowed mismatch from the entered base temperature during T0 calibration."),
+            ("t0_max_temp_error_c", "Raw uncalibrated-temperature difference that triggers a T0 warning."),
         ],
     ),
 ]

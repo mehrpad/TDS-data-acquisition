@@ -31,9 +31,11 @@ class ExperimentDataSaver:
         columns=None,
         flush_interval_s=5.0,
         batch_size=10,
+        calibration_note=None,
     ):
         self.experiment_dir = experiment_dir
         self.r_vs_t = np.array(r_vs_t, dtype=float)
+        self.calibration_note = str(calibration_note).strip() if calibration_note else None
         self.columns = list(columns or DEFAULT_COLUMNS)
         self.flush_interval_s = max(float(flush_interval_s), 0.5)
         self.batch_size = max(int(batch_size), 1)
@@ -41,6 +43,7 @@ class ExperimentDataSaver:
         self.csv_path = os.path.join(self.experiment_dir, "data.csv")
         self.h5_path = os.path.join(self.experiment_dir, "data.h5")
         self.r_vs_t_path = os.path.join(self.experiment_dir, "r_vs_t.csv")
+        self.calibration_info_path = os.path.join(self.experiment_dir, "calibration_info.txt")
 
         self._queue = queue.Queue()
         self._stop_token = object()
@@ -57,6 +60,7 @@ class ExperimentDataSaver:
     def start(self):
         os.makedirs(self.experiment_dir, exist_ok=True)
         self._write_r_vs_t_snapshot()
+        self._write_calibration_info()
         self._thread.start()
         self._ready.wait(timeout=10.0)
         self.raise_if_error()
@@ -89,6 +93,14 @@ class ExperimentDataSaver:
             writer.writerow(["resistivity", "temperature"])
             for resistivity, temperature in self.r_vs_t.T:
                 writer.writerow([float(resistivity), float(temperature)])
+
+    def _write_calibration_info(self):
+        if not self.calibration_note:
+            return
+        with open(self.calibration_info_path, "w", encoding="utf-8") as info_file:
+            info_file.write("T0 calibration warning\n")
+            info_file.write(self.calibration_note)
+            info_file.write("\n")
 
     def _create_h5_datasets(self, h5_file):
         datasets = {}

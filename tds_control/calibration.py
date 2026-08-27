@@ -96,6 +96,16 @@ def _emit_live_measurement(
     )
 
 
+def _emit_calibration_warning(emitter, message):
+    print(f"WARNING: {message}")
+    if emitter is None:
+        return
+    emitter.last_calibration_warning = message
+    warning_signal = getattr(emitter, "calibration_warning_signal", None)
+    if warning_signal is not None:
+        warning_signal.emit(message)
+
+
 def _sleep_with_stop(duration_s, emitter):
     remaining = max(float(duration_s), 0.0)
     while remaining > 0:
@@ -318,8 +328,6 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
             minimum_current=config["t0_stable_current_a"],
             emitter=emitter,
             label="T0 search",
-            temperature_lower_bound=room_temp - config["t0_max_temp_error_c"],
-            temperature_upper_bound=room_temp + config["t0_max_temp_error_c"],
             display_target_temperature=room_temp,
             allow_current_only_fallback=True,
         )
@@ -373,26 +381,34 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
                 print("Rejected room-temperature calibration sample: invalid resistance.")
                 _sleep_with_stop(sample_interval_s, emitter)
                 continue
-            sample_temperature = float(temperature)
+            sample_temperature = float(room_temp)
             if np.isfinite(temperature):
-                if abs(temperature - room_temp) > config["t0_max_temp_error_c"]:
-                    print(
-                        "Rejected room-temperature calibration sample: "
-                        f"|T-room_temp|={abs(temperature - room_temp):.2f} C exceeds "
-                        f"{config['t0_max_temp_error_c']:.2f} C."
+                temperature_difference = abs(float(temperature) - room_temp)
+                if (
+                    temperature_difference > config["t0_max_temp_error_c"]
+                    and not room_temp_scaling_fallback_used
+                ):
+                    _emit_calibration_warning(
+                        emitter,
+                        "The uncalibrated R-vs-T curve inferred "
+                        f"{float(temperature):.2f} C while the entered T0 is {room_temp:.2f} C "
+                        f"(difference {temperature_difference:.2f} C; warning threshold "
+                        f"{config['t0_max_temp_error_c']:.2f} C). T0 calibration will continue using "
+                        "the stable measured resistance and entered T0. Verify the material curve, units, "
+                        "Kelvin wiring, and entered T0 before the experiment.",
                     )
-                    _sleep_with_stop(sample_interval_s, emitter)
-                    continue
+                    room_temp_scaling_fallback_used = True
             else:
                 if abs(measured_current) <= config["t0_stable_current_a"]:
                     print("Rejected room-temperature calibration sample: current is too small.")
                     _sleep_with_stop(sample_interval_s, emitter)
                     continue
-                sample_temperature = float(room_temp)
                 if not room_temp_scaling_fallback_used:
-                    print(
-                        "Room-temperature calibration is using resistance-only scaling because the measured "
-                        "wire resistance is outside the loaded R vs. T range."
+                    _emit_calibration_warning(
+                        emitter,
+                        "The uncalibrated R-vs-T curve could not infer a finite temperature for the measured "
+                        f"resistance. T0 calibration will continue using the entered T0 of {room_temp:.2f} C. "
+                        "Verify the material curve, units, Kelvin wiring, and entered T0 before the experiment.",
                     )
                     room_temp_scaling_fallback_used = True
 
