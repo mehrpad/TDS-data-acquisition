@@ -39,7 +39,12 @@ CONTROL_DEFAULTS = {
     "minimum_voltage_change": 1e-4,
     "measurement_voltage_floor": 0.01,
     "measurement_filter_samples": 3,
-    "startup_stable_samples": 5,
+    "dmm_synchronized_reading": True,
+    "startup_stable_samples": 9,
+    "startup_temperature_spread_c": 5.0,
+    "startup_outlier_mad_multiplier": 4.0,
+    "startup_outlier_min_resistance_ohm": 0.0005,
+    "startup_min_inlier_ratio": 0.67,
     "stable_resistance_spread_ratio": 0.005,
     "stable_resistance_spread_ohm": 0.03,
     "startup_search_voltage_step": 0.001,
@@ -113,11 +118,12 @@ CONTROL_DEFAULTS = {
     "t0_voltage_search_start": 0.01,
     "t0_voltage_step": 0.01,
     "t0_settle_time_s": 3.0,
-    "t0_calibration_samples": 5,
+    "t0_calibration_samples": 9,
     "t0_warmup_samples": 1,
     "t0_stable_current_samples": 3,
     "t0_stable_current_a": 1e-4,
     "t0_max_temp_error_c": 80.0,
+    "t0_temperature_spread_warning_c": 5.0,
     "curve_sweep_start_voltage": 0.01,
     "curve_sweep_voltage_step": 0.005,
 }
@@ -799,13 +805,38 @@ def _resistance_in_curve_bounds(resistance, temperature_interp, config):
     return lower_bound - margin <= resistance <= upper_bound + margin
 
 
+def _robust_resistance_inlier_mask(resistances, config):
+    resistance_array = np.asarray(resistances, dtype=float)
+    if resistance_array.size == 0 or not np.all(np.isfinite(resistance_array)):
+        return np.zeros(resistance_array.shape, dtype=bool)
+
+    median_resistance = float(np.median(resistance_array))
+    mad = float(np.median(np.abs(resistance_array - median_resistance)))
+    robust_sigma = 1.4826 * mad
+    allowed_deviation = max(
+        float(config.get("startup_outlier_min_resistance_ohm", 0.0005)),
+        float(config.get("startup_outlier_mad_multiplier", 4.0)) * robust_sigma,
+    )
+    return np.abs(resistance_array - median_resistance) <= allowed_deviation
+
+
 def _summarize_initial_measurements(samples, temperature_interp, config):
-    required_samples = max(int(config.get("startup_stable_samples", 5)), 3)
+    required_samples = max(int(config.get("startup_stable_samples", 9)), 3)
     if len(samples) < required_samples:
         return None
 
     recent_samples = samples[-required_samples:]
-    resistances = np.array([sample[2] for sample in recent_samples], dtype=float)
+    all_resistances = np.array([sample[2] for sample in recent_samples], dtype=float)
+    inlier_mask = _robust_resistance_inlier_mask(all_resistances, config)
+    minimum_inliers = max(
+        3,
+        int(np.ceil(required_samples * float(config.get("startup_min_inlier_ratio", 0.67)))),
+    )
+    if int(np.count_nonzero(inlier_mask)) < minimum_inliers:
+        return None
+
+    inlier_samples = [sample for sample, is_inlier in zip(recent_samples, inlier_mask) if is_inlier]
+    resistances = all_resistances[inlier_mask]
     median_resistance = float(np.median(resistances))
     allowed_deviation = max(
         float(config.get("stable_resistance_spread_ohm", 0.03)),
@@ -813,14 +844,19 @@ def _summarize_initial_measurements(samples, temperature_interp, config):
     )
     if float(np.max(np.abs(resistances - median_resistance))) > allowed_deviation:
         return None
-    if not _resistance_in_curve_bounds(median_resistance, temperature_interp, config):
+    if not all(_resistance_in_curve_bounds(value, temperature_interp, config) for value in resistances):
+        return None
+
+    temperatures = np.array([float(temperature_interp(value)) for value in resistances], dtype=float)
+    if not np.all(np.isfinite(temperatures)):
+        return None
+    temperature_spread = float(np.ptp(temperatures))
+    if temperature_spread > float(config.get("startup_temperature_spread_c", 5.0)):
         return None
 
     temperature = float(temperature_interp(median_resistance))
-    if not np.isfinite(temperature):
-        return None
-    measured_voltage = float(np.median(np.array([sample[0] for sample in recent_samples], dtype=float)))
-    measured_current = float(np.median(np.array([sample[1] for sample in recent_samples], dtype=float)))
+    measured_voltage = float(np.median(np.array([sample[0] for sample in inlier_samples], dtype=float)))
+    measured_current = float(np.median(np.array([sample[1] for sample in inlier_samples], dtype=float)))
     return measured_voltage, measured_current, temperature, median_resistance
 
 
@@ -837,7 +873,7 @@ def _acquire_stable_initial_measurement(
     t_zero,
     loop_time,
 ):
-    stable_samples = max(int(config.get("startup_stable_samples", 5)), 3)
+    stable_samples = max(int(config.get("startup_stable_samples", 9)), 3)
     voltage_step = max(
         float(config.get("startup_search_voltage_step", 0.001)),
         float(config.get("minimum_voltage_change", 1e-4)),
@@ -2231,17 +2267,34 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
 
 
 def measure_resistivity(dmm_v, dmm_i, siglent_module, temperature_interp, calibration=False, config=None):
-    try:
-        measured_voltage = float(siglent_module.read_DMM(dmm_v))
-    except Exception as exc:
-        print(f"An error occurred reading voltage DMM: {exc}")
+    synchronized_reader = getattr(siglent_module, "read_DMM_pair", None)
+    use_synchronized_reading = config is None or bool(config.get("dmm_synchronized_reading", True))
+    if use_synchronized_reading and synchronized_reader is not None:
+        try:
+            measured_voltage, measured_current = synchronized_reader(dmm_v, dmm_i)
+            measured_voltage = float(measured_voltage)
+            measured_current = float(measured_current)
+        except Exception as exc:
+            print(f"Synchronized DMM reading failed; retrying this sample with READ?: {exc}")
+            measured_voltage = np.nan
+            measured_current = np.nan
+    else:
         measured_voltage = np.nan
-
-    try:
-        measured_current = float(siglent_module.read_DMM(dmm_i))
-    except Exception as exc:
-        print(f"An error occurred reading current DMM: {exc}")
         measured_current = np.nan
+
+    if not np.isfinite(measured_voltage):
+        try:
+            measured_voltage = float(siglent_module.read_DMM(dmm_v))
+        except Exception as exc:
+            print(f"An error occurred reading voltage DMM: {exc}")
+            measured_voltage = np.nan
+
+    if not np.isfinite(measured_current):
+        try:
+            measured_current = float(siglent_module.read_DMM(dmm_i))
+        except Exception as exc:
+            print(f"An error occurred reading current DMM: {exc}")
+            measured_current = np.nan
 
     if not np.isfinite(measured_voltage) or not np.isfinite(measured_current) or abs(measured_current) < 1e-12:
         return measured_voltage, measured_current, np.nan
