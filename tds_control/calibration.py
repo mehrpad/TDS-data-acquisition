@@ -15,14 +15,9 @@ class CalibrationCancelled(RuntimeError):
 def _prepare_curve_interpolators(r_vs_t, config=None):
     curve = np.asarray(r_vs_t, dtype=float)
     config = tds_experiment.build_control_config(config or {})
-    temperature_curve = tds_experiment._temperature_sorted_curve(curve)
-    if bool(config.get("curve_extrapolation_enabled", False)):
-        allowed_min = float(config["curve_extrapolation_min_temperature_c"])
-        allowed_max = float(config["curve_extrapolation_max_temperature_c"])
-        configured_rows = (temperature_curve[1, :] >= allowed_min) & (temperature_curve[1, :] <= allowed_max)
-        temperature_curve = temperature_curve[:, configured_rows]
-        if temperature_curve.shape[1] < 2:
-            raise ValueError("R vs. T data must contain at least two rows inside the configured conversion range.")
+    temperature_curve, temperature_bounds, source_temperature_bounds = (
+        tds_experiment._extend_curve_for_configured_extrapolation(curve, config)
+    )
 
     resistivity_interp = interp1d(
         temperature_curve[1, :],
@@ -30,7 +25,11 @@ def _prepare_curve_interpolators(r_vs_t, config=None):
         kind="linear",
         fill_value="extrapolate",
     )
-    temperature_interp = tds_experiment.build_temperature_interpolator(curve, config=config)
+    temperature_interp = tds_experiment._build_temperature_interpolator_from_curve(
+        temperature_curve,
+        temperature_bounds,
+        source_temperature_bounds,
+    )
     return curve, resistivity_interp, temperature_interp
 
 

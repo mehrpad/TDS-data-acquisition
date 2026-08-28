@@ -286,17 +286,25 @@ This is intended to reduce aggressive heating before the real experiment starts.
 
 ### Bounded curve extrapolation
 
-`curve_extrapolation_enabled = true` extends a monotonic calibrated R-vs-T curve to the configured
-`curve_extrapolation_min_temperature_c` and `curve_extrapolation_max_temperature_c` limits. The
-measured portion remains piecewise-linear between adjacent file rows. Outside that portion, the
-software fits a straight line to at least `curve_extrapolation_fit_points` points at the corresponding end.
-Each endpoint fit also covers at least `curve_extrapolation_min_fit_span_c`, so dense or noisy tables do not
-produce a false flat/reversed endpoint from only a tiny temperature interval. Small resistance reversals
-caused by table rounding or measurement noise may be corrected only within the configured correction ratio.
+`curve_extrapolation_enabled = true` extends a calibrated R-vs-T curve to the configured
+`curve_extrapolation_min_temperature_c` and `curve_extrapolation_max_temperature_c` limits. Outside the
+measured range, the software fits a straight line to at least `curve_extrapolation_fit_points` points at the
+corresponding end. Each endpoint fit also covers at least `curve_extrapolation_min_fit_span_c`, so dense
+tables do not create a false flat or reversed slope from only a tiny temperature interval.
 
-The default configured conversion range is 0 to 600 C. Extrapolated temperatures are estimates,
-not measured calibration data. The application rejects non-monotonic curves and experiment targets
-outside the configured limits; use reference or measured data covering the full range whenever possible.
+Clean curves keep their original temperature resolution and receive only a least-squares monotonic correction
+within `curve_extrapolation_max_monotonic_correction_ratio`. When `curve_smoothing_enabled = true`, a dense
+curve that exceeds that limit can be recovered without modifying its source file: the software groups rows into
+`curve_smoothing_temperature_bin_c` bins, uses the smallest centered-median window that works up to
+`curve_smoothing_max_window_c`, and then applies a least-squares monotonic fit. Smoothing is allowed only for
+files with at least `curve_smoothing_min_points` rows, and the 99th-percentile raw deviation must stay below
+`curve_smoothing_max_residual_ratio` of the curve's total resistance span. The console reports the selected
+window, correction, and residual whenever this recovery path is used.
+
+The default configured conversion range is 0 to 600 C. Extrapolated temperatures are estimates, not measured
+calibration data. The application still rejects sparse curves with large reversals, dense curves that cannot be
+made reliably monotonic within the configured limits, and experiment targets outside the conversion limits.
+Use reference or measured data covering the full range whenever possible.
 
 ## Development
 

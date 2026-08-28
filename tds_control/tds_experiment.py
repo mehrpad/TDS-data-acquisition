@@ -42,6 +42,11 @@ CONTROL_DEFAULTS = {
     "curve_extrapolation_fit_points": 20,
     "curve_extrapolation_min_fit_span_c": 5.0,
     "curve_extrapolation_max_monotonic_correction_ratio": 0.02,
+    "curve_smoothing_enabled": True,
+    "curve_smoothing_min_points": 100,
+    "curve_smoothing_temperature_bin_c": 0.5,
+    "curve_smoothing_max_window_c": 15.0,
+    "curve_smoothing_max_residual_ratio": 0.10,
     "warmup_stable_samples": 3,
     "resistance_glitch_jump_ohm": 0.03,
     "resistance_glitch_jump_ratio": 0.015,
@@ -206,6 +211,151 @@ def _temperature_sorted_curve(r_vs_t):
     return temperature_curve
 
 
+def _isotonic_resistance(values, direction):
+    """Least-squares monotonic fit using the pool-adjacent-violators algorithm."""
+    source = np.asarray(values, dtype=float)
+    working = source if direction > 0 else -source
+    block_values = []
+    block_weights = []
+    block_starts = []
+    block_ends = []
+    for index, value in enumerate(working):
+        block_values.append(float(value))
+        block_weights.append(1.0)
+        block_starts.append(index)
+        block_ends.append(index + 1)
+        while len(block_values) >= 2 and block_values[-2] > block_values[-1]:
+            combined_weight = block_weights[-2] + block_weights[-1]
+            combined_value = (
+                block_values[-2] * block_weights[-2]
+                + block_values[-1] * block_weights[-1]
+            ) / combined_weight
+            block_values[-2:] = [combined_value]
+            block_weights[-2:] = [combined_weight]
+            block_ends[-2:] = [block_ends[-1]]
+            block_starts.pop()
+
+    fitted = np.empty_like(working)
+    for value, start, end in zip(block_values, block_starts, block_ends):
+        fitted[start:end] = value
+    return fitted if direction > 0 else -fitted
+
+
+def _centered_rolling_median(values, window_points):
+    values = np.asarray(values, dtype=float)
+    window_points = max(int(window_points), 1)
+    if window_points % 2 == 0:
+        window_points += 1
+    radius = window_points // 2
+    return np.array(
+        [
+            np.median(values[max(0, index - radius):min(values.size, index + radius + 1)])
+            for index in range(values.size)
+        ],
+        dtype=float,
+    )
+
+
+def _temperature_bin_medians(temperature_curve, bin_width_c):
+    temperatures = np.asarray(temperature_curve[1, :], dtype=float)
+    resistances = np.asarray(temperature_curve[0, :], dtype=float)
+    origin = float(temperatures[0])
+    bin_ids = np.floor((temperatures - origin) / bin_width_c + 1e-12).astype(np.int64)
+    unique_bins = np.unique(bin_ids)
+    binned_temperatures = np.array(
+        [np.median(temperatures[bin_ids == bin_id]) for bin_id in unique_bins],
+        dtype=float,
+    )
+    binned_resistances = np.array(
+        [np.median(resistances[bin_ids == bin_id]) for bin_id in unique_bins],
+        dtype=float,
+    )
+    return np.vstack((binned_resistances, binned_temperatures))
+
+
+def _robust_monotonic_curve(temperature_curve, direction, config, correction_limit, tolerance):
+    original_resistance = np.asarray(temperature_curve[0, :], dtype=float)
+    resistance_span = float(np.ptp(original_resistance))
+    monotonic_resistance = _isotonic_resistance(original_resistance, direction)
+    maximum_correction = float(np.max(np.abs(monotonic_resistance - original_resistance)))
+    if maximum_correction <= resistance_span * correction_limit + tolerance:
+        corrected = temperature_curve.copy()
+        corrected[0, :] = monotonic_resistance
+        return corrected, maximum_correction, None
+
+    smoothing_enabled = bool(config.get("curve_smoothing_enabled", True))
+    minimum_points = int(config.get("curve_smoothing_min_points", 100))
+    if not smoothing_enabled or temperature_curve.shape[1] < minimum_points:
+        raise ValueError(
+            "Curve extrapolation found resistance reversals larger than the configured monotonic "
+            "correction limit. Clean the R vs. T file or enable robust curve smoothing."
+        )
+
+    bin_width_c = float(config.get("curve_smoothing_temperature_bin_c", 0.5))
+    max_window_c = float(config.get("curve_smoothing_max_window_c", 15.0))
+    max_residual_ratio = float(config.get("curve_smoothing_max_residual_ratio", 0.10))
+    if not np.isfinite(bin_width_c) or bin_width_c <= 0:
+        raise ValueError("curve_smoothing_temperature_bin_c must be positive and finite.")
+    if not np.isfinite(max_window_c) or max_window_c < bin_width_c:
+        raise ValueError("curve_smoothing_max_window_c must be finite and at least one bin wide.")
+    if not np.isfinite(max_residual_ratio) or max_residual_ratio < 0:
+        raise ValueError("curve_smoothing_max_residual_ratio must be non-negative and finite.")
+
+    binned_curve = _temperature_bin_medians(temperature_curve, bin_width_c)
+    if binned_curve.shape[1] < 3:
+        raise ValueError("Robust curve smoothing produced fewer than three temperature bins.")
+
+    max_window_points = max(3, int(np.ceil(max_window_c / bin_width_c)))
+    if max_window_points % 2 == 0:
+        max_window_points += 1
+    max_window_points = min(max_window_points, binned_curve.shape[1])
+    if max_window_points % 2 == 0:
+        max_window_points -= 1
+
+    selected_curve = None
+    selected_correction = np.inf
+    selected_window_points = None
+    binned_span = float(np.ptp(binned_curve[0, :]))
+    binned_tolerance = max(binned_span * 1e-12, 1e-15)
+    for window_points in range(3, max_window_points + 1, 2):
+        smoothed_resistance = _centered_rolling_median(binned_curve[0, :], window_points)
+        monotonic_smoothed = _isotonic_resistance(smoothed_resistance, direction)
+        correction = float(np.max(np.abs(monotonic_smoothed - smoothed_resistance)))
+        selected_correction = correction
+        if correction <= binned_span * correction_limit + binned_tolerance:
+            selected_curve = binned_curve.copy()
+            selected_curve[0, :] = monotonic_smoothed
+            selected_window_points = window_points
+            break
+
+    if selected_curve is None:
+        raise ValueError(
+            "Curve extrapolation could not obtain a reliable monotonic trend after robust smoothing. "
+            "Use a cleaner or wider-temperature R vs. T file."
+        )
+
+    fitted_at_raw_temperatures = np.interp(
+        temperature_curve[1, :], selected_curve[1, :], selected_curve[0, :]
+    )
+    residual_99 = float(np.quantile(np.abs(original_resistance - fitted_at_raw_temperatures), 0.99))
+    residual_ratio = residual_99 / max(resistance_span, tolerance)
+    if residual_ratio > max_residual_ratio:
+        raise ValueError(
+            "Curve extrapolation found too many large deviations from the smoothed monotonic trend. "
+            "Use a cleaner R vs. T file or increase curve_smoothing_max_residual_ratio only after review."
+        )
+
+    details = {
+        "raw_points": int(temperature_curve.shape[1]),
+        "binned_points": int(selected_curve.shape[1]),
+        "window_c": float(selected_window_points * bin_width_c),
+        "correction": selected_correction,
+        "residual_99": residual_99,
+        "residual_ratio": residual_ratio,
+    }
+    return selected_curve, selected_correction, details
+
+
 def _fit_endpoint_resistance(
     temperature_curve,
     target_temperature,
@@ -308,29 +458,37 @@ def _extend_curve_for_configured_extrapolation(r_vs_t, config):
     if direction == 0 or resistance_span <= tolerance:
         raise ValueError("Curve extrapolation requires resistance to change monotonically with temperature.")
 
-    monotonic_resistance = (
-        np.maximum.accumulate(original_resistance)
-        if direction > 0
-        else np.minimum.accumulate(original_resistance)
-    )
-    maximum_correction = float(np.max(np.abs(monotonic_resistance - original_resistance)))
     maximum_correction_ratio = float(
         config.get("curve_extrapolation_max_monotonic_correction_ratio", 0.02)
     )
     if not np.isfinite(maximum_correction_ratio) or maximum_correction_ratio < 0:
         raise ValueError("curve_extrapolation_max_monotonic_correction_ratio must be non-negative.")
-    if maximum_correction > resistance_span * maximum_correction_ratio + tolerance:
-        raise ValueError(
-            "Curve extrapolation found resistance reversals larger than the configured monotonic correction limit. "
-            "Clean the R vs. T file or disable curve_extrapolation_enabled."
-        )
+    temperature_curve, maximum_correction, smoothing_details = _robust_monotonic_curve(
+        temperature_curve,
+        direction,
+        config,
+        maximum_correction_ratio,
+        tolerance,
+    )
+    source_min = float(temperature_curve[1, 0])
+    source_max = float(temperature_curve[1, -1])
+    source_bounds = (source_min, source_max)
     if maximum_correction > tolerance:
-        print(
-            "WARNING: smoothed small non-monotonic resistance steps before extrapolation; "
-            f"maximum correction={maximum_correction:.6g} Ohm."
-        )
-        temperature_curve = temperature_curve.copy()
-        temperature_curve[0, :] = monotonic_resistance
+        if smoothing_details is None:
+            print(
+                "WARNING: corrected small non-monotonic resistance steps before extrapolation with "
+                f"a least-squares monotonic fit; maximum correction={maximum_correction:.6g} Ohm."
+            )
+        else:
+            print(
+                "WARNING: robustly smoothed a dense/noisy R vs. T curve before extrapolation; "
+                f"points={smoothing_details['raw_points']}->{smoothing_details['binned_points']}, "
+                f"median window={smoothing_details['window_c']:.2f} C, "
+                f"monotonic correction={smoothing_details['correction']:.6g} Ohm, "
+                f"99th-percentile raw residual={smoothing_details['residual_99']:.6g} Ohm "
+                f"({100.0 * smoothing_details['residual_ratio']:.2f}% of span). "
+                "The source file was not modified."
+            )
 
     fit_points = int(config.get("curve_extrapolation_fit_points", 20))
     minimum_fit_span = float(config.get("curve_extrapolation_min_fit_span_c", 5.0))
@@ -372,11 +530,11 @@ def _extend_curve_for_configured_extrapolation(r_vs_t, config):
     return extended_curve, (allowed_min, allowed_max), source_bounds
 
 
-def build_temperature_interpolator(r_vs_t, config=None):
-    config = build_control_config(config or {})
-    curve, temperature_bounds, source_temperature_bounds = _extend_curve_for_configured_extrapolation(
-        r_vs_t, config
-    )
+def _build_temperature_interpolator_from_curve(
+    curve,
+    temperature_bounds,
+    source_temperature_bounds,
+):
     resistance_order = np.argsort(curve[0, :])
     resistance_curve = curve[:, resistance_order]
     _, unique_indices = np.unique(resistance_curve[0, :], return_index=True)
@@ -392,6 +550,18 @@ def build_temperature_interpolator(r_vs_t, config=None):
             kind="linear",
             fill_value="extrapolate",
         ),
+    )
+
+
+def build_temperature_interpolator(r_vs_t, config=None):
+    config = build_control_config(config or {})
+    curve, temperature_bounds, source_temperature_bounds = _extend_curve_for_configured_extrapolation(
+        r_vs_t, config
+    )
+    return _build_temperature_interpolator_from_curve(
+        curve,
+        temperature_bounds,
+        source_temperature_bounds,
     )
 
 
