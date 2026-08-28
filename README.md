@@ -103,7 +103,7 @@ Important fields:
 - `experiment_frequency`: control loop frequency in Hz
 - `max_voltage`: absolute software voltage limit
 - `max_current`: absolute software current limit
-- `dmm_voltage_range_v`: explicit fixed voltage-DMM range; default `0.2 V`
+- `dmm_voltage_range_v`: explicit fixed voltage-DMM range; default `20 V`
 - `dmm_current_range_a`: explicit fixed current-DMM range; default `0.2 A`
 - `dmm_synchronized_reading`: start both DMM conversions before fetching either value
 - `startup_settle_time_s`: short delay after applying Initial Voltage before control begins
@@ -120,8 +120,8 @@ Important fields:
 
 Auto-ranging must remain **off** on both DMMs. Before power-supply output is enabled, the software locks the
 meters to the explicit `dmm_voltage_range_v` and `dmm_current_range_a` settings. The defaults are the SDM3055
-`0.2 V` and `0.2 A` ranges, which provide much better resolution for the millivolt/milliamp signals used in
-T0 calibration than selecting ranges from broad PSU safety limits.
+`20 V` voltage range and `0.2 A` current range. The wider voltage range prevents overload in higher-voltage wire
+experiments, while the fixed current range preserves the intended current measurement behavior.
 
 With `dmm_synchronized_reading = true`, the software sends `INIT` to both DMMs before fetching either result.
 This greatly reduces the time offset that occurs when two blocking `READ?` commands are executed sequentially.
