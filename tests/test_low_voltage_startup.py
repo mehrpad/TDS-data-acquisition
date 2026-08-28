@@ -10,6 +10,7 @@ from tds_control.tds_experiment import (
     _limit_voltage_slew,
     _measurement_voltage_floor,
     _summarize_initial_measurements,
+    measure_resistivity,
 )
 
 
@@ -55,22 +56,43 @@ class LowVoltageStartupTests(unittest.TestCase):
             (0.01831, 0.000937, 19.49),
             (0.01833, 0.000940, 19.51),
             (0.01831, 0.000938, 19.50),
+            (0.01830, 0.000938, 19.50),
+            (0.01832, 0.000939, 19.51),
+            (0.01831, 0.000937, 19.49),
+            (0.01831, 0.000938, 19.50),
         ]
         summary = _summarize_initial_measurements(samples, LinearTemperatureModel(), _config())
         self.assertIsNotNone(summary)
         self.assertAlmostEqual(summary[2], 23.0)
         self.assertAlmostEqual(summary[3], 19.50)
 
-    def test_unstable_startup_window_is_rejected(self):
+    def test_single_startup_outlier_is_ignored(self):
         samples = [
             (0.01830, 0.000938, 19.50),
             (0.01832, 0.000939, 19.52),
             (0.01831, 0.000937, 19.49),
-            (0.01833, 0.000940, 20.00),
             (0.01831, 0.000938, 19.50),
+            (0.01830, 0.000938, 19.50),
+            (0.01832, 0.000939, 19.51),
+            (0.01831, 0.000937, 19.49),
+            (0.01831, 0.000938, 19.50),
+            (0.02000, 0.000900, 22.00),
+        ]
+        summary = _summarize_initial_measurements(samples, LinearTemperatureModel(), _config())
+        self.assertIsNotNone(summary)
+        self.assertAlmostEqual(summary[3], 19.50)
+
+    def test_low_tcr_temperature_spread_is_rejected_even_when_resistance_looks_stable(self):
+        samples = [
+            (0.01830, 0.000938, resistance)
+            for resistance in (19.45, 19.47, 19.49, 19.50, 19.51, 19.53, 19.55, 19.48, 19.52)
         ]
         self.assertIsNone(
-            _summarize_initial_measurements(samples, LinearTemperatureModel(), _config())
+            _summarize_initial_measurements(
+                samples,
+                LinearTemperatureModel(slope=100.0),
+                _config(startup_temperature_spread_c=5.0),
+            )
         )
 
     def test_t0_stability_checks_resistance_as_well_as_current(self):
@@ -98,6 +120,42 @@ class LowVoltageStartupTests(unittest.TestCase):
             dmm.write.call_args_list,
             [call("CONF:VOLT:DC 0.2"), call("CONF:CURR:DC 0.2")],
         )
+
+    def test_synchronized_pair_starts_both_conversions_before_fetching(self):
+        voltage_dmm = Mock()
+        current_dmm = Mock()
+        voltage_dmm.query.return_value = "0.0195"
+        current_dmm.query.return_value = "0.0010"
+
+        measured_voltage, measured_current = siglent.read_DMM_pair(voltage_dmm, current_dmm)
+
+        self.assertEqual((measured_voltage, measured_current), ("0.0195", "0.0010"))
+        self.assertEqual(
+            voltage_dmm.method_calls,
+            [call.write("TRIG:SOUR IMM"), call.write("INIT"), call.query("FETCh?")],
+        )
+        self.assertEqual(
+            current_dmm.method_calls,
+            [call.write("TRIG:SOUR IMM"), call.write("INIT"), call.query("FETCh?")],
+        )
+
+    def test_measurement_prefers_synchronized_pair_reader(self):
+        siglent_module = Mock()
+        siglent_module.read_DMM_pair.return_value = (0.0195, 0.0010)
+
+        measured_voltage, measured_current, temperature = measure_resistivity(
+            Mock(),
+            Mock(),
+            siglent_module,
+            LinearTemperatureModel(),
+            config=_config(),
+        )
+
+        self.assertAlmostEqual(measured_voltage, 0.0195)
+        self.assertAlmostEqual(measured_current, 0.0010)
+        self.assertAlmostEqual(temperature, 23.0)
+        siglent_module.read_DMM_pair.assert_called_once()
+        siglent_module.read_DMM.assert_not_called()
 
 
 if __name__ == "__main__":

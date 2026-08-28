@@ -23,6 +23,9 @@ max_current = 3
 # Measurement speed setting sent to both DMMs. Explicit fixed DC ranges are used; auto-ranging is disabled.
 DMM_speed = 10
 
+# Start both DMM conversions before fetching voltage and current so V/I represents nearly the same instant.
+dmm_synchronized_reading = true
+
 # Fixed voltage-DMM range in volts. Use the smallest range that covers the sample voltage; Auto Range remains off.
 dmm_voltage_range_v = 0.2
 
@@ -130,8 +133,20 @@ measurement_voltage_floor = 0.01
 # Median filter window for accepted temperature readings.
 measurement_filter_samples = 3
 
-# Stable startup readings required before the controller is allowed to begin.
-startup_stable_samples = 5
+# Paired readings used for robust startup validation before the controller begins.
+startup_stable_samples = 9
+
+# Largest allowed peak-to-peak inferred-temperature spread in a startup measurement window.
+startup_temperature_spread_c = 5
+
+# Resistance outliers farther than this many robust standard deviations from the median are ignored.
+startup_outlier_mad_multiplier = 4
+
+# Minimum absolute resistance window used by robust outlier filtering.
+startup_outlier_min_resistance_ohm = 0.0005
+
+# Minimum fraction of startup readings that must remain after outlier filtering.
+startup_min_inlier_ratio = 0.67
 
 # Maximum stable resistance deviation from the median as a fraction of median resistance.
 stable_resistance_spread_ratio = 0.005
@@ -343,8 +358,8 @@ t0_voltage_step = 0.01
 # How long the sample is allowed to settle before T0 sampling.
 t0_settle_time_s = 3
 
-# How many T0 samples are used for the final calibration point.
-t0_calibration_samples = 5
+# How many paired T0 samples are used for the final calibration point.
+t0_calibration_samples = 9
 
 # How many initial T0 samples are discarded as warmup.
 t0_warmup_samples = 1
@@ -357,3 +372,6 @@ t0_stable_current_a = 0.0001
 
 # Raw uncalibrated-temperature difference that triggers a warning. It does not reject T0 calibration.
 t0_max_temp_error_c = 80
+
+# Equivalent calibrated-temperature spread that triggers a low-TCR measurement warning.
+t0_temperature_spread_warning_c = 5

@@ -46,21 +46,14 @@ def _calculate_resistance(measured_voltage, measured_current, config=None):
     return float(resistance)
 
 
-def _filter_room_temperature_samples(samples):
+def _filter_room_temperature_samples(samples, config=None):
     if len(samples) < 3:
         return samples
 
+    config = config or {}
     resistances = np.array([sample["resistance"] for sample in samples], dtype=float)
-    median_resistance = float(np.median(resistances))
-    deviations = np.abs(resistances - median_resistance)
-    mad = float(np.median(deviations))
-    resistance_window = max(6.0 * mad, 0.02 * median_resistance, 0.05)
-
-    filtered = [
-        sample
-        for sample in samples
-        if abs(sample["resistance"] - median_resistance) <= resistance_window
-    ]
+    inlier_mask = tds_experiment._robust_resistance_inlier_mask(resistances, config)
+    filtered = [sample for sample, is_inlier in zip(samples, inlier_mask) if is_inlier]
     if len(filtered) < 3:
         return samples
     return filtered
@@ -466,7 +459,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
         if len(accepted_samples) < 3:
             raise ValueError("Could not collect enough stable room-temperature calibration samples.")
 
-        filtered_samples = _filter_room_temperature_samples(accepted_samples)
+        filtered_samples = _filter_room_temperature_samples(accepted_samples, config=config)
         if len(filtered_samples) != len(accepted_samples):
             print(
                 f"Using {len(filtered_samples)} of {len(accepted_samples)} room-temperature samples "
@@ -511,6 +504,29 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
 
         calibrated = curve.copy()
         calibrated[0, :] *= scale
+        calibrated_temperature_interp = tds_experiment._build_temperature_interpolator_from_curve(
+            calibrated,
+            config=config,
+        )
+        equivalent_temperatures = np.array(
+            [float(calibrated_temperature_interp(value)) for value in final_resistances],
+            dtype=float,
+        )
+        if np.all(np.isfinite(equivalent_temperatures)):
+            equivalent_spread = float(np.ptp(equivalent_temperatures))
+            print(
+                "T0 resistance uncertainty corresponds to an inferred temperature spread of "
+                f"{equivalent_spread:.2f} C across {len(equivalent_temperatures)} samples."
+            )
+            warning_limit = float(config.get("t0_temperature_spread_warning_c", 5.0))
+            if equivalent_spread > warning_limit:
+                _emit_calibration_warning(
+                    emitter,
+                    f"T0 resistance scatter corresponds to {equivalent_spread:.2f} C, above the "
+                    f"configured {warning_limit:.2f} C warning limit. The calibration anchor was saved, "
+                    "but temperature estimates for this low-TCR wire may fluctuate. Increase Initial "
+                    "Voltage carefully or improve the measurement signal before starting the experiment.",
+                )
         return calibrated
 
     finally:

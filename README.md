@@ -105,6 +105,8 @@ Important fields:
 - `max_current`: absolute software current limit
 - `dmm_voltage_range_v`: explicit fixed voltage-DMM range; default `0.2 V`
 - `dmm_current_range_a`: explicit fixed current-DMM range; default `0.2 A`
+- `dmm_synchronized_reading`: start both DMM conversions before fetching either value
+- `startup_temperature_spread_c`: maximum inferred-temperature spread accepted at startup
 - `low_voltage_max_step_up` / `low_voltage_max_step_down`: fine controller steps used near zero voltage
 - `t0_voltage_search_start`: starting voltage for the `T0` search
 - `t0_calibration_voltage`: highest voltage the `T0` search is allowed to use
@@ -121,6 +123,11 @@ meters to the explicit `dmm_voltage_range_v` and `dmm_current_range_a` settings.
 `0.2 V` and `0.2 A` ranges, which provide much better resolution for the millivolt/milliamp signals used in
 T0 calibration than selecting ranges from broad PSU safety limits.
 
+With `dmm_synchronized_reading = true`, the software sends `INIT` to both DMMs before fetching either result.
+This greatly reduces the time offset that occurs when two blocking `READ?` commands are executed sequentially.
+If synchronized acquisition is unavailable, that individual sample falls back to the older `READ?` method and
+prints a warning.
+
 Choose the smallest supported fixed ranges that cover every expected sample voltage and current. If the signal
 can exceed either default range, raise that DMM setting before the run. `max_voltage` and `max_current` remain
 independent software safety limits; the power supply must also have an appropriate hardware current limit/OCP.
@@ -133,12 +140,15 @@ It is also an enforced runtime floor: the controlled experiment cannot request a
 signal is not measurable, startup searches upward by only `startup_search_voltage_step` (default `0.001 V`),
 for no more than `startup_search_max_delta` above the entered value.
 
-Control does not begin from one reading. Startup requires `startup_stable_samples` resistance readings whose
-deviation from their median remains within the configured absolute/relative limits. The stable median is used
-for the initial temperature. If it is more than `startup_temperature_margin_c` above `max(T0, start_T)`, startup
+Control does not begin from one reading. Startup collects nine paired measurements by default, removes isolated
+resistance outliers with a median-absolute-deviation filter, and requires enough readings to remain as a trusted
+group. It then requires the inferred temperatures across that group to span no more than
+`startup_temperature_spread_c` (default `5 C`). This is intentionally stricter than resistance percentage alone
+for low-TCR materials such as NiCr, where a tiny resistance change can represent tens of degrees. If the signal
+is not stable, startup searches upward in small voltage steps instead of starting the controller with a false
+temperature. If the stable median is more than `startup_temperature_margin_c` above `max(T0, start_T)`, startup
 stops and asks for cooling or a lower Initial Voltage. At or below `low_voltage_step_threshold`, all controller,
-recovery, T0-search, and tuning-search actions are limited to the finer low-voltage step sizes, preventing a
-`0.01 V <-> 0.02 V` oscillation on sensitive wires.
+recovery, T0-search, and tuning-search actions are limited to the finer low-voltage step sizes.
 
 Controller mode notes:
 
@@ -289,7 +299,13 @@ During this step the software now:
 - waits `t0_settle_time_s` before collecting data,
 - treats the entered `Zero Temperature` as the calibration anchor instead of rejecting samples based on the uncalibrated curve,
 - shows and records a warning when the raw inferred temperature differs from T0 by more than `t0_max_temp_error_c`,
-- discards warmup readings and rejects invalid resistance/current readings or obvious resistance outliers before calculating the final scale.
+- uses nine synchronized voltage/current pairs by default,
+- discards warmup readings and rejects invalid resistance/current readings or robustly detected resistance outliers before calculating the final scale,
+- reports the temperature-equivalent spread of the accepted T0 resistances and warns when it exceeds `t0_temperature_spread_warning_c`.
+
+The T0 value printed for accepted calibration samples is the entered anchor temperature, not an independent
+temperature measurement. For a low-TCR wire, use the reported equivalent spread to judge whether the electrical
+signal is precise enough for temperature control.
 
 ### `Tune PI/PID`
 

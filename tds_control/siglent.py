@@ -119,6 +119,23 @@ def read_DMM(DMM):
     # SCPI command to read
     return DMM.query("READ?")
 
+
+def read_DMM_pair(voltage_dmm, current_dmm):
+    """Start both DMM conversions before fetching either result.
+
+    READ? blocks until one instrument has completed its conversion. Calling
+    it sequentially therefore measures voltage and current at different times.
+    INIT/FETCh keeps both SDM3055 instruments on immediate triggering while
+    reducing that skew to the short interval between the two INIT writes.
+    """
+    voltage_dmm.write("TRIG:SOUR IMM")
+    current_dmm.write("TRIG:SOUR IMM")
+    voltage_dmm.write("INIT")
+    current_dmm.write("INIT")
+    measured_voltage = voltage_dmm.query("FETCh?")
+    measured_current = current_dmm.query("FETCh?")
+    return measured_voltage, measured_current
+
 if __name__ == "__main__":
     rm = pyvisa.ResourceManager()
     print(rm.list_resources())
