@@ -26,8 +26,8 @@ DMM_speed = 10
 # Start both DMM conversions before fetching voltage and current so V/I represents nearly the same instant.
 dmm_synchronized_reading = true
 
-# Fixed voltage-DMM range in volts. Use the smallest range that covers the sample voltage; Auto Range remains off.
-dmm_voltage_range_v = 0.2
+# Fixed voltage-DMM range in volts. The 20 V range covers higher-voltage wire experiments; Auto Range remains off.
+dmm_voltage_range_v = 20.0
 
 # Fixed current-DMM range in amps. Use the smallest range that covers the sample current; Auto Range remains off.
 dmm_current_range_a = 0.2

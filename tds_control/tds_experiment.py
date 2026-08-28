@@ -13,7 +13,7 @@ from . import siglent
 CONTROL_DEFAULTS = {
     "controller_mode": "PI",
     "experiment_mode": "CONTROLLED",
-    "dmm_voltage_range_v": 0.2,
+    "dmm_voltage_range_v": 20.0,
     "dmm_current_range_a": 0.2,
     "pid_kp": 0.008,
     "pid_ki": 0.0004,
