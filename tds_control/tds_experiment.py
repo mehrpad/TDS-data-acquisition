@@ -40,17 +40,11 @@ CONTROL_DEFAULTS = {
     "measurement_voltage_floor": 0.01,
     "measurement_filter_samples": 3,
     "dmm_synchronized_reading": True,
-    "startup_stable_samples": 9,
-    "startup_temperature_spread_c": 5.0,
-    "startup_outlier_mad_multiplier": 4.0,
-    "startup_outlier_min_resistance_ohm": 0.0005,
-    "startup_min_inlier_ratio": 0.67,
+    "resistance_outlier_mad_multiplier": 4.0,
+    "resistance_outlier_min_ohm": 0.0005,
     "stable_resistance_spread_ratio": 0.005,
     "stable_resistance_spread_ohm": 0.03,
-    "startup_search_voltage_step": 0.001,
-    "startup_search_max_delta": 0.01,
     "startup_settle_time_s": 1.0,
-    "startup_temperature_margin_c": 20.0,
     "resistance_range_margin_ratio": 0.0,
     "resistance_range_margin_ohm": 0.01,
     "curve_extrapolation_enabled": True,
@@ -64,7 +58,6 @@ CONTROL_DEFAULTS = {
     "curve_smoothing_temperature_bin_c": 0.5,
     "curve_smoothing_max_window_c": 15.0,
     "curve_smoothing_max_residual_ratio": 0.10,
-    "warmup_stable_samples": 3,
     "resistance_glitch_jump_ohm": 0.03,
     "resistance_glitch_jump_ratio": 0.015,
     "measurement_retry_attempts": 2,
@@ -627,7 +620,6 @@ class TemperatureProgram:
     hold_step_time_min: float
     temperature_tolerance_c: float
     hold_entry_tolerance_c: float
-    warmup_stable_samples: int
 
     def __post_init__(self):
         if self.target_T < self.start_T:
@@ -644,14 +636,12 @@ class TemperatureProgram:
         self.scheduled_target = self.start_T
         self.current_plateau = self.start_T
         self.hold_elapsed_s = 0.0
-        self.warmup_stable_count = 0
 
     def initialize(self, initial_temperature):
         self.scheduled_target = min(initial_temperature, self.start_T)
         self.current_plateau = self.start_T
         self.hold_elapsed_s = 0.0
         self.phase = "warmup"
-        self.warmup_stable_count = 0
 
     def _advance_target(self, target_limit, dt):
         self.scheduled_target = min(target_limit, self.scheduled_target + self.ramp_speed_c_s * dt)
@@ -661,12 +651,9 @@ class TemperatureProgram:
         while True:
             if self.phase == "warmup":
                 target = self._advance_target(self.start_T, dt)
-                # Warmup should complete once we consistently reach (or exceed) the start temperature band.
-                if measured_temperature >= self.start_T - self.temperature_tolerance_c:
-                    self.warmup_stable_count += 1
-                else:
-                    self.warmup_stable_count = 0
-                if target >= self.start_T and self.warmup_stable_count >= self.warmup_stable_samples:
+                # The programmed target follows elapsed time. It must not stop
+                # advancing merely because a noisy measurement trails start_T.
+                if target >= self.start_T:
                     self.scheduled_target = self.start_T
                     if self.simple_ramp:
                         self.phase = "final_ramp"
@@ -814,148 +801,38 @@ def _robust_resistance_inlier_mask(resistances, config):
     mad = float(np.median(np.abs(resistance_array - median_resistance)))
     robust_sigma = 1.4826 * mad
     allowed_deviation = max(
-        float(config.get("startup_outlier_min_resistance_ohm", 0.0005)),
-        float(config.get("startup_outlier_mad_multiplier", 4.0)) * robust_sigma,
+        float(
+            config.get(
+                "resistance_outlier_min_ohm",
+                config.get("startup_outlier_min_resistance_ohm", 0.0005),
+            )
+        ),
+        float(
+            config.get(
+                "resistance_outlier_mad_multiplier",
+                config.get("startup_outlier_mad_multiplier", 4.0),
+            )
+        )
+        * robust_sigma,
     )
     return np.abs(resistance_array - median_resistance) <= allowed_deviation
 
 
-def _summarize_initial_measurements(samples, temperature_interp, config):
-    required_samples = max(int(config.get("startup_stable_samples", 9)), 3)
-    if len(samples) < required_samples:
-        return None
-
-    recent_samples = samples[-required_samples:]
-    all_resistances = np.array([sample[2] for sample in recent_samples], dtype=float)
-    inlier_mask = _robust_resistance_inlier_mask(all_resistances, config)
-    minimum_inliers = max(
-        3,
-        int(np.ceil(required_samples * float(config.get("startup_min_inlier_ratio", 0.67)))),
-    )
-    if int(np.count_nonzero(inlier_mask)) < minimum_inliers:
-        return None
-
-    inlier_samples = [sample for sample, is_inlier in zip(recent_samples, inlier_mask) if is_inlier]
-    resistances = all_resistances[inlier_mask]
-    median_resistance = float(np.median(resistances))
-    allowed_deviation = max(
-        float(config.get("stable_resistance_spread_ohm", 0.03)),
-        abs(median_resistance) * float(config.get("stable_resistance_spread_ratio", 0.005)),
-    )
-    if float(np.max(np.abs(resistances - median_resistance))) > allowed_deviation:
-        return None
-    if not all(_resistance_in_curve_bounds(value, temperature_interp, config) for value in resistances):
-        return None
-
-    temperatures = np.array([float(temperature_interp(value)) for value in resistances], dtype=float)
-    if not np.all(np.isfinite(temperatures)):
-        return None
-    temperature_spread = float(np.ptp(temperatures))
-    if temperature_spread > float(config.get("startup_temperature_spread_c", 5.0)):
-        return None
-
-    temperature = float(temperature_interp(median_resistance))
-    measured_voltage = float(np.median(np.array([sample[0] for sample in inlier_samples], dtype=float)))
-    measured_current = float(np.median(np.array([sample[1] for sample in inlier_samples], dtype=float)))
-    return measured_voltage, measured_current, temperature, median_resistance
-
-
-def _acquire_stable_initial_measurement(
-    dmm_v,
-    dmm_i,
+def _start_control_at_initial_voltage(
     power_supply,
-    siglent_module,
-    temperature_interp,
     config,
-    initial_voltage,
     previous_voltage,
-    start_temperature,
-    t_zero,
     loop_time,
 ):
-    stable_samples = max(int(config.get("startup_stable_samples", 9)), 3)
-    voltage_step = max(
-        float(config.get("startup_search_voltage_step", 0.001)),
-        float(config.get("minimum_voltage_change", 1e-4)),
-    )
-    maximum_delta = max(float(config.get("startup_search_max_delta", 0.01)), 0.0)
-    search_maximum = min(float(config["max_voltage"]), initial_voltage + maximum_delta)
+    initial_voltage = _measurement_voltage_floor(config)
+    previous_voltage = _set_voltage_if_needed(power_supply, initial_voltage, previous_voltage, config)
     settle_time = max(float(config.get("startup_settle_time_s", 1.0)), 0.0)
-    attempts_per_voltage = max(stable_samples * 3, min(int(config["measurement_fail_limit"]), 10))
-    voltage = float(initial_voltage)
-
-    while voltage <= search_maximum + 1e-12:
-        previous_voltage = _set_voltage_if_needed(power_supply, voltage, previous_voltage, config)
-        print(f"Initial measurement search: trying {voltage:.4f} V")
-        time.sleep(max(settle_time, loop_time))
-        samples = []
-
-        for attempt in range(attempts_per_voltage):
-            measured_voltage, measured_current, temperature = measure_resistivity(
-                dmm_v,
-                dmm_i,
-                siglent_module,
-                temperature_interp,
-                config=config,
-            )
-            measured_resistance = _calculate_resistance(
-                measured_voltage,
-                measured_current,
-                config=config,
-            )
-            if np.isfinite(measured_current) and abs(measured_current) > config["max_current"]:
-                raise ExperimentSafetyError(
-                    f"Measured current {measured_current:.4e} A exceeded max_current during startup."
-                )
-
-            if (
-                _is_valid_measurement(measured_voltage, measured_current, temperature, config)
-                and np.isfinite(measured_resistance)
-            ):
-                samples.append((float(measured_voltage), float(measured_current), float(measured_resistance)))
-                samples = samples[-stable_samples:]
-                summary = _summarize_initial_measurements(samples, temperature_interp, config)
-                if summary is not None:
-                    maximum_start_temperature = max(float(start_temperature), float(t_zero)) + float(
-                        config.get("startup_temperature_margin_c", 20.0)
-                    )
-                    if summary[2] > maximum_start_temperature:
-                        raise ExperimentSafetyError(
-                            f"Stable startup temperature {summary[2]:.2f} C is above the allowed "
-                            f"{maximum_start_temperature:.2f} C startup limit at {voltage:.4f} V. "
-                            "Let the sample cool or lower Initial Voltage; the controller will not start "
-                            "above the requested temperature from a voltage it is not allowed to reduce."
-                        )
-                    print(
-                        f"Stable initial measurement found at {voltage:.4f} V from {stable_samples} samples: "
-                        f"T={summary[2]:.2f} C, R={summary[3]:.6f} Ohm. "
-                        "This voltage is now the active experiment floor."
-                    )
-                    return voltage, previous_voltage, summary[0], summary[1], summary[2], summary[3]
-            else:
-                samples = []
-
-            print(
-                "Initial measurement search sample: "
-                f"T={temperature}, V={measured_voltage}, I={measured_current}, "
-                f"R={measured_resistance} at PSU {voltage:.4f} V "
-                f"(attempt {attempt + 1}/{attempts_per_voltage})."
-            )
-            time.sleep(loop_time)
-
-        next_voltage = voltage + voltage_step
-        if next_voltage <= search_maximum + 1e-12:
-            print(
-                f"Initial measurement was not stable at {voltage:.4f} V; "
-                f"increasing by only {voltage_step:.4f} V."
-            )
-        voltage = next_voltage
-
-    raise ExperimentSafetyError(
-        f"Unable to acquire {stable_samples} stable initial measurements between "
-        f"{initial_voltage:.4f} V and {search_maximum:.4f} V. Improve the fixed DMM ranges, "
-        "increase Initial Voltage carefully, or reduce measurement noise before starting."
+    print(
+        f"Starting controller directly at Initial Voltage {initial_voltage:.4f} V; "
+        "this value remains the experiment voltage floor."
     )
+    time.sleep(max(settle_time, loop_time))
+    return initial_voltage, previous_voltage
 
 
 def _measure_with_retry(
@@ -1631,7 +1508,6 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                 hold_step_time_min=ex_param["hold_step_time_min"],
                 temperature_tolerance_c=config["temperature_tolerance_c"],
                 hold_entry_tolerance_c=config["hold_entry_tolerance_c"],
-                warmup_stable_samples=int(config.get("warmup_stable_samples", 3)),
             )
 
             controller_mode = get_controller_mode(config)
@@ -1646,55 +1522,41 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
             )
 
             measurement_voltage_floor = _measurement_voltage_floor(config)
-            (
-                pid_voltage,
-                previous_voltage,
-                measured_voltage,
-                measured_current,
-                temperature,
-                initial_resistance,
-            ) = _acquire_stable_initial_measurement(
-                dmm_v=dmm_v,
-                dmm_i=dmm_i,
+            pid_voltage, previous_voltage = _start_control_at_initial_voltage(
                 power_supply=power_supply,
-                siglent_module=siglent,
-                temperature_interp=temperature_interp,
                 config=config,
-                initial_voltage=measurement_voltage_floor,
                 previous_voltage=previous_voltage,
-                start_temperature=program.start_T,
-                t_zero=t_zero,
                 loop_time=loop_time,
             )
-            measurement_voltage_floor = max(measurement_voltage_floor, pid_voltage)
-            config = dict(config)
-            config["measurement_voltage_floor"] = measurement_voltage_floor
-
             print(
-                f"Initial temperature {temperature:.2f} C, start temperature {program.start_T:.2f} C, "
-                f"resistance {initial_resistance:.6e} Ohm"
+                f"Using calibrated T0 {float(t_zero):.2f} C as the initial trusted temperature; "
+                f"the first live reading will control the next voltage from {pid_voltage:.4f} V."
             )
 
-            program.initialize(max(temperature, t_zero))
-            pid_controller.reset(measurement=temperature)
+            program.initialize(float(t_zero))
+            pid_controller.reset(measurement=float(t_zero))
             invalid_measurements = 0
             invalid_reuse_streak = 0
             invalid_recovery_peak_voltage = None
-            temperature_history = [float(temperature)]
+            temperature_history = [float(t_zero)]
             filtered_temperature = _temperature_filter(
                 temperature_history,
-                temperature,
+                float(t_zero),
                 config.get("measurement_filter_samples", 3),
             )
             previous_temperature = filtered_temperature
-            previous_resistance = initial_resistance
+            previous_resistance = None
             previous_phase = None
             pending_cooldown_jump_count = 0
             pending_heatup_jump_count = 0
             temperature_jump_probe = TemperatureJumpProbe()
+            last_program_update_time = time.monotonic()
 
             while not emitter.stopped:
                 loop_started = time.time()
+                program_update_time = time.monotonic()
+                program_dt = max(program_update_time - last_program_update_time, 0.0)
+                last_program_update_time = program_update_time
                 applied_voltage = pid_voltage
                 measurement_resistance_reference = (
                     temperature_jump_probe.candidate_resistance
@@ -1973,6 +1835,12 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             f"voltage probe at {jump_probe_voltage_request:.4f} V."
                         )
                 if not _is_valid_measurement(measured_voltage, measured_current, temperature, config):
+                    target_reference_temperature = (
+                        float(previous_temperature)
+                        if previous_temperature is not None and np.isfinite(previous_temperature)
+                        else float(t_zero)
+                    )
+                    setpoint, phase, finished = program.update(target_reference_temperature, program_dt)
                     can_reuse_last_temperature = (
                         previous_temperature is not None
                         and np.isfinite(previous_temperature)
@@ -1994,7 +1862,6 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                         else:
                             invalid_recovery_peak_voltage = max(float(invalid_recovery_peak_voltage), float(applied_voltage))
                         recovery_temperature = previous_temperature
-                        setpoint, phase, finished = program.update(recovery_temperature, loop_time)
 
                         if phase != previous_phase:
                             pid_controller.reset(measurement=recovery_temperature)
@@ -2168,7 +2035,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                         raise ExperimentSafetyError("Too many invalid measurements in a row.")
                     _persist_measurement(
                         data_saver,
-                        program.scheduled_target,
+                        setpoint,
                         np.nan,
                         measured_voltage,
                         measured_current,
@@ -2176,7 +2043,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     )
                     _emit_measurement(
                         emitter,
-                        program.scheduled_target,
+                        setpoint,
                         np.nan,
                         measured_voltage,
                         measured_current,
@@ -2199,7 +2066,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     filtered_temperature if reset_temperature_reference else previous_temperature
                 )
                 temp_rate_c_min = _temperature_rate_c_min(filtered_temperature, rate_reference_temperature, loop_time)
-                setpoint, phase, finished = program.update(filtered_temperature, loop_time)
+                setpoint, phase, finished = program.update(filtered_temperature, program_dt)
 
                 if phase != previous_phase:
                     pid_controller.reset(measurement=filtered_temperature)

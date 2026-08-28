@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock, call
+from unittest.mock import Mock, call, patch
 
 import numpy as np
 
@@ -7,9 +7,10 @@ from tds_control import siglent
 from tds_control.calibration import _calibrated_temperature_spread, _resistance_series_is_stable
 from tds_control.tds_experiment import (
     CONTROL_DEFAULTS,
+    TemperatureProgram,
     _limit_voltage_slew,
     _measurement_voltage_floor,
-    _summarize_initial_measurements,
+    _start_control_at_initial_voltage,
     measure_resistivity,
 )
 
@@ -49,51 +50,41 @@ class LowVoltageStartupTests(unittest.TestCase):
         self.assertAlmostEqual(_limit_voltage_slew(0.03, 0.02, 0.01, 1.0, config), 0.021)
         self.assertAlmostEqual(_limit_voltage_slew(0.01, 0.02, 0.01, 1.0, config), 0.019)
 
-    def test_stable_startup_uses_median_resistance(self):
-        samples = [
-            (0.01830, 0.000938, 19.50),
-            (0.01832, 0.000939, 19.52),
-            (0.01831, 0.000937, 19.49),
-            (0.01833, 0.000940, 19.51),
-            (0.01831, 0.000938, 19.50),
-            (0.01830, 0.000938, 19.50),
-            (0.01832, 0.000939, 19.51),
-            (0.01831, 0.000937, 19.49),
-            (0.01831, 0.000938, 19.50),
-        ]
-        summary = _summarize_initial_measurements(samples, LinearTemperatureModel(), _config())
-        self.assertIsNotNone(summary)
-        self.assertAlmostEqual(summary[2], 23.0)
-        self.assertAlmostEqual(summary[3], 19.50)
+    @patch("tds_control.tds_experiment.time.sleep")
+    @patch("tds_control.tds_experiment.siglent.set_voltage")
+    def test_experiment_starts_directly_at_initial_voltage_without_search(self, set_voltage, sleep):
+        power_supply = Mock()
+        config = _config(t0_voltage_search_start=0.02, startup_settle_time_s=1.0)
 
-    def test_single_startup_outlier_is_ignored(self):
-        samples = [
-            (0.01830, 0.000938, 19.50),
-            (0.01832, 0.000939, 19.52),
-            (0.01831, 0.000937, 19.49),
-            (0.01831, 0.000938, 19.50),
-            (0.01830, 0.000938, 19.50),
-            (0.01832, 0.000939, 19.51),
-            (0.01831, 0.000937, 19.49),
-            (0.01831, 0.000938, 19.50),
-            (0.02000, 0.000900, 22.00),
-        ]
-        summary = _summarize_initial_measurements(samples, LinearTemperatureModel(), _config())
-        self.assertIsNotNone(summary)
-        self.assertAlmostEqual(summary[3], 19.50)
-
-    def test_low_tcr_temperature_spread_is_rejected_even_when_resistance_looks_stable(self):
-        samples = [
-            (0.01830, 0.000938, resistance)
-            for resistance in (19.45, 19.47, 19.49, 19.50, 19.51, 19.53, 19.55, 19.48, 19.52)
-        ]
-        self.assertIsNone(
-            _summarize_initial_measurements(
-                samples,
-                LinearTemperatureModel(slope=100.0),
-                _config(startup_temperature_spread_c=5.0),
-            )
+        voltage, previous_voltage = _start_control_at_initial_voltage(
+            power_supply,
+            config,
+            previous_voltage=None,
+            loop_time=1.0,
         )
+
+        self.assertAlmostEqual(voltage, 0.02)
+        self.assertAlmostEqual(previous_voltage, 0.02)
+        set_voltage.assert_called_once_with(power_supply, voltage=0.02)
+        sleep.assert_called_once_with(1.0)
+
+    def test_target_keeps_advancing_by_ramp_speed_even_when_measurement_trails(self):
+        program = TemperatureProgram(
+            start_T=40.0,
+            step_T=500.0,
+            target_T=500.0,
+            ramp_speed_c_min=60.0,
+            hold_step_time_min=1.0,
+            temperature_tolerance_c=2.0,
+            hold_entry_tolerance_c=3.0,
+        )
+        program.initialize(23.0)
+
+        targets = [program.update(measured_temperature=-100.0, dt=1.0)[0] for _ in range(20)]
+
+        self.assertTrue(all(later >= earlier for earlier, later in zip(targets, targets[1:])))
+        self.assertAlmostEqual(targets[-1], 43.0)
+        self.assertEqual(program.phase, "final_ramp")
 
     def test_t0_stability_checks_resistance_as_well_as_current(self):
         config = _config()
