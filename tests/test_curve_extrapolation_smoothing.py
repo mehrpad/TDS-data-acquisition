@@ -1,0 +1,67 @@
+import unittest
+
+import numpy as np
+
+from tds_control.tds_experiment import (
+    CONTROL_DEFAULTS,
+    _extend_curve_for_configured_extrapolation,
+    build_temperature_interpolator,
+)
+
+
+def _config(**overrides):
+    config = dict(CONTROL_DEFAULTS)
+    config.update(overrides)
+    return config
+
+
+class CurveExtrapolationSmoothingTests(unittest.TestCase):
+    def test_dense_noisy_curve_is_smoothed_and_extrapolated(self):
+        temperatures = np.linspace(25.0, 300.0, 2400)
+        trend = 20.0 + 0.012 * temperatures
+        noise = 0.025 * np.sin(temperatures * 3.1) + 0.012 * np.sin(temperatures * 17.0)
+        resistances = trend + noise
+        resistances[::173] += 0.20
+        resistances[71::211] -= 0.18
+        curve = np.vstack((resistances, temperatures))
+
+        extended, bounds, source_bounds = _extend_curve_for_configured_extrapolation(
+            curve,
+            _config(),
+        )
+
+        self.assertEqual(bounds, (0.0, 600.0))
+        self.assertGreater(source_bounds[0], 24.0)
+        self.assertLess(source_bounds[1], 301.0)
+        self.assertLess(extended.shape[1], curve.shape[1])
+        self.assertTrue(np.all(np.diff(extended[0, :]) >= -1e-12))
+
+        model = build_temperature_interpolator(curve, _config())
+        resistance_600 = float(np.interp(600.0, extended[1, :], extended[0, :]))
+        self.assertAlmostEqual(float(model(resistance_600)), 600.0, places=6)
+
+    def test_sparse_curve_with_large_reversal_is_still_rejected(self):
+        curve = np.array(
+            [
+                [1.0, 1.4, 1.1, 1.8, 2.2],
+                [20.0, 50.0, 80.0, 120.0, 160.0],
+            ]
+        )
+
+        with self.assertRaisesRegex(ValueError, "resistance reversals"):
+            _extend_curve_for_configured_extrapolation(curve, _config())
+
+    def test_smoothing_can_be_disabled_for_strict_validation(self):
+        temperatures = np.linspace(20.0, 200.0, 400)
+        resistances = 10.0 + 0.01 * temperatures + 0.08 * np.sin(temperatures)
+        curve = np.vstack((resistances, temperatures))
+
+        with self.assertRaisesRegex(ValueError, "resistance reversals"):
+            _extend_curve_for_configured_extrapolation(
+                curve,
+                _config(curve_smoothing_enabled=False),
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

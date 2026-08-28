@@ -61,6 +61,10 @@ Ordinary voltage updates do not resend the PSU `ON` command. At the end, the sof
 
 For the repository defaults of `max_voltage = 30` and `max_current = 3`, the selected fixed ranges are `200 V DC` and `10 A DC`. Confirm the limits and meter ranges before every experiment; never re-enable Auto Range on the DMM front panel during a run.
 
+`DMM_speed = 10` uses the slow 10-NPLC integration setting. The two meters are read sequentially, so the control-loop period must be long enough for both readings and instrument communication. The default `experiment_frequency = 1` Hz normally provides that margin. A lower frequency can provide more settling time after a voltage change, but it also slows controller response and does not make Auto Range safe.
+
+For best resolution, use the smallest fixed ranges that still cover every expected sample voltage and current. The GUI `max_voltage` and `max_current` values currently select those DMM ranges as well as acting as software safety limits, so unrealistically large limits can force unnecessarily coarse DMM ranges.
+
 ## Pre-run checklist
 
 - Four distinct sample contacts are used: two force and two sense.

@@ -139,6 +139,21 @@ curve_extrapolation_min_fit_span_c = 5
 # Largest small resistance reversal corrected before extrapolation, as a fraction of the curve span.
 curve_extrapolation_max_monotonic_correction_ratio = 0.02
 
+# Allow dense, noisy source tables to be temperature-binned and median-smoothed before extrapolation.
+curve_smoothing_enabled = true
+
+# Minimum source rows required before automatic smoothing is allowed.
+curve_smoothing_min_points = 100
+
+# Temperature-bin width used to suppress repeated-point noise.
+curve_smoothing_temperature_bin_c = 0.5
+
+# Largest adaptive centered-median window allowed for finding the underlying trend.
+curve_smoothing_max_window_c = 15
+
+# Maximum 99th-percentile raw residual from the smoothed curve, as a fraction of total resistance span.
+curve_smoothing_max_residual_ratio = 0.10
+
 # How many stable warmup samples are needed before the main ramp starts.
 warmup_stable_samples = 3
 
