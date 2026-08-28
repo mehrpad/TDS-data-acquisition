@@ -13,6 +13,8 @@ from . import siglent
 CONTROL_DEFAULTS = {
     "controller_mode": "PI",
     "experiment_mode": "CONTROLLED",
+    "dmm_voltage_range_v": 0.2,
+    "dmm_current_range_a": 0.2,
     "pid_kp": 0.008,
     "pid_ki": 0.0004,
     "pid_kd": 0.0,
@@ -24,6 +26,9 @@ CONTROL_DEFAULTS = {
     "fixed_series_resistance_ohm": 0.0,
     "max_voltage_step_up": 0.01,
     "max_voltage_step_down": 0.01,
+    "low_voltage_step_threshold": 0.05,
+    "low_voltage_max_step_up": 0.001,
+    "low_voltage_max_step_down": 0.001,
     "temperature_tolerance_c": 2.0,
     "hold_entry_tolerance_c": 3.0,
     "safety_temp_margin_c": 15.0,
@@ -34,6 +39,13 @@ CONTROL_DEFAULTS = {
     "minimum_voltage_change": 1e-4,
     "measurement_voltage_floor": 0.01,
     "measurement_filter_samples": 3,
+    "startup_stable_samples": 5,
+    "stable_resistance_spread_ratio": 0.005,
+    "stable_resistance_spread_ohm": 0.03,
+    "startup_search_voltage_step": 0.001,
+    "startup_search_max_delta": 0.01,
+    "startup_settle_time_s": 1.0,
+    "startup_temperature_margin_c": 20.0,
     "resistance_range_margin_ratio": 0.0,
     "resistance_range_margin_ohm": 0.01,
     "curve_extrapolation_enabled": True,
@@ -141,11 +153,31 @@ def _clamp(value, lower, upper):
     return max(lower, min(value, upper))
 
 
+def _measurement_voltage_floor(config):
+    minimum = float(config["min_voltage"])
+    maximum = float(config["max_voltage"])
+    candidates = (
+        minimum,
+        float(config.get("measurement_voltage_floor", minimum)),
+        float(config.get("startup_voltage", minimum)),
+        float(config.get("t0_voltage_search_start", minimum)),
+    )
+    if not all(np.isfinite(value) for value in candidates) or not np.isfinite(maximum):
+        raise ValueError("Initial and minimum voltage settings must be finite.")
+    return _clamp(max(candidates), minimum, maximum)
+
+
 def _limit_voltage_slew(target_voltage, current_voltage, min_voltage, max_voltage, config):
     if not np.isfinite(target_voltage) or not np.isfinite(current_voltage):
         return _clamp(current_voltage, min_voltage, max_voltage)
     max_step_up = float(config.get("max_voltage_step_up", 0.01))
     max_step_down = float(config.get("max_voltage_step_down", 0.01))
+    low_voltage_threshold = float(config.get("low_voltage_step_threshold", 0.05))
+    if current_voltage <= low_voltage_threshold + 1e-12:
+        max_step_up = min(max_step_up, float(config.get("low_voltage_max_step_up", 0.001)))
+        max_step_down = min(max_step_down, float(config.get("low_voltage_max_step_down", 0.001)))
+    if max_step_up <= 0 or max_step_down <= 0:
+        raise ValueError("Voltage slew limits must be positive.")
     delta = target_voltage - current_voltage
     if delta > max_step_up:
         target_voltage = current_voltage + max_step_up
@@ -767,6 +799,129 @@ def _resistance_in_curve_bounds(resistance, temperature_interp, config):
     return lower_bound - margin <= resistance <= upper_bound + margin
 
 
+def _summarize_initial_measurements(samples, temperature_interp, config):
+    required_samples = max(int(config.get("startup_stable_samples", 5)), 3)
+    if len(samples) < required_samples:
+        return None
+
+    recent_samples = samples[-required_samples:]
+    resistances = np.array([sample[2] for sample in recent_samples], dtype=float)
+    median_resistance = float(np.median(resistances))
+    allowed_deviation = max(
+        float(config.get("stable_resistance_spread_ohm", 0.03)),
+        abs(median_resistance) * float(config.get("stable_resistance_spread_ratio", 0.005)),
+    )
+    if float(np.max(np.abs(resistances - median_resistance))) > allowed_deviation:
+        return None
+    if not _resistance_in_curve_bounds(median_resistance, temperature_interp, config):
+        return None
+
+    temperature = float(temperature_interp(median_resistance))
+    if not np.isfinite(temperature):
+        return None
+    measured_voltage = float(np.median(np.array([sample[0] for sample in recent_samples], dtype=float)))
+    measured_current = float(np.median(np.array([sample[1] for sample in recent_samples], dtype=float)))
+    return measured_voltage, measured_current, temperature, median_resistance
+
+
+def _acquire_stable_initial_measurement(
+    dmm_v,
+    dmm_i,
+    power_supply,
+    siglent_module,
+    temperature_interp,
+    config,
+    initial_voltage,
+    previous_voltage,
+    start_temperature,
+    t_zero,
+    loop_time,
+):
+    stable_samples = max(int(config.get("startup_stable_samples", 5)), 3)
+    voltage_step = max(
+        float(config.get("startup_search_voltage_step", 0.001)),
+        float(config.get("minimum_voltage_change", 1e-4)),
+    )
+    maximum_delta = max(float(config.get("startup_search_max_delta", 0.01)), 0.0)
+    search_maximum = min(float(config["max_voltage"]), initial_voltage + maximum_delta)
+    settle_time = max(float(config.get("startup_settle_time_s", 1.0)), 0.0)
+    attempts_per_voltage = max(stable_samples * 3, min(int(config["measurement_fail_limit"]), 10))
+    voltage = float(initial_voltage)
+
+    while voltage <= search_maximum + 1e-12:
+        previous_voltage = _set_voltage_if_needed(power_supply, voltage, previous_voltage, config)
+        print(f"Initial measurement search: trying {voltage:.4f} V")
+        time.sleep(max(settle_time, loop_time))
+        samples = []
+
+        for attempt in range(attempts_per_voltage):
+            measured_voltage, measured_current, temperature = measure_resistivity(
+                dmm_v,
+                dmm_i,
+                siglent_module,
+                temperature_interp,
+                config=config,
+            )
+            measured_resistance = _calculate_resistance(
+                measured_voltage,
+                measured_current,
+                config=config,
+            )
+            if np.isfinite(measured_current) and abs(measured_current) > config["max_current"]:
+                raise ExperimentSafetyError(
+                    f"Measured current {measured_current:.4e} A exceeded max_current during startup."
+                )
+
+            if (
+                _is_valid_measurement(measured_voltage, measured_current, temperature, config)
+                and np.isfinite(measured_resistance)
+            ):
+                samples.append((float(measured_voltage), float(measured_current), float(measured_resistance)))
+                samples = samples[-stable_samples:]
+                summary = _summarize_initial_measurements(samples, temperature_interp, config)
+                if summary is not None:
+                    maximum_start_temperature = max(float(start_temperature), float(t_zero)) + float(
+                        config.get("startup_temperature_margin_c", 20.0)
+                    )
+                    if summary[2] > maximum_start_temperature:
+                        raise ExperimentSafetyError(
+                            f"Stable startup temperature {summary[2]:.2f} C is above the allowed "
+                            f"{maximum_start_temperature:.2f} C startup limit at {voltage:.4f} V. "
+                            "Let the sample cool or lower Initial Voltage; the controller will not start "
+                            "above the requested temperature from a voltage it is not allowed to reduce."
+                        )
+                    print(
+                        f"Stable initial measurement found at {voltage:.4f} V from {stable_samples} samples: "
+                        f"T={summary[2]:.2f} C, R={summary[3]:.6f} Ohm. "
+                        "This voltage is now the active experiment floor."
+                    )
+                    return voltage, previous_voltage, summary[0], summary[1], summary[2], summary[3]
+            else:
+                samples = []
+
+            print(
+                "Initial measurement search sample: "
+                f"T={temperature}, V={measured_voltage}, I={measured_current}, "
+                f"R={measured_resistance} at PSU {voltage:.4f} V "
+                f"(attempt {attempt + 1}/{attempts_per_voltage})."
+            )
+            time.sleep(loop_time)
+
+        next_voltage = voltage + voltage_step
+        if next_voltage <= search_maximum + 1e-12:
+            print(
+                f"Initial measurement was not stable at {voltage:.4f} V; "
+                f"increasing by only {voltage_step:.4f} V."
+            )
+        voltage = next_voltage
+
+    raise ExperimentSafetyError(
+        f"Unable to acquire {stable_samples} stable initial measurements between "
+        f"{initial_voltage:.4f} V and {search_maximum:.4f} V. Improve the fixed DMM ranges, "
+        "increase Initial Voltage carefully, or reduce measurement noise before starting."
+    )
+
+
 def _measure_with_retry(
     dmm_v,
     dmm_i,
@@ -913,11 +1068,7 @@ def _compute_next_voltage(
     config,
     loop_time,
 ):
-    control_min_voltage = _clamp(
-        max(config["min_voltage"], config.get("measurement_voltage_floor", config["min_voltage"])),
-        config["min_voltage"],
-        config["max_voltage"],
-    )
+    control_min_voltage = _measurement_voltage_floor(config)
     if abs(measured_current) > config["max_current"]:
         raise ExperimentSafetyError(
             f"Measured current {measured_current:.4e} A exceeded max_current {config['max_current']:.4e} A."
@@ -1323,8 +1474,8 @@ def curve_sweep(emitter, sweep_params, r_vs_t, config, data_saver=None):
         power_supply.read_termination = "\n"
 
         prepare_power_supply_output(power_supply, config)
-        siglent.configure_dc_range_from_limits(dmm_v, "VOLT", config.get("max_voltage"))
-        siglent.configure_dc_range_from_limits(dmm_i, "CURR", config.get("max_current"))
+        siglent.configure_dc_range_from_config(dmm_v, "VOLT", config)
+        siglent.configure_dc_range_from_config(dmm_i, "CURR", config)
         siglent.set_mode_speed(dmm_i, "CURR", config["DMM_speed"])
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
         time.sleep(1.0)
@@ -1427,8 +1578,8 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
         power_supply.read_termination = "\n"
 
         prepare_power_supply_output(power_supply, config)
-        siglent.configure_dc_range_from_limits(dmm_v, "VOLT", config.get("max_voltage"))
-        siglent.configure_dc_range_from_limits(dmm_i, "CURR", config.get("max_current"))
+        siglent.configure_dc_range_from_config(dmm_v, "VOLT", config)
+        siglent.configure_dc_range_from_config(dmm_i, "CURR", config)
         siglent.set_mode_speed(dmm_i, "CURR", config["DMM_speed"])
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
         time.sleep(1.0)
@@ -1458,39 +1609,34 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                 derivative_filter=config["pid_derivative_filter"],
             )
 
-            measurement_voltage_floor = _clamp(
-                max(config["startup_voltage"], config.get("measurement_voltage_floor", config["startup_voltage"])),
-                config["min_voltage"],
-                config["max_voltage"],
+            measurement_voltage_floor = _measurement_voltage_floor(config)
+            (
+                pid_voltage,
+                previous_voltage,
+                measured_voltage,
+                measured_current,
+                temperature,
+                initial_resistance,
+            ) = _acquire_stable_initial_measurement(
+                dmm_v=dmm_v,
+                dmm_i=dmm_i,
+                power_supply=power_supply,
+                siglent_module=siglent,
+                temperature_interp=temperature_interp,
+                config=config,
+                initial_voltage=measurement_voltage_floor,
+                previous_voltage=previous_voltage,
+                start_temperature=program.start_T,
+                t_zero=t_zero,
+                loop_time=loop_time,
             )
-            pid_voltage = measurement_voltage_floor
-            previous_voltage = _set_voltage_if_needed(power_supply, pid_voltage, previous_voltage, config)
-            time.sleep(max(2.0, loop_time))
-
-            measured_voltage = np.nan
-            measured_current = np.nan
-            temperature = np.nan
-            for initial_attempt in range(int(config["measurement_fail_limit"])):
-                measured_voltage, measured_current, temperature = measure_resistivity(
-                    dmm_v, dmm_i, siglent, temperature_interp, config=config
-                )
-                if _is_valid_measurement(measured_voltage, measured_current, temperature, config):
-                    break
-                print(
-                    "Invalid initial measurement received. "
-                    f"Measured Vsample={measured_voltage}, I={measured_current} at PSU {pid_voltage:.4f} V "
-                    f"(attempt {initial_attempt + 1}/{config['measurement_fail_limit']})."
-                )
-                time.sleep(loop_time)
-            initial_resistance = _calculate_resistance(measured_voltage, measured_current, config=config)
-            if not _is_valid_measurement(measured_voltage, measured_current, temperature, config):
-                raise ExperimentSafetyError(
-                    "Unable to acquire a valid initial measurement after repeated attempts."
-                )
+            measurement_voltage_floor = max(measurement_voltage_floor, pid_voltage)
+            config = dict(config)
+            config["measurement_voltage_floor"] = measurement_voltage_floor
 
             print(
                 f"Initial temperature {temperature:.2f} C, start temperature {program.start_T:.2f} C, "
-                f"resistance {measured_voltage / measured_current:.6e} Ohm"
+                f"resistance {initial_resistance:.6e} Ohm"
             )
 
             program.initialize(max(temperature, t_zero))

@@ -103,6 +103,9 @@ Important fields:
 - `experiment_frequency`: control loop frequency in Hz
 - `max_voltage`: absolute software voltage limit
 - `max_current`: absolute software current limit
+- `dmm_voltage_range_v`: explicit fixed voltage-DMM range; default `0.2 V`
+- `dmm_current_range_a`: explicit fixed current-DMM range; default `0.2 A`
+- `low_voltage_max_step_up` / `low_voltage_max_step_down`: fine controller steps used near zero voltage
 - `t0_voltage_search_start`: starting voltage for the `T0` search
 - `t0_calibration_voltage`: highest voltage the `T0` search is allowed to use
 - `t0_settle_time_s`: how long the wire is allowed to settle before `T0` samples are accepted
@@ -113,9 +116,29 @@ Important fields:
 
 ### Fixed DMM range policy
 
-Auto-ranging must remain **off** on both DMMs. Before power-supply output is enabled, the software locks the voltage DMM and current DMM to the smallest supported fixed DC range that covers `max_voltage` and `max_current`, respectively. It does not request `AUTO` range during a run.
+Auto-ranging must remain **off** on both DMMs. Before power-supply output is enabled, the software locks the
+meters to the explicit `dmm_voltage_range_v` and `dmm_current_range_a` settings. The defaults are the SDM3055
+`0.2 V` and `0.2 A` ranges, which provide much better resolution for the millivolt/milliamp signals used in
+T0 calibration than selecting ranges from broad PSU safety limits.
 
-Set `max_voltage` and `max_current` to positive, realistic limits before starting. For example, the current configuration (`30 V`, `3 A`) selects fixed `200 V` and `10 A` ranges. Verify the selected fixed ranges are appropriate for the installed DMMs and the expected measurement before every run; do not enable Auto Range manually on either meter.
+Choose the smallest supported fixed ranges that cover every expected sample voltage and current. If the signal
+can exceed either default range, raise that DMM setting before the run. `max_voltage` and `max_current` remain
+independent software safety limits; the power supply must also have an appropriate hardware current limit/OCP.
+Do not enable Auto Range manually during calibration, tuning, or an experiment.
+
+### Low-voltage startup policy
+
+The GUI `Initial Voltage` is shared by T0 calibration, PI/PID tuning, curve sweep, and controlled experiments.
+It is also an enforced runtime floor: the controlled experiment cannot request a lower voltage. If the initial
+signal is not measurable, startup searches upward by only `startup_search_voltage_step` (default `0.001 V`),
+for no more than `startup_search_max_delta` above the entered value.
+
+Control does not begin from one reading. Startup requires `startup_stable_samples` resistance readings whose
+deviation from their median remains within the configured absolute/relative limits. The stable median is used
+for the initial temperature. If it is more than `startup_temperature_margin_c` above `max(T0, start_T)`, startup
+stops and asks for cooling or a lower Initial Voltage. At or below `low_voltage_step_threshold`, all controller,
+recovery, T0-search, and tuning-search actions are limited to the finer low-voltage step sizes, preventing a
+`0.01 V <-> 0.02 V` oscillation on sensitive wires.
 
 Controller mode notes:
 
@@ -225,6 +248,8 @@ The control loop now includes:
 - rate limiting when temperature rises too quickly
 - software current cutoff using `max_current`
 - invalid-measurement detection
+- stable multi-reading startup validation with a high-temperature guard
+- an enforced Initial Voltage floor and 0.001 V low-voltage micro-steps
 - controlled micro-voltage probing before a large resistance/temperature jump is accepted
 - one PSU output-enable command at operation start, followed by a 0.001 V keep-alive setpoint at the end
 
@@ -259,7 +284,7 @@ For the current wire, it constructs `R_cal(T) = R0 * rho_ref(T) / rho_ref(T0)` a
 
 During this step the software now:
 
-- starts at `t0_voltage_search_start` and increases only until a stable positive current is found,
+- starts at `t0_voltage_search_start` and increases in bounded micro-steps until both current and resistance are stable,
 - never goes above `t0_calibration_voltage` during that search,
 - waits `t0_settle_time_s` before collecting data,
 - treats the entered `Zero Temperature` as the calibration anchor instead of rejecting samples based on the uncalibrated curve,
@@ -270,8 +295,8 @@ During this step the software now:
 
 PI/PID tuning uses a guarded low-rise step response:
 
-- it starts at `tuning_start_voltage` and increases only until a stable positive current is found,
-- it uses that lowest stable-current voltage as a safe baseline voltage,
+- it starts at `tuning_start_voltage` and increases in bounded micro-steps until both current and resistance are stable,
+- it uses that lowest stable current-and-resistance voltage as a safe baseline voltage,
 - it then applies a real step above that baseline and only increases the response voltage in bounded attempts up to `tuning_search_max_voltage`,
 - it measures the baseline temperature before each response attempt,
 - stops once the requested small temperature rise is reached,

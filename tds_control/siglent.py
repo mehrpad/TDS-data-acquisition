@@ -99,6 +99,22 @@ def configure_dc_range_from_limits(DMM, mode, expected_max):
     return configure_dc_range(DMM, mode, picked_range)
 
 
+def configure_dc_range_from_config(DMM, mode, config):
+    mode = str(mode).strip().upper()
+    if mode == "VOLT":
+        range_key = "dmm_voltage_range_v"
+        limit_key = "max_voltage"
+    elif mode == "CURR":
+        range_key = "dmm_current_range_a"
+        limit_key = "max_current"
+    else:
+        raise ValueError(f"Unsupported DMM mode for range configuration: {mode}")
+
+    if range_key in config:
+        return configure_dc_range(DMM, mode, config[range_key])
+    return configure_dc_range_from_limits(DMM, mode, config.get(limit_key))
+
+
 def read_DMM(DMM):
     # SCPI command to read
     return DMM.query("READ?")
