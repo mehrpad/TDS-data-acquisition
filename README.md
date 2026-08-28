@@ -106,7 +106,7 @@ Important fields:
 - `dmm_voltage_range_v`: explicit fixed voltage-DMM range; default `0.2 V`
 - `dmm_current_range_a`: explicit fixed current-DMM range; default `0.2 A`
 - `dmm_synchronized_reading`: start both DMM conversions before fetching either value
-- `startup_temperature_spread_c`: maximum inferred-temperature spread accepted at startup
+- `startup_settle_time_s`: short delay after applying Initial Voltage before control begins
 - `low_voltage_max_step_up` / `low_voltage_max_step_down`: fine controller steps used near zero voltage
 - `t0_voltage_search_start`: starting voltage for the `T0` search
 - `t0_calibration_voltage`: highest voltage the `T0` search is allowed to use
@@ -136,19 +136,15 @@ Do not enable Auto Range manually during calibration, tuning, or an experiment.
 ### Low-voltage startup policy
 
 The GUI `Initial Voltage` is shared by T0 calibration, PI/PID tuning, curve sweep, and controlled experiments.
-It is also an enforced runtime floor: the controlled experiment cannot request a lower voltage. If the initial
-signal is not measurable, startup searches upward by only `startup_search_voltage_step` (default `0.001 V`),
-for no more than `startup_search_max_delta` above the entered value.
+It is an enforced runtime floor: the controlled experiment starts directly at this voltage and cannot request a
+lower value. There is no separate experiment-start measurement search. After `startup_settle_time_s`, the normal
+controller loop reads the meters and increases, holds, or decreases voltage from live measurements, while the
+Initial Voltage floor remains enforced. At or below `low_voltage_step_threshold`, controller, recovery, T0-search,
+and tuning-search actions use the finer low-voltage step sizes.
 
-Control does not begin from one reading. Startup collects nine paired measurements by default, removes isolated
-resistance outliers with a median-absolute-deviation filter, and requires enough readings to remain as a trusted
-group. It then requires the inferred temperatures across that group to span no more than
-`startup_temperature_spread_c` (default `5 C`). This is intentionally stricter than resistance percentage alone
-for low-TCR materials such as NiCr, where a tiny resistance change can represent tens of degrees. If the signal
-is not stable, startup searches upward in small voltage steps instead of starting the controller with a false
-temperature. If the stable median is more than `startup_temperature_margin_c` above `max(T0, start_T)`, startup
-stops and asks for cooling or a lower Initial Voltage. At or below `low_voltage_step_threshold`, all controller,
-recovery, T0-search, and tuning-search actions are limited to the finer low-voltage step sizes.
+The programmed temperature target starts from calibrated T0 and advances according to `ramp_speed_c_min`.
+Reaching `start_T` changes the ramp phase but does not wait for the measured temperature, so noisy or lagging
+measurements cannot freeze the target. Deliberately configured step holds still pause the target as requested.
 
 Controller mode notes:
 
@@ -258,7 +254,8 @@ The control loop now includes:
 - rate limiting when temperature rises too quickly
 - software current cutoff using `max_current`
 - invalid-measurement detection
-- stable multi-reading startup validation with a high-temperature guard
+- direct controlled startup at the enforced Initial Voltage floor
+- time-driven target advancement at the configured ramp speed
 - an enforced Initial Voltage floor and 0.001 V low-voltage micro-steps
 - controlled micro-voltage probing before a large resistance/temperature jump is accepted
 - one PSU output-enable command at operation start, followed by a 0.001 V keep-alive setpoint at the end

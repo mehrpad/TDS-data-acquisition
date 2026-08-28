@@ -133,20 +133,11 @@ measurement_voltage_floor = 0.01
 # Median filter window for accepted temperature readings.
 measurement_filter_samples = 3
 
-# Paired readings used for robust startup validation before the controller begins.
-startup_stable_samples = 9
-
-# Largest allowed peak-to-peak inferred-temperature spread in a startup measurement window.
-startup_temperature_spread_c = 5
-
 # Resistance outliers farther than this many robust standard deviations from the median are ignored.
-startup_outlier_mad_multiplier = 4
+resistance_outlier_mad_multiplier = 4
 
 # Minimum absolute resistance window used by robust outlier filtering.
-startup_outlier_min_resistance_ohm = 0.0005
-
-# Minimum fraction of startup readings that must remain after outlier filtering.
-startup_min_inlier_ratio = 0.67
+resistance_outlier_min_ohm = 0.0005
 
 # Maximum stable resistance deviation from the median as a fraction of median resistance.
 stable_resistance_spread_ratio = 0.005
@@ -154,17 +145,8 @@ stable_resistance_spread_ratio = 0.005
 # Minimum absolute stable resistance-deviation allowance in ohms.
 stable_resistance_spread_ohm = 0.03
 
-# Cautious voltage increment when startup signal is not yet measurable.
-startup_search_voltage_step = 0.001
-
-# Maximum voltage increase above Initial Voltage allowed during startup measurement search.
-startup_search_max_delta = 0.01
-
-# Settling delay after each startup search voltage is applied.
+# Settling delay after Initial Voltage is applied before the controller loop begins.
 startup_settle_time_s = 1
-
-# Startup stops if stable inferred temperature exceeds max(T0, start_T) by this margin.
-startup_temperature_margin_c = 20
 
 # Extra fractional margin allowed outside the loaded R-vs-T range.
 resistance_range_margin_ratio = 0
@@ -204,9 +186,6 @@ curve_smoothing_max_window_c = 15
 
 # Maximum 99th-percentile raw residual from the smoothed curve, as a fraction of total resistance span.
 curve_smoothing_max_residual_ratio = 0.10
-
-# How many stable warmup samples are needed before the main ramp starts.
-warmup_stable_samples = 3
 
 # Base resistance-jump threshold before a retry is triggered.
 resistance_glitch_jump_ohm = 0.03
