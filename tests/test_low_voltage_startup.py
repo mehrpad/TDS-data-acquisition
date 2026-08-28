@@ -7,9 +7,11 @@ from tds_control import siglent
 from tds_control.calibration import _calibrated_temperature_spread, _resistance_series_is_stable
 from tds_control.tds_experiment import (
     CONTROL_DEFAULTS,
+    LowSignalTemperatureConfirmation,
     TemperatureProgram,
     _limit_voltage_slew,
     _measurement_voltage_floor,
+    _screen_low_signal_temperature,
     _start_control_at_initial_voltage,
     measure_resistivity,
 )
@@ -85,6 +87,47 @@ class LowVoltageStartupTests(unittest.TestCase):
         self.assertTrue(all(later >= earlier for earlier, later in zip(targets, targets[1:])))
         self.assertAlmostEqual(targets[-1], 43.0)
         self.assertEqual(program.phase, "final_ramp")
+
+    def test_single_low_signal_92_c_spike_does_not_replace_room_temperature(self):
+        confirmation = LowSignalTemperatureConfirmation()
+
+        temperature, pending, confirmed = _screen_low_signal_temperature(
+            temperature=92.61,
+            resistance=22.05,
+            trusted_temperature=23.0,
+            confirmation=confirmation,
+            config=_config(),
+        )
+
+        self.assertTrue(np.isnan(temperature))
+        self.assertTrue(pending)
+        self.assertFalse(confirmed)
+        self.assertEqual(confirmation.confirmations, 1)
+
+    def test_three_consistent_low_signal_samples_can_replace_trusted_temperature(self):
+        confirmation = LowSignalTemperatureConfirmation()
+        config = _config(
+            low_signal_jump_confirm_samples=3,
+            low_signal_jump_temperature_tolerance_c=10.0,
+            low_signal_jump_resistance_tolerance_ohm=0.015,
+        )
+
+        results = [
+            _screen_low_signal_temperature(
+                temperature=temperature,
+                resistance=resistance,
+                trusted_temperature=23.0,
+                confirmation=confirmation,
+                config=config,
+            )
+            for temperature, resistance in ((92.0, 22.050), (95.0, 22.055), (91.0, 22.052))
+        ]
+
+        self.assertTrue(np.isnan(results[0][0]))
+        self.assertTrue(np.isnan(results[1][0]))
+        self.assertAlmostEqual(results[2][0], (92.0 + 95.0 + 91.0) / 3.0)
+        self.assertFalse(results[2][1])
+        self.assertTrue(results[2][2])
 
     def test_t0_stability_checks_resistance_as_well_as_current(self):
         config = _config()

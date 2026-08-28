@@ -146,6 +146,12 @@ The programmed temperature target starts from calibrated T0 and advances accordi
 Reaching `start_T` changes the ramp phase but does not wait for the measured temperature, so noisy or lagging
 measurements cannot freeze the target. Deliberately configured step holds still pause the target as requested.
 
+At low PSU voltage, one large inferred-temperature jump cannot replace calibrated T0 or the last trusted
+temperature. The controller holds its present voltage while checking the candidate and requires
+`low_signal_jump_confirm_samples` matching temperature-and-resistance readings (default `3`). If the jump is not
+confirmed, subsequent invalid readings continue from the prior trusted temperature instead of reusing the spike.
+This confirmation does not pause the programmed target ramp.
+
 Controller mode notes:
 
 - `controller_mode = "PI"` is the default and recommended starting point
@@ -256,6 +262,7 @@ The control loop now includes:
 - invalid-measurement detection
 - direct controlled startup at the enforced Initial Voltage floor
 - time-driven target advancement at the configured ramp speed
+- repeated confirmation before a large low-signal reading replaces T0 or the last trusted temperature
 - an enforced Initial Voltage floor and 0.001 V low-voltage micro-steps
 - controlled micro-voltage probing before a large resistance/temperature jump is accepted
 - one PSU output-enable command at operation start, followed by a 0.001 V keep-alive setpoint at the end
