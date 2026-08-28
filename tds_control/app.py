@@ -721,8 +721,8 @@ class Ui_TDS(object):
             f'Selected file: {selected_file}'
         )
         self.calibration_start_voltage.setToolTip(
-            'Shared starting PSU voltage for T0 calibration, PI/PID tuning, and experiments (default: 0.01 V).\n'
-            'Increase only when 0.01 V cannot produce a stable measurable current.'
+            'Shared starting PSU voltage and enforced experiment floor (default: 0.01 V).\n'
+            'Startup requires stable readings and searches upward only in cautious 0.001 V steps.'
         )
         self.calibrate_botton_base_t.setToolTip(
             'Measure the current wire at the entered zero temperature and scale the loaded material curve.'
@@ -1213,6 +1213,8 @@ class Ui_TDS(object):
         Calibrate the PID
         """
         controller_mode = tds_experiment.get_controller_mode(self.config)
+        if not self.update_calibration_start_voltage():
+            return
         if not self.require_loaded_curve_and_t0(f'tuning {controller_mode}'):
             return
 
@@ -1241,6 +1243,8 @@ class Ui_TDS(object):
         """
         Starts a new thread to execute the main functionality (replace with your logic).
         """
+        if not self.update_calibration_start_voltage():
+            return
         experiment_mode = tds_experiment.get_experiment_mode(self.config)
         if experiment_mode == "CURVE_SWEEP":
             if not self.require_loaded_curve_and_t0('starting the curve sweep'):
