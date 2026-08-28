@@ -46,6 +46,21 @@ def _calculate_resistance(measured_voltage, measured_current, config=None):
     return float(resistance)
 
 
+def _calibrated_temperature_spread(resistances, scale, reference_temperature_interp):
+    """Return T spread after applying R_cal(T) = scale * R_ref(T)."""
+    numeric_scale = float(scale)
+    if not np.isfinite(numeric_scale) or numeric_scale <= 0:
+        return np.nan
+
+    equivalent_temperatures = np.array(
+        [float(reference_temperature_interp(float(value) / numeric_scale)) for value in resistances],
+        dtype=float,
+    )
+    if equivalent_temperatures.size == 0 or not np.all(np.isfinite(equivalent_temperatures)):
+        return np.nan
+    return float(np.ptp(equivalent_temperatures))
+
+
 def _filter_room_temperature_samples(samples, config=None):
     if len(samples) < 3:
         return samples
@@ -504,19 +519,23 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
 
         calibrated = curve.copy()
         calibrated[0, :] *= scale
-        calibrated_temperature_interp = tds_experiment._build_temperature_interpolator_from_curve(
-            calibrated,
-            config=config,
-        )
-        equivalent_temperatures = np.array(
-            [float(calibrated_temperature_interp(value)) for value in final_resistances],
-            dtype=float,
-        )
-        if np.all(np.isfinite(equivalent_temperatures)):
-            equivalent_spread = float(np.ptp(equivalent_temperatures))
+        try:
+            equivalent_spread = _calibrated_temperature_spread(
+                final_resistances,
+                scale,
+                temperature_interp,
+            )
+        except Exception as exc:
+            equivalent_spread = np.nan
+            print(
+                "WARNING: Could not calculate the T0 temperature-equivalent resistance spread; "
+                f"the completed T0 calibration remains valid. Details: {exc}"
+            )
+
+        if np.isfinite(equivalent_spread):
             print(
                 "T0 resistance uncertainty corresponds to an inferred temperature spread of "
-                f"{equivalent_spread:.2f} C across {len(equivalent_temperatures)} samples."
+                f"{equivalent_spread:.2f} C across {len(final_resistances)} samples."
             )
             warning_limit = float(config.get("t0_temperature_spread_warning_c", 5.0))
             if equivalent_spread > warning_limit:
