@@ -4,7 +4,7 @@ from unittest.mock import Mock, call
 import numpy as np
 
 from tds_control import siglent
-from tds_control.calibration import _resistance_series_is_stable
+from tds_control.calibration import _calibrated_temperature_spread, _resistance_series_is_stable
 from tds_control.tds_experiment import (
     CONTROL_DEFAULTS,
     _limit_voltage_slew,
@@ -103,6 +103,15 @@ class LowVoltageStartupTests(unittest.TestCase):
         self.assertFalse(
             _resistance_series_is_stable([16.50, 16.83, 17.16], config)
         )
+
+    def test_t0_uncertainty_uses_inverse_calibration_scale(self):
+        reference_temperature = lambda resistance: 100.0 * (float(resistance) - 10.0) + 23.0
+        spread = _calibrated_temperature_spread(
+            [20.00, 20.02],
+            scale=2.0,
+            reference_temperature_interp=reference_temperature,
+        )
+        self.assertAlmostEqual(spread, 1.0)
 
     def test_explicit_fixed_dmm_ranges_override_broad_safety_limits(self):
         dmm = Mock()
