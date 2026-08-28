@@ -74,6 +74,10 @@ CONTROL_DEFAULTS = {
     "low_signal_jump_confirm_samples": 3,
     "low_signal_jump_temperature_tolerance_c": 10.0,
     "low_signal_jump_resistance_tolerance_ohm": 0.015,
+    "low_signal_recovery_trigger_cycles": 5,
+    "low_signal_recovery_observe_cycles": 5,
+    "low_signal_recovery_voltage_step": 0.01,
+    "low_signal_recovery_max_attempts": 5,
     "measurement_cooldown_confirm_samples": 2,
     "measurement_heatup_confirm_samples": 2,
     "measurement_jump_probe_threshold_c": 35.0,
@@ -167,6 +171,18 @@ class LowSignalTemperatureConfirmation:
         self.candidate_temperature = np.nan
         self.candidate_resistance = np.nan
         self.confirmations = 0
+
+
+@dataclass
+class LowSignalVoltageRecovery:
+    active: bool = False
+    attempts: int = 0
+    invalid_samples_since_step: int = 0
+
+    def reset(self):
+        self.active = False
+        self.attempts = 0
+        self.invalid_samples_since_step = 0
 
 
 def _clamp(value, lower, upper):
@@ -837,6 +853,51 @@ def _robust_resistance_inlier_mask(resistances, config):
         * robust_sigma,
     )
     return np.abs(resistance_array - median_resistance) <= allowed_deviation
+
+
+def _advance_low_signal_voltage_recovery(
+    recovery,
+    invalid_reuse_streak,
+    low_signal_state,
+    applied_voltage,
+    measured_current,
+    config,
+):
+    """Probe upward in fixed steps when invalid low-voltage readings would otherwise deadlock control."""
+    trigger_cycles = max(int(config.get("low_signal_recovery_trigger_cycles", 5)), 1)
+    observe_cycles = max(int(config.get("low_signal_recovery_observe_cycles", 5)), 1)
+    maximum_attempts = max(int(config.get("low_signal_recovery_max_attempts", 5)), 1)
+
+    if not recovery.active:
+        if not low_signal_state or invalid_reuse_streak < trigger_cycles:
+            return None, False
+        recovery.active = True
+        # The trigger samples already provide the observation period for the first probe.
+        recovery.invalid_samples_since_step = observe_cycles
+    else:
+        recovery.invalid_samples_since_step += 1
+
+    if recovery.attempts >= maximum_attempts:
+        return float(applied_voltage), False
+    if recovery.invalid_samples_since_step < observe_cycles:
+        return float(applied_voltage), False
+
+    if not np.isfinite(measured_current) or abs(measured_current) >= 0.95 * float(config["max_current"]):
+        return float(applied_voltage), False
+
+    voltage_step = max(float(config.get("low_signal_recovery_voltage_step", 0.01)), 0.0)
+    requested_voltage = _clamp(
+        float(applied_voltage) + voltage_step,
+        _measurement_voltage_floor(config),
+        float(config["max_voltage"]),
+    )
+    minimum_change = max(float(config.get("minimum_voltage_change", 1e-4)), 0.0)
+    if requested_voltage < float(applied_voltage) + minimum_change:
+        return float(applied_voltage), False
+
+    recovery.attempts += 1
+    recovery.invalid_samples_since_step = 0
+    return requested_voltage, True
 
 
 def _start_control_at_initial_voltage(
@@ -1523,7 +1584,7 @@ def curve_sweep(emitter, sweep_params, r_vs_t, config, data_saver=None):
             print(
                 f"Curve sweep, T: {temperature:.2f} C, Target curve T: {target_temperature:.2f} C, "
                 f"Vsample: {measured_voltage:.6f} V, Current: {measured_current:.4e} A, "
-                f"PSU: {previous_voltage:.4f} V"
+                f"PSU command: {previous_voltage:.4f} V"
             )
             _persist_measurement(
                 data_saver,
@@ -1636,6 +1697,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
             pending_heatup_jump_count = 0
             temperature_jump_probe = TemperatureJumpProbe()
             low_signal_confirmation = LowSignalTemperatureConfirmation()
+            low_signal_voltage_recovery = LowSignalVoltageRecovery()
             last_program_update_time = time.monotonic()
 
             while not emitter.stopped:
@@ -1678,7 +1740,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             f"candidate={raw_temperature:.2f} C, trusted={previous_temperature:.2f} C. "
                             f"Confirmation {low_signal_confirmation.confirmations}/"
                             f"{max(int(config.get('low_signal_jump_confirm_samples', 3)), 2)}; "
-                            "holding voltage while the target continues to ramp."
+                            "waiting for confirmation while the target continues to ramp."
                         )
                     elif low_signal_jump_confirmed:
                         print(
@@ -2070,6 +2132,26 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                                 config["max_voltage"],
                                 config,
                             )
+                        low_signal_recovery_voltage, low_signal_recovery_stepped = (
+                            _advance_low_signal_voltage_recovery(
+                                recovery=low_signal_voltage_recovery,
+                                invalid_reuse_streak=invalid_reuse_streak,
+                                low_signal_state=low_signal_state,
+                                applied_voltage=applied_voltage,
+                                measured_current=measured_current,
+                                config=config,
+                            )
+                        )
+                        if low_signal_recovery_voltage is not None:
+                            pid_voltage = low_signal_recovery_voltage
+                        if low_signal_recovery_stepped:
+                            print(
+                                "Low-signal recovery probe "
+                                f"{low_signal_voltage_recovery.attempts}/"
+                                f"{max(int(config.get('low_signal_recovery_max_attempts', 5)), 1)}: "
+                                f"increasing commanded PSU from {applied_voltage:.4f} to {pid_voltage:.4f} V "
+                                "and observing the next measurements."
+                            )
                         previous_voltage = _set_voltage_if_needed(power_supply, pid_voltage, previous_voltage, config)
                         invalid_measurements = 0
                         if (
@@ -2086,7 +2168,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             recovery_action = "holding"
                         print(
                             f"Ignoring {'low-signal' if low_signal_state else 'transient'} invalid measurement. "
-                            f"Measured Vsample={measured_voltage}, I={measured_current} while PSU was {applied_voltage:.4f} V. "
+                            f"Measured Vsample={measured_voltage}, I={measured_current} while commanded PSU was {applied_voltage:.4f} V. "
                             f"Reusing last trusted temperature {recovery_temperature:.2f} C and "
                             f"{recovery_action} to {pid_voltage:.4f} V."
                         )
@@ -2144,7 +2226,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     previous_voltage = _set_voltage_if_needed(power_supply, pid_voltage, previous_voltage, config)
                     print(
                         "Invalid measurement received. "
-                        f"Measured Vsample={measured_voltage}, I={measured_current} while PSU was {applied_voltage:.4f} V. "
+                        f"Measured Vsample={measured_voltage}, I={measured_current} while commanded PSU was {applied_voltage:.4f} V. "
                         f"Reducing PSU to {pid_voltage:.4f} V (attempt {invalid_measurements})."
                     )
                     if invalid_measurements >= config["measurement_fail_limit"]:
@@ -2173,6 +2255,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                 invalid_measurements = 0
                 invalid_reuse_streak = 0
                 invalid_recovery_peak_voltage = None
+                low_signal_voltage_recovery.reset()
                 filtered_temperature = _temperature_filter(
                     temperature_history,
                     temperature,
@@ -2205,7 +2288,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                 print(
                     f"Phase: {phase}, T: {filtered_temperature:.2f} C, Setpoint: {setpoint:.2f} C, "
                     f"Vsample: {measured_voltage:.6f} V, Current: {measured_current:.4e} A, "
-                    f"PSU: {applied_voltage:.4f} -> {pid_voltage:.4f} V, "
+                    f"PSU command: {applied_voltage:.4f} -> {pid_voltage:.4f} V, "
                     f"Rate: {temp_rate_c_min if temp_rate_c_min is not None else 0.0:.2f} C/min"
                 )
                 _persist_measurement(

@@ -142,15 +142,25 @@ controller loop reads the meters and increases, holds, or decreases voltage from
 Initial Voltage floor remains enforced. At or below `low_voltage_step_threshold`, controller, recovery, T0-search,
 and tuning-search actions use the finer low-voltage step sizes.
 
+Logged `PSU command` values are requested power-supply setpoints. They are not the same as `Vsample`, which is the
+Kelvin voltage measured directly across the wire, and either value may differ slightly from the PSU front-panel
+readback because of output accuracy, display resolution, settling, and wiring voltage drop.
+
 The programmed temperature target starts from calibrated T0 and advances according to `ramp_speed_c_min`.
 Reaching `start_T` changes the ramp phase but does not wait for the measured temperature, so noisy or lagging
 measurements cannot freeze the target. Deliberately configured step holds still pause the target as requested.
 
 At low PSU voltage, one large inferred-temperature jump cannot replace calibrated T0 or the last trusted
-temperature. The controller holds its present voltage while checking the candidate and requires
+temperature. The controller initially holds its present voltage while checking the candidate and requires
 `low_signal_jump_confirm_samples` matching temperature-and-resistance readings (default `3`). If the jump is not
 confirmed, subsequent invalid readings continue from the prior trusted temperature instead of reusing the spike.
 This confirmation does not pause the programmed target ramp.
+
+If low-signal readings remain invalid, the controller no longer stays indefinitely at Initial Voltage. After five
+consecutive invalid readings it increases the commanded PSU voltage by `0.01 V`, observes five more measurements,
+and repeats when necessary. It performs up to five upward probes in one recovery episode, while still enforcing
+`max_voltage`, `max_current`, and the Initial Voltage floor. One valid measurement resets this recovery sequence;
+the programmed temperature target continues to ramp throughout it.
 
 Controller mode notes:
 
@@ -263,6 +273,7 @@ The control loop now includes:
 - direct controlled startup at the enforced Initial Voltage floor
 - time-driven target advancement at the configured ramp speed
 - repeated confirmation before a large low-signal reading replaces T0 or the last trusted temperature
+- five staged `+0.01 V` recovery probes when invalid low-signal measurements would otherwise stall control
 - an enforced Initial Voltage floor and 0.001 V low-voltage micro-steps
 - controlled micro-voltage probing before a large resistance/temperature jump is accepted
 - one PSU output-enable command at operation start, followed by a 0.001 V keep-alive setpoint at the end

@@ -8,7 +8,9 @@ from tds_control.calibration import _calibrated_temperature_spread, _resistance_
 from tds_control.tds_experiment import (
     CONTROL_DEFAULTS,
     LowSignalTemperatureConfirmation,
+    LowSignalVoltageRecovery,
     TemperatureProgram,
+    _advance_low_signal_voltage_recovery,
     _limit_voltage_slew,
     _measurement_voltage_floor,
     _screen_low_signal_temperature,
@@ -128,6 +130,54 @@ class LowVoltageStartupTests(unittest.TestCase):
         self.assertAlmostEqual(results[2][0], (92.0 + 95.0 + 91.0) / 3.0)
         self.assertFalse(results[2][1])
         self.assertTrue(results[2][2])
+
+    def test_stuck_low_signal_recovery_increases_01_v_five_times(self):
+        recovery = LowSignalVoltageRecovery()
+        config = _config(
+            low_signal_recovery_trigger_cycles=2,
+            low_signal_recovery_observe_cycles=2,
+            low_signal_recovery_voltage_step=0.01,
+            low_signal_recovery_max_attempts=5,
+        )
+        applied_voltage = 0.01
+        stepped_voltages = []
+
+        for invalid_streak in range(1, 12):
+            requested_voltage, stepped = _advance_low_signal_voltage_recovery(
+                recovery=recovery,
+                invalid_reuse_streak=invalid_streak,
+                low_signal_state=applied_voltage <= config["ignore_invalid_below_voltage"],
+                applied_voltage=applied_voltage,
+                measured_current=0.001,
+                config=config,
+            )
+            if requested_voltage is not None:
+                applied_voltage = requested_voltage
+            if stepped:
+                stepped_voltages.append(applied_voltage)
+
+        np.testing.assert_allclose(stepped_voltages, [0.02, 0.03, 0.04, 0.05, 0.06])
+        self.assertEqual(recovery.attempts, 5)
+
+    def test_low_signal_recovery_does_not_increase_near_current_limit(self):
+        recovery = LowSignalVoltageRecovery()
+        config = _config(
+            low_signal_recovery_trigger_cycles=1,
+            low_signal_recovery_observe_cycles=1,
+        )
+
+        requested_voltage, stepped = _advance_low_signal_voltage_recovery(
+            recovery=recovery,
+            invalid_reuse_streak=1,
+            low_signal_state=True,
+            applied_voltage=0.01,
+            measured_current=0.096,
+            config=config,
+        )
+
+        self.assertEqual(requested_voltage, 0.01)
+        self.assertFalse(stepped)
+        self.assertEqual(recovery.attempts, 0)
 
     def test_t0_stability_checks_resistance_as_well_as_current(self):
         config = _config()

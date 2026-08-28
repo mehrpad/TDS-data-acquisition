@@ -235,6 +235,18 @@ low_signal_jump_temperature_tolerance_c = 10
 # Maximum resistance difference between low-signal jump confirmation samples.
 low_signal_jump_resistance_tolerance_ohm = 0.015
 
+# Start low-signal voltage recovery after this many consecutive invalid readings.
+low_signal_recovery_trigger_cycles = 5
+
+# Measurements observed at each recovery voltage before another increase is allowed.
+low_signal_recovery_observe_cycles = 5
+
+# Fixed upward PSU step used to escape an invalid low-voltage measurement deadlock.
+low_signal_recovery_voltage_step = 0.01
+
+# Maximum number of upward low-signal recovery probes in one invalid-reading episode.
+low_signal_recovery_max_attempts = 5
+
 # How many downward jump confirmations are required before accepting cooldown.
 measurement_cooldown_confirm_samples = 2
 
@@ -262,7 +274,7 @@ ignore_invalid_below_voltage = 0.05
 # Backoff step used when an invalid reading appears too hot.
 invalid_voltage_step_down = 0.01
 
-# After this many reused invalid cycles, stop increasing voltage and hold/back off.
+# After this many reused invalid cycles, normal recovery holds/backs off; staged low-signal probes may override it.
 invalid_reuse_hold_after = 8
 
 # During one invalid-reading recovery episode, never back off more than this much below the recent touched PSU voltage.
