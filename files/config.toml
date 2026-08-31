@@ -11,8 +11,8 @@ controller_mode = "PI"
 # Choose "TEMPERATURE" for PI/PID control or "VOLTAGE" for an elapsed-time voltage ramp.
 experiment_mode = "TEMPERATURE"
 
-# Control loop frequency in Hz.
-experiment_frequency = 1
+# Control loop frequency in Hz. 0.5 Hz gives one synchronized update every 2 seconds.
+experiment_frequency = 0.5
 
 # Internal absolute software voltage ceiling for the power supply.
 max_voltage = 30
@@ -23,17 +23,29 @@ max_current = 3
 # Maximum sample power in watts, calculated as the absolute synchronized Kelvin voltage times current.
 max_power_w = 2.5
 
-# Measurement speed setting sent to both DMMs. Explicit fixed DC ranges are used; auto-ranging is disabled.
+# Measurement speed setting sent to both DMMs. Explicit fixed DC ranges are used; instrument auto-ranging is disabled.
 DMM_speed = 10
 
 # Start both DMM conversions before fetching voltage and current.
 dmm_synchronized_reading = true
 
-# Explicit fixed voltage-DMM range in volts; use the smallest range that covers the sample signal.
-dmm_voltage_range_v = 20
+# Initial fixed voltage-DMM range in volts.
+dmm_voltage_range_v = 0.2
 
-# Explicit fixed current-DMM range in amps; use the smallest range that covers the sample signal.
-dmm_current_range_a = 0.2
+# Initial fixed current-DMM range in amps. 0.002 A selects the 2 mA range.
+dmm_current_range_a = 0.002
+
+# Increase fixed DMM ranges only when a reading approaches full scale; this is not instrument auto-ranging.
+dmm_staged_ranging_enabled = true
+
+# Fraction of the active fixed range that triggers an upward range change.
+dmm_range_switch_fraction = 0.8
+
+# Settling delay after a fixed-range change.
+dmm_range_settle_time_s = 0.3
+
+# Number of synchronized readings discarded after a fixed-range change.
+dmm_range_discard_readings = 2
 
 # VISA address of the voltage DMM.
 DMM_v = "USB0::0xF4EC::0xEE38::SDM35FAC4R0253::INSTR"
@@ -118,8 +130,8 @@ hard_temp_rate_margin_c_min = 4
 # How many consecutive invalid measurements are tolerated before stopping.
 measurement_fail_limit = 20
 
-# Smallest current treated as a valid reading.
-minimum_current_a = 0.0005
+# Smallest current treated as a valid reading; the 2 mA DMM range supports this lower threshold.
+minimum_current_a = 0.0001
 
 # Smallest PSU change worth sending to the instrument.
 minimum_voltage_change = 0.0001
@@ -166,10 +178,13 @@ curve_extrapolation_fit_points = 20
 # Minimum temperature span used by each endpoint linear fit.
 curve_extrapolation_min_fit_span_c = 5
 
-# Largest small resistance reversal corrected before extrapolation, as a fraction of the curve span.
+# Largest small resistance reversal corrected before R-vs-T inversion, as a fraction of the curve span.
+curve_monotonic_correction_ratio = 0.02
+
+# Legacy name kept for older configuration files.
 curve_extrapolation_max_monotonic_correction_ratio = 0.02
 
-# Allow robust smoothing of dense, noisy curves before extrapolation.
+# Allow robust smoothing of dense, noisy curves before R-vs-T inversion, even when extrapolation is disabled.
 curve_smoothing_enabled = true
 
 # Minimum source rows required before automatic robust smoothing is allowed.

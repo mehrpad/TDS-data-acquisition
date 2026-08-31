@@ -100,12 +100,15 @@ Important fields:
 - `DMM_v`: VISA address for the voltage DMM
 - `DMM_i`: VISA address for the current DMM
 - `PS`: VISA address for the power supply
-- `experiment_frequency`: control loop frequency in Hz
+- `experiment_frequency`: control loop frequency in Hz; default `0.5 Hz` (one update every 2 seconds)
 - `max_power_w`: GUI sample-power cutoff calculated as `|Vsample x I|`; default `2.5 W`
 - `max_voltage`: internal absolute PSU-voltage ceiling retained as a last-resort guard
 - `max_current`: absolute software current limit
-- `dmm_voltage_range_v`: explicit fixed voltage-DMM range; default `20 V`
-- `dmm_current_range_a`: explicit fixed current-DMM range; default `0.2 A`
+- `dmm_voltage_range_v`: initial fixed voltage-DMM range; default `0.2 V`
+- `dmm_current_range_a`: initial fixed current-DMM range; default `0.002 A` (2 mA)
+- `dmm_staged_ranging_enabled`: enables deterministic upward fixed-range changes without instrument autorange
+- `dmm_range_switch_fraction`: upward range-change threshold; default `0.8` (80% of full scale)
+- `dmm_range_settle_time_s` / `dmm_range_discard_readings`: settling controls after a range change
 - `dmm_synchronized_reading`: start both DMM conversions before fetching either value
 - `startup_settle_time_s`: short delay after applying Initial Voltage before control begins
 - `low_voltage_max_step_up` / `low_voltage_max_step_down`: fine controller steps used near zero voltage
@@ -116,22 +119,26 @@ Important fields:
 - `tuning_search_max_voltage`: highest voltage the PI/PID tuning search is allowed to use
 - `tuning_response_voltage_step`: how much each PI/PID tuning attempt increases above the safe baseline voltage
 
-### Fixed DMM range policy
+### Staged fixed DMM range policy
 
 Auto-ranging must remain **off** on both DMMs. Before power-supply output is enabled, the software locks the
-meters to the explicit `dmm_voltage_range_v` and `dmm_current_range_a` settings. The defaults are the SDM3055
-`20 V` voltage range and `0.2 A` current range. The wider voltage range prevents overload in higher-voltage wire
-experiments, while the fixed current range preserves the intended current measurement behavior.
+meters to the initial `dmm_voltage_range_v` and `dmm_current_range_a` settings. The defaults are the SDM3055
+`0.2 V` voltage range and `0.002 A` (2 mA) current range, giving good resolution for low-voltage startup.
+When `dmm_staged_ranging_enabled = true`, a reading at 80% of full scale moves that meter directly to the
+smallest larger supported fixed range that covers the signal. Voltage progresses through 0.2, 2, 20, 200, and
+1000 V; current progresses through 0.2 mA, 2 mA, 20 mA, 200 mA, 2 A, and 10 A. A range never moves downward
+during one operation, avoiding range chatter.
 
 With `dmm_synchronized_reading = true`, the software sends `INIT` to both DMMs before fetching either result.
 This greatly reduces the time offset that occurs when two blocking `READ?` commands are executed sequentially.
 If synchronized acquisition is unavailable, that individual sample falls back to the older `READ?` method and
 prints a warning.
 
-Choose the smallest supported fixed ranges that cover every expected sample voltage and current. If the signal
-can exceed either default range, raise that DMM setting before the run. `max_power_w`, `max_current`, and the
-internal `max_voltage` ceiling are independent software safety limits; the power supply must also have an
-appropriate hardware current limit/OCP.
+After a range change, the software waits `dmm_range_settle_time_s`, discards
+`dmm_range_discard_readings` synchronized pairs, and then uses a fresh pair. This prevents a transition sample
+from entering the resistance or temperature calculation. `max_power_w`, `max_current`, and the internal
+`max_voltage` ceiling remain independent software safety limits; the power supply must also have an appropriate
+hardware current limit/OCP.
 Do not enable Auto Range manually during calibration, tuning, or an experiment.
 
 ### Low-voltage startup policy
@@ -377,9 +384,11 @@ measured range, the software fits a straight line to at least `curve_extrapolati
 corresponding end. Each endpoint fit also covers at least `curve_extrapolation_min_fit_span_c`, so dense
 tables do not create a false flat or reversed slope from only a tiny temperature interval.
 
-Clean curves keep their original temperature resolution and receive only a least-squares monotonic correction
-within `curve_extrapolation_max_monotonic_correction_ratio`. When `curve_smoothing_enabled = true`, a dense
-curve that exceeds that limit can be recovered without modifying its source file: the software groups rows into
+Whether extrapolation is enabled or disabled, the curve is made single-valued and monotonic before resistance
+is converted to temperature. Clean curves keep their original temperature resolution and receive only a
+least-squares monotonic correction within `curve_monotonic_correction_ratio`. When
+`curve_smoothing_enabled = true`, a dense curve that exceeds that limit can be recovered without modifying its
+source file: the software groups rows into
 `curve_smoothing_temperature_bin_c` bins, uses the smallest centered-median window that works up to
 `curve_smoothing_max_window_c`, and then applies a least-squares monotonic fit. Smoothing is allowed only for
 files with at least `curve_smoothing_min_points` rows, and the 99th-percentile raw deviation must stay below

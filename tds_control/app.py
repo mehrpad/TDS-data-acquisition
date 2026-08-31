@@ -1342,9 +1342,13 @@ class Ui_TDS(object):
         self.experiment_name = self.sanitize_experiment_name(self.ex_name.text().strip() or 'TDS_test')
         self.current_experiment_dir = self.build_experiment_dir()
         try:
+            results_curve, _, _ = tds_experiment._extend_curve_for_configured_extrapolation(
+                self.r_vs_t,
+                tds_experiment.build_control_config(self.config),
+            )
             self.data_saver = ExperimentDataSaver(
                 experiment_dir=self.current_experiment_dir,
-                r_vs_t=self.r_vs_t,
+                r_vs_t=results_curve,
                 calibration_note=self.t0_calibration_warning,
                 flush_interval_s=self.config['autosave_flush_interval_s'],
                 batch_size=self.config['autosave_batch_size'],

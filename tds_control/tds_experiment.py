@@ -16,8 +16,12 @@ CONTROL_DEFAULTS = {
     "max_voltage": 30.0,
     "max_current": 3.0,
     "max_power_w": 2.5,
-    "dmm_voltage_range_v": 20.0,
-    "dmm_current_range_a": 0.2,
+    "dmm_voltage_range_v": 0.2,
+    "dmm_current_range_a": 0.002,
+    "dmm_staged_ranging_enabled": True,
+    "dmm_range_switch_fraction": 0.8,
+    "dmm_range_settle_time_s": 0.3,
+    "dmm_range_discard_readings": 2,
     "pid_kp": 0.008,
     "pid_ki": 0.0004,
     "pid_kd": 0.0,
@@ -38,7 +42,7 @@ CONTROL_DEFAULTS = {
     "soft_temp_rate_margin_c_min": 1.0,
     "hard_temp_rate_margin_c_min": 4.0,
     "measurement_fail_limit": 20,
-    "minimum_current_a": 5e-4,
+    "minimum_current_a": 1e-4,
     "minimum_voltage_change": 1e-4,
     "measurement_voltage_floor": 0.01,
     "measurement_filter_samples": 3,
@@ -55,6 +59,7 @@ CONTROL_DEFAULTS = {
     "curve_extrapolation_max_temperature_c": 600.0,
     "curve_extrapolation_fit_points": 20,
     "curve_extrapolation_min_fit_span_c": 5.0,
+    "curve_monotonic_correction_ratio": 0.02,
     "curve_extrapolation_max_monotonic_correction_ratio": 0.02,
     "curve_smoothing_enabled": True,
     "curve_smoothing_min_points": 100,
@@ -403,7 +408,7 @@ def _robust_monotonic_curve(temperature_curve, direction, config, correction_lim
     minimum_points = int(config.get("curve_smoothing_min_points", 100))
     if not smoothing_enabled or temperature_curve.shape[1] < minimum_points:
         raise ValueError(
-            "Curve extrapolation found resistance reversals larger than the configured monotonic "
+            "R vs. T conversion found resistance reversals larger than the configured monotonic "
             "correction limit. Clean the R vs. T file or enable robust curve smoothing."
         )
 
@@ -446,7 +451,7 @@ def _robust_monotonic_curve(temperature_curve, direction, config, correction_lim
 
     if selected_curve is None:
         raise ValueError(
-            "Curve extrapolation could not obtain a reliable monotonic trend after robust smoothing. "
+            "R vs. T conversion could not obtain a reliable monotonic trend after robust smoothing. "
             "Use a cleaner or wider-temperature R vs. T file."
         )
 
@@ -457,7 +462,7 @@ def _robust_monotonic_curve(temperature_curve, direction, config, correction_lim
     residual_ratio = residual_99 / max(resistance_span, tolerance)
     if residual_ratio > max_residual_ratio:
         raise ValueError(
-            "Curve extrapolation found too many large deviations from the smoothed monotonic trend. "
+            "R vs. T conversion found too many large deviations from the smoothed monotonic trend. "
             "Use a cleaner R vs. T file or increase curve_smoothing_max_residual_ratio only after review."
         )
 
@@ -470,6 +475,51 @@ def _robust_monotonic_curve(temperature_curve, direction, config, correction_lim
         "residual_ratio": residual_ratio,
     }
     return selected_curve, selected_correction, details
+
+
+def _condition_curve_for_inversion(temperature_curve, config):
+    """Return a monotonic R(T) curve that can be inverted without branch ambiguity."""
+    original_resistance = np.asarray(temperature_curve[0, :], dtype=float)
+    overall_change = float(original_resistance[-1] - original_resistance[0])
+    direction = float(np.sign(overall_change))
+    resistance_span = float(np.ptp(original_resistance))
+    tolerance = max(resistance_span * 1e-12, 1e-15)
+    if direction == 0 or resistance_span <= tolerance:
+        raise ValueError("R vs. T conversion requires resistance to change with temperature.")
+
+    maximum_correction_ratio = float(
+        config.get(
+            "curve_monotonic_correction_ratio",
+            config.get("curve_extrapolation_max_monotonic_correction_ratio", 0.02),
+        )
+    )
+    if not np.isfinite(maximum_correction_ratio) or maximum_correction_ratio < 0:
+        raise ValueError("curve_monotonic_correction_ratio must be non-negative.")
+
+    conditioned_curve, maximum_correction, smoothing_details = _robust_monotonic_curve(
+        temperature_curve,
+        direction,
+        config,
+        maximum_correction_ratio,
+        tolerance,
+    )
+    if maximum_correction > tolerance:
+        if smoothing_details is None:
+            print(
+                "WARNING: corrected small non-monotonic resistance steps before R vs. T inversion "
+                f"with a least-squares monotonic fit; maximum correction={maximum_correction:.6g} Ohm."
+            )
+        else:
+            print(
+                "WARNING: robustly smoothed a dense/noisy R vs. T curve before R vs. T inversion; "
+                f"points={smoothing_details['raw_points']}->{smoothing_details['binned_points']}, "
+                f"median window={smoothing_details['window_c']:.2f} C, "
+                f"monotonic correction={smoothing_details['correction']:.6g} Ohm, "
+                f"99th-percentile raw residual={smoothing_details['residual_99']:.6g} Ohm "
+                f"({100.0 * smoothing_details['residual_ratio']:.2f}% of span). "
+                "The source file was not modified."
+            )
+    return conditioned_curve, direction
 
 
 def _fit_endpoint_resistance(
@@ -547,10 +597,11 @@ def _fit_endpoint_resistance(
 
 def _extend_curve_for_configured_extrapolation(r_vs_t, config):
     temperature_curve = _temperature_sorted_curve(r_vs_t)
-    source_min = float(temperature_curve[1, 0])
-    source_max = float(temperature_curve[1, -1])
-    source_bounds = (source_min, source_max)
     if not bool(config.get("curve_extrapolation_enabled", False)):
+        temperature_curve, _ = _condition_curve_for_inversion(temperature_curve, config)
+        source_min = float(temperature_curve[1, 0])
+        source_max = float(temperature_curve[1, -1])
+        source_bounds = (source_min, source_max)
         return temperature_curve, source_bounds, source_bounds
 
     allowed_min = float(config["curve_extrapolation_min_temperature_c"])
@@ -566,45 +617,10 @@ def _extend_curve_for_configured_extrapolation(r_vs_t, config):
     source_max = float(temperature_curve[1, -1])
     source_bounds = (source_min, source_max)
 
-    original_resistance = np.asarray(temperature_curve[0, :], dtype=float)
-    overall_change = float(original_resistance[-1] - original_resistance[0])
-    direction = float(np.sign(overall_change))
-    resistance_span = float(np.ptp(original_resistance))
-    tolerance = max(resistance_span * 1e-12, 1e-15)
-    if direction == 0 or resistance_span <= tolerance:
-        raise ValueError("Curve extrapolation requires resistance to change monotonically with temperature.")
-
-    maximum_correction_ratio = float(
-        config.get("curve_extrapolation_max_monotonic_correction_ratio", 0.02)
-    )
-    if not np.isfinite(maximum_correction_ratio) or maximum_correction_ratio < 0:
-        raise ValueError("curve_extrapolation_max_monotonic_correction_ratio must be non-negative.")
-    temperature_curve, maximum_correction, smoothing_details = _robust_monotonic_curve(
-        temperature_curve,
-        direction,
-        config,
-        maximum_correction_ratio,
-        tolerance,
-    )
+    temperature_curve, direction = _condition_curve_for_inversion(temperature_curve, config)
     source_min = float(temperature_curve[1, 0])
     source_max = float(temperature_curve[1, -1])
     source_bounds = (source_min, source_max)
-    if maximum_correction > tolerance:
-        if smoothing_details is None:
-            print(
-                "WARNING: corrected small non-monotonic resistance steps before extrapolation with "
-                f"a least-squares monotonic fit; maximum correction={maximum_correction:.6g} Ohm."
-            )
-        else:
-            print(
-                "WARNING: robustly smoothed a dense/noisy R vs. T curve before extrapolation; "
-                f"points={smoothing_details['raw_points']}->{smoothing_details['binned_points']}, "
-                f"median window={smoothing_details['window_c']:.2f} C, "
-                f"monotonic correction={smoothing_details['correction']:.6g} Ohm, "
-                f"99th-percentile raw residual={smoothing_details['residual_99']:.6g} Ohm "
-                f"({100.0 * smoothing_details['residual_ratio']:.2f}% of span). "
-                "The source file was not modified."
-            )
 
     fit_points = int(config.get("curve_extrapolation_fit_points", 20))
     minimum_fit_span = float(config.get("curve_extrapolation_min_fit_span_c", 5.0))
@@ -2557,34 +2573,63 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
 
 
 def measure_resistivity(dmm_v, dmm_i, siglent_module, temperature_interp, calibration=False, config=None):
-    synchronized_reader = getattr(siglent_module, "read_DMM_pair", None)
-    use_synchronized_reading = config is None or bool(config.get("dmm_synchronized_reading", True))
-    if use_synchronized_reading and synchronized_reader is not None:
-        try:
-            measured_voltage, measured_current = synchronized_reader(dmm_v, dmm_i)
-            measured_voltage = float(measured_voltage)
-            measured_current = float(measured_current)
-        except Exception as exc:
-            print(f"Synchronized DMM reading failed; retrying this sample with READ?: {exc}")
-            measured_voltage = np.nan
-            measured_current = np.nan
-    else:
-        measured_voltage = np.nan
-        measured_current = np.nan
+    def read_pair_once():
+        synchronized_reader = getattr(siglent_module, "read_DMM_pair", None)
+        use_synchronized_reading = config is None or bool(config.get("dmm_synchronized_reading", True))
+        if use_synchronized_reading and synchronized_reader is not None:
+            try:
+                voltage, current = synchronized_reader(dmm_v, dmm_i)
+                voltage = float(voltage)
+                current = float(current)
+            except Exception as exc:
+                print(f"Synchronized DMM reading failed; retrying this sample with READ?: {exc}")
+                voltage = np.nan
+                current = np.nan
+        else:
+            voltage = np.nan
+            current = np.nan
 
-    if not np.isfinite(measured_voltage):
-        try:
-            measured_voltage = float(siglent_module.read_DMM(dmm_v))
-        except Exception as exc:
-            print(f"An error occurred reading voltage DMM: {exc}")
-            measured_voltage = np.nan
+        if not np.isfinite(voltage):
+            try:
+                voltage = float(siglent_module.read_DMM(dmm_v))
+            except Exception as exc:
+                print(f"An error occurred reading voltage DMM: {exc}")
+                voltage = np.nan
 
-    if not np.isfinite(measured_current):
-        try:
-            measured_current = float(siglent_module.read_DMM(dmm_i))
-        except Exception as exc:
-            print(f"An error occurred reading current DMM: {exc}")
-            measured_current = np.nan
+        if not np.isfinite(current):
+            try:
+                current = float(siglent_module.read_DMM(dmm_i))
+            except Exception as exc:
+                print(f"An error occurred reading current DMM: {exc}")
+                current = np.nan
+        return voltage, current
+
+    measured_voltage, measured_current = read_pair_once()
+
+    range_increaser = (
+        getattr(siglent_module, "increase_dc_range_if_needed", None)
+        if "increase_dc_range_if_needed" in dir(siglent_module)
+        else None
+    )
+    if config is not None and callable(range_increaser):
+        voltage_range_change = range_increaser(
+            dmm_v, "VOLT", measured_voltage, config
+        )
+        current_range_change = range_increaser(
+            dmm_i, "CURR", measured_current, config
+        )
+        if voltage_range_change is not None or current_range_change is not None:
+            settle_time_s = float(config.get("dmm_range_settle_time_s", 0.3))
+            discard_readings = int(config.get("dmm_range_discard_readings", 2))
+            if not np.isfinite(settle_time_s) or settle_time_s < 0:
+                raise ValueError("dmm_range_settle_time_s must be finite and non-negative.")
+            if discard_readings < 0:
+                raise ValueError("dmm_range_discard_readings must be non-negative.")
+            if settle_time_s:
+                time.sleep(settle_time_s)
+            for _ in range(discard_readings):
+                read_pair_once()
+            measured_voltage, measured_current = read_pair_once()
 
     if not np.isfinite(measured_voltage) or not np.isfinite(measured_current) or abs(measured_current) < 1e-12:
         return measured_voltage, measured_current, np.nan
