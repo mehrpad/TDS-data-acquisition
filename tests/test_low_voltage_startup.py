@@ -270,9 +270,9 @@ class LowVoltageStartupTests(unittest.TestCase):
         "tds_control.siglent.read_DMM_pair",
         side_effect=[
             (0.170, 0.00170),
-            (0.171, 0.01710),
-            (0.172, 0.01720),
-            (0.173, 0.01730),
+            (0.171, 0.0100),
+            (0.172, 0.0100),
+            (0.173, 0.0100),
         ],
     )
     def test_staged_fixed_ranges_step_up_and_discard_transition_readings(self, read_pair, sleep):
@@ -298,12 +298,91 @@ class LowVoltageStartupTests(unittest.TestCase):
         )
 
         self.assertAlmostEqual(measured_voltage, 0.173)
-        self.assertAlmostEqual(measured_current, 0.0173)
-        self.assertAlmostEqual(temperature, 10.0)
+        self.assertAlmostEqual(measured_current, 0.0100)
+        self.assertAlmostEqual(temperature, 17.3)
         self.assertEqual(read_pair.call_count, 4)
         sleep.assert_called_once_with(0.3)
         self.assertIn(call("CONF:VOLT:DC 2.0"), voltage_dmm.write.call_args_list)
         self.assertIn(call("CONF:CURR:DC 0.02"), current_dmm.write.call_args_list)
+
+    def test_sdm3055_overload_responses_are_recognized(self):
+        self.assertTrue(siglent.is_overload_reading("+9.90000000E+37"))
+        self.assertTrue(siglent.is_overload_reading("overload"))
+        self.assertFalse(siglent.is_overload_reading("0.199"))
+
+    @patch("tds_control.tds_experiment.time.sleep")
+    @patch(
+        "tds_control.siglent.read_DMM_pair",
+        side_effect=[
+            ("+9.90000000E+37", 0.0010),
+            (0.30, 0.0010),
+            (0.31, 0.0010),
+            ("+9.90000000E+37", 0.0010),
+            (5.00, 0.0010),
+            (5.01, 0.0010),
+            (5.00, 0.0010),
+        ],
+    )
+    def test_overload_recovery_can_cross_multiple_fixed_ranges(self, read_pair, sleep):
+        voltage_dmm = Mock()
+        current_dmm = Mock()
+        config = _config(
+            max_voltage=30.0,
+            dmm_voltage_range_v=0.2,
+            dmm_current_range_a=0.002,
+            dmm_range_recovery_attempts=5,
+        )
+        siglent.configure_dc_range_from_config(voltage_dmm, "VOLT", config)
+        siglent.configure_dc_range_from_config(current_dmm, "CURR", config)
+
+        measured_voltage, measured_current, temperature = measure_resistivity(
+            voltage_dmm,
+            current_dmm,
+            siglent,
+            lambda resistance: resistance,
+            config=config,
+        )
+
+        self.assertAlmostEqual(measured_voltage, 5.0)
+        self.assertAlmostEqual(measured_current, 0.001)
+        self.assertAlmostEqual(temperature, 5000.0)
+        self.assertEqual(read_pair.call_count, 7)
+        self.assertEqual(sleep.call_args_list, [call(0.3), call(0.3)])
+        self.assertEqual(
+            voltage_dmm.write.call_args_list,
+            [
+                call("CONF:VOLT:DC 0.2"),
+                call("CONF:VOLT:DC 2.0"),
+                call("CONF:VOLT:DC 20.0"),
+            ],
+        )
+
+    @patch("tds_control.tds_experiment.time.sleep")
+    @patch("tds_control.siglent.read_DMM_pair", return_value=("overload", 0.0010))
+    def test_overload_on_largest_range_is_rejected_without_transition_data(self, read_pair, sleep):
+        voltage_dmm = Mock()
+        current_dmm = Mock()
+        config = _config(
+            max_voltage=1000.0,
+            dmm_voltage_range_v=1000.0,
+            dmm_current_range_a=0.002,
+        )
+        siglent.configure_dc_range_from_config(voltage_dmm, "VOLT", config)
+        siglent.configure_dc_range_from_config(current_dmm, "CURR", config)
+
+        measured_voltage, measured_current, temperature = measure_resistivity(
+            voltage_dmm,
+            current_dmm,
+            siglent,
+            lambda resistance: resistance,
+            config=config,
+        )
+
+        self.assertTrue(np.isnan(measured_voltage))
+        self.assertAlmostEqual(measured_current, 0.001)
+        self.assertTrue(np.isnan(temperature))
+        read_pair.assert_called_once()
+        sleep.assert_not_called()
 
     def test_synchronized_pair_starts_both_conversions_before_fetching(self):
         voltage_dmm = Mock()

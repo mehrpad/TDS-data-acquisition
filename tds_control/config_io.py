@@ -26,6 +26,7 @@ CONFIG_GROUPS = [
             ("dmm_range_switch_fraction", "Fraction of the active fixed range that triggers an upward range change."),
             ("dmm_range_settle_time_s", "Settling delay after a fixed-range change."),
             ("dmm_range_discard_readings", "Number of synchronized readings discarded after a fixed-range change."),
+            ("dmm_range_recovery_attempts", "Maximum fixed-range increases attempted inside one measurement after overload or near-full-scale readings."),
             ("DMM_v", "VISA address of the voltage DMM."),
             ("DMM_i", "VISA address of the current DMM."),
             ("PS", "VISA address of the power supply."),

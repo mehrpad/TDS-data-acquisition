@@ -22,6 +22,7 @@ CONTROL_DEFAULTS = {
     "dmm_range_switch_fraction": 0.8,
     "dmm_range_settle_time_s": 0.3,
     "dmm_range_discard_readings": 2,
+    "dmm_range_recovery_attempts": 5,
     "pid_kp": 0.008,
     "pid_ki": 0.0004,
     "pid_kd": 0.0,
@@ -2573,38 +2574,60 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
 
 
 def measure_resistivity(dmm_v, dmm_i, siglent_module, temperature_interp, calibration=False, config=None):
+    overload_checker = (
+        getattr(siglent_module, "is_overload_reading", None)
+        if "is_overload_reading" in dir(siglent_module)
+        else None
+    )
+
+    def parse_reading(raw_value):
+        if callable(overload_checker) and overload_checker(raw_value):
+            return np.nan, True
+        try:
+            return float(raw_value), False
+        except (TypeError, ValueError):
+            return np.nan, False
+
     def read_pair_once():
         synchronized_reader = getattr(siglent_module, "read_DMM_pair", None)
         use_synchronized_reading = config is None or bool(config.get("dmm_synchronized_reading", True))
         if use_synchronized_reading and synchronized_reader is not None:
             try:
-                voltage, current = synchronized_reader(dmm_v, dmm_i)
-                voltage = float(voltage)
-                current = float(current)
+                raw_voltage, raw_current = synchronized_reader(dmm_v, dmm_i)
+                voltage, voltage_overload = parse_reading(raw_voltage)
+                current, current_overload = parse_reading(raw_current)
             except Exception as exc:
                 print(f"Synchronized DMM reading failed; retrying this sample with READ?: {exc}")
                 voltage = np.nan
                 current = np.nan
+                voltage_overload = False
+                current_overload = False
         else:
             voltage = np.nan
             current = np.nan
+            voltage_overload = False
+            current_overload = False
 
-        if not np.isfinite(voltage):
+        if not np.isfinite(voltage) and not voltage_overload:
             try:
-                voltage = float(siglent_module.read_DMM(dmm_v))
+                voltage, voltage_overload = parse_reading(siglent_module.read_DMM(dmm_v))
+                if not np.isfinite(voltage) and not voltage_overload:
+                    print("Voltage DMM returned a non-numeric response.")
             except Exception as exc:
                 print(f"An error occurred reading voltage DMM: {exc}")
                 voltage = np.nan
 
-        if not np.isfinite(current):
+        if not np.isfinite(current) and not current_overload:
             try:
-                current = float(siglent_module.read_DMM(dmm_i))
+                current, current_overload = parse_reading(siglent_module.read_DMM(dmm_i))
+                if not np.isfinite(current) and not current_overload:
+                    print("Current DMM returned a non-numeric response.")
             except Exception as exc:
                 print(f"An error occurred reading current DMM: {exc}")
                 current = np.nan
-        return voltage, current
+        return voltage, current, voltage_overload, current_overload
 
-    measured_voltage, measured_current = read_pair_once()
+    measured_voltage, measured_current, voltage_overload, current_overload = read_pair_once()
 
     range_increaser = (
         getattr(siglent_module, "increase_dc_range_if_needed", None)
@@ -2612,24 +2635,57 @@ def measure_resistivity(dmm_v, dmm_i, siglent_module, temperature_interp, calibr
         else None
     )
     if config is not None and callable(range_increaser):
-        voltage_range_change = range_increaser(
-            dmm_v, "VOLT", measured_voltage, config
-        )
-        current_range_change = range_increaser(
-            dmm_i, "CURR", measured_current, config
-        )
-        if voltage_range_change is not None or current_range_change is not None:
-            settle_time_s = float(config.get("dmm_range_settle_time_s", 0.3))
-            discard_readings = int(config.get("dmm_range_discard_readings", 2))
-            if not np.isfinite(settle_time_s) or settle_time_s < 0:
-                raise ValueError("dmm_range_settle_time_s must be finite and non-negative.")
-            if discard_readings < 0:
-                raise ValueError("dmm_range_discard_readings must be non-negative.")
+        settle_time_s = float(config.get("dmm_range_settle_time_s", 0.3))
+        discard_readings = int(config.get("dmm_range_discard_readings", 2))
+        recovery_attempts = int(config.get("dmm_range_recovery_attempts", 5))
+        if not np.isfinite(settle_time_s) or settle_time_s < 0:
+            raise ValueError("dmm_range_settle_time_s must be finite and non-negative.")
+        if discard_readings < 0:
+            raise ValueError("dmm_range_discard_readings must be non-negative.")
+        if recovery_attempts < 1:
+            raise ValueError("dmm_range_recovery_attempts must be at least 1.")
+
+        completed_range_changes = 0
+        while completed_range_changes < recovery_attempts:
+            voltage_range_change = range_increaser(
+                dmm_v,
+                "VOLT",
+                measured_voltage,
+                config,
+                force_next=voltage_overload,
+            )
+            current_range_change = range_increaser(
+                dmm_i,
+                "CURR",
+                measured_current,
+                config,
+                force_next=current_overload,
+            )
+            if voltage_range_change is None and current_range_change is None:
+                if voltage_overload or current_overload:
+                    overloaded_meters = []
+                    if voltage_overload:
+                        overloaded_meters.append("voltage")
+                    if current_overload:
+                        overloaded_meters.append("current")
+                    print(
+                        f"DMM {' and '.join(overloaded_meters)} overload could not be recovered by "
+                        "increasing the fixed range; treating this sample as invalid."
+                    )
+                break
+
+            completed_range_changes += 1
             if settle_time_s:
                 time.sleep(settle_time_s)
             for _ in range(discard_readings):
                 read_pair_once()
-            measured_voltage, measured_current = read_pair_once()
+            measured_voltage, measured_current, voltage_overload, current_overload = read_pair_once()
+
+        if (voltage_overload or current_overload) and completed_range_changes >= recovery_attempts:
+            print(
+                f"DMM overload remained after {recovery_attempts} fixed-range recovery attempts; "
+                "treating this sample as invalid."
+            )
 
     if not np.isfinite(measured_voltage) or not np.isfinite(measured_current) or abs(measured_current) < 1e-12:
         return measured_voltage, measured_current, np.nan
