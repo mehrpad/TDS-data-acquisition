@@ -12,7 +12,10 @@ from . import siglent
 
 CONTROL_DEFAULTS = {
     "controller_mode": "PI",
-    "experiment_mode": "CONTROLLED",
+    "experiment_mode": "TEMPERATURE",
+    "max_voltage": 30.0,
+    "max_current": 3.0,
+    "max_power_w": 2.5,
     "dmm_voltage_range_v": 20.0,
     "dmm_current_range_a": 0.2,
     "pid_kp": 0.008,
@@ -124,8 +127,6 @@ CONTROL_DEFAULTS = {
     "t0_stable_current_a": 1e-4,
     "t0_max_temp_error_c": 80.0,
     "t0_temperature_spread_warning_c": 5.0,
-    "curve_sweep_start_voltage": 0.01,
-    "curve_sweep_voltage_step": 0.005,
 }
 
 
@@ -189,6 +190,32 @@ def _clamp(value, lower, upper):
     return max(lower, min(value, upper))
 
 
+def _sample_power_w(measured_voltage, measured_current):
+    if not np.isfinite(measured_voltage) or not np.isfinite(measured_current):
+        return np.nan
+    return abs(float(measured_voltage) * float(measured_current))
+
+
+def _enforce_electrical_safety(measured_voltage, measured_current, config):
+    if not np.isfinite(measured_voltage) or not np.isfinite(measured_current):
+        return
+    if abs(float(measured_current)) > float(config["max_current"]):
+        raise ExperimentSafetyError(
+            f"Measured current {measured_current:.4e} A exceeded max_current "
+            f"{float(config['max_current']):.4e} A."
+        )
+    max_power_w = float(config.get("max_power_w", CONTROL_DEFAULTS["max_power_w"]))
+    if not np.isfinite(max_power_w) or max_power_w <= 0:
+        raise ValueError("max_power_w must be positive and finite.")
+    measured_power_w = _sample_power_w(measured_voltage, measured_current)
+    if measured_power_w >= max_power_w:
+        raise ExperimentSafetyError(
+            f"Measured sample power {measured_power_w:.6f} W exceeded max_power_w "
+            f"{max_power_w:.6f} W (Vsample={measured_voltage:.6f} V, "
+            f"I={measured_current:.6e} A)."
+        )
+
+
 def _measurement_voltage_floor(config):
     minimum = float(config["min_voltage"])
     maximum = float(config["max_voltage"])
@@ -222,19 +249,40 @@ def _limit_voltage_slew(target_voltage, current_voltage, min_voltage, max_voltag
     return _clamp(target_voltage, min_voltage, max_voltage)
 
 
+def _voltage_ramp_command(start_voltage, ramp_speed_min, elapsed_s, applied_voltage, config):
+    """Return the elapsed-time voltage-ramp command after applying the normal slew limit."""
+    values = (start_voltage, ramp_speed_min, elapsed_s, applied_voltage)
+    if not all(np.isfinite(value) for value in values):
+        raise ValueError("Voltage-ramp inputs must be finite.")
+    if ramp_speed_min <= 0 or elapsed_s < 0:
+        raise ValueError("Voltage-ramp speed must be positive and elapsed time cannot be negative.")
+
+    minimum_voltage = _measurement_voltage_floor(config)
+    maximum_voltage = float(config["max_voltage"])
+    requested_voltage = float(start_voltage) + float(ramp_speed_min) * float(elapsed_s) / 60.0
+    requested_voltage = _clamp(requested_voltage, minimum_voltage, maximum_voltage)
+    return _limit_voltage_slew(
+        requested_voltage,
+        float(applied_voltage),
+        minimum_voltage,
+        maximum_voltage,
+        config,
+    )
+
+
 def get_controller_mode(config):
     mode = str(config.get("controller_mode", CONTROL_DEFAULTS["controller_mode"])).strip().upper()
     return mode if mode in {"PI", "PID"} else CONTROL_DEFAULTS["controller_mode"]
 
 
 def get_experiment_mode(config):
-    raw_mode = config.get("experiment_mode", config.get("measurement_conversion_mode", "CONTROLLED"))
+    raw_mode = config.get("experiment_mode", config.get("measurement_conversion_mode", "TEMPERATURE"))
     mode = str(raw_mode).strip().upper()
-    if mode == "LINEAR_TEMP":
-        return "CURVE_SWEEP"
-    if mode == "INTERPOLATE":
-        return "CONTROLLED"
-    return mode if mode in {"CONTROLLED", "CURVE_SWEEP"} else CONTROL_DEFAULTS["experiment_mode"]
+    if mode in {"CONTROLLED", "INTERPOLATE"}:
+        return "TEMPERATURE"
+    if mode in {"CURVE_SWEEP", "LINEAR_TEMP"}:
+        return "VOLTAGE"
+    return mode if mode in {"TEMPERATURE", "VOLTAGE"} else CONTROL_DEFAULTS["experiment_mode"]
 
 
 def build_control_config(config):
@@ -653,7 +701,7 @@ class TemperatureProgram:
     start_T: float
     step_T: float
     target_T: float
-    ramp_speed_c_min: float
+    ramp_speed_min: float
     hold_step_time_min: float
     temperature_tolerance_c: float
     hold_entry_tolerance_c: float
@@ -661,13 +709,13 @@ class TemperatureProgram:
     def __post_init__(self):
         if self.target_T < self.start_T:
             raise ValueError("target_T must be greater than or equal to start_T.")
-        if self.ramp_speed_c_min <= 0:
-            raise ValueError("ramp_speed_c_min must be greater than zero.")
+        if self.ramp_speed_min <= 0:
+            raise ValueError("ramp_speed_min must be greater than zero.")
         if self.hold_step_time_min < 0:
             raise ValueError("hold_step_time_min must be non-negative.")
 
         self.simple_ramp = self.step_T <= 0 or self.step_T >= (self.target_T - self.start_T)
-        self.ramp_speed_c_s = self.ramp_speed_c_min / 60.0
+        self.ramp_speed_c_s = self.ramp_speed_min / 60.0
         self.hold_step_time_s = self.hold_step_time_min * 60.0
         self.phase = "warmup"
         self.scheduled_target = self.start_T
@@ -744,15 +792,37 @@ class TemperatureProgram:
 
 
 def _emit_measurement(emitter, target_temperature, temperature, measured_voltage, measured_current, pid_voltage):
+    measured_power = _sample_power_w(measured_voltage, measured_current)
     emitter.experiment_signal.emit(
-        [time.time(), target_temperature, temperature, 0, measured_voltage, measured_current, pid_voltage]
+        [
+            time.time(),
+            target_temperature,
+            temperature,
+            0,
+            measured_voltage,
+            measured_current,
+            pid_voltage,
+            measured_power,
+        ]
     )
 
 
 def _persist_measurement(data_saver, target_temperature, temperature, measured_voltage, measured_current, pid_voltage):
     if data_saver is None:
         return
-    data_saver.enqueue([time.time(), target_temperature, temperature, 0, measured_voltage, measured_current, pid_voltage])
+    measured_power = _sample_power_w(measured_voltage, measured_current)
+    data_saver.enqueue(
+        [
+            time.time(),
+            target_temperature,
+            temperature,
+            0,
+            measured_voltage,
+            measured_current,
+            pid_voltage,
+            measured_power,
+        ]
+    )
 
 
 def _is_valid_measurement(measured_voltage, measured_current, temperature, config):
@@ -1059,7 +1129,7 @@ def _compute_next_voltage(
     measured_current,
     target_temperature,
     temp_rate_c_min,
-    ramp_speed_c_min,
+    ramp_speed_min,
     config,
     loop_time,
 ):
@@ -1096,7 +1166,7 @@ def _compute_next_voltage(
     aggressive_step = float(config.get("max_voltage_step_up_far", config["max_voltage_step_up"]))
     far_below_setpoint = temperature <= setpoint - config.get("aggressive_step_band_c", 4.0)
     significantly_below_setpoint = temperature <= setpoint - rate_limit_band
-    catchup_rate_c_min = max(ramp_speed_c_min * 0.6, ramp_speed_c_min - 3.0, 1.0)
+    catchup_rate_c_min = max(ramp_speed_min * 0.6, ramp_speed_min - 3.0, 1.0)
     if far_below_setpoint and not current_limited:
         if temp_rate_c_min is None or not np.isfinite(temp_rate_c_min) or temp_rate_c_min < catchup_rate_c_min:
             delta_voltage = max(delta_voltage, aggressive_step)
@@ -1110,11 +1180,11 @@ def _compute_next_voltage(
 
     near_setpoint = temperature >= setpoint - rate_limit_band
     soft_rate_limit = max(
-        ramp_speed_c_min + config["soft_temp_rate_margin_c_min"],
+        ramp_speed_min + config["soft_temp_rate_margin_c_min"],
         config["soft_temp_rate_margin_c_min"],
     )
     hard_rate_limit = max(
-        ramp_speed_c_min + config["hard_temp_rate_margin_c_min"],
+        ramp_speed_min + config["hard_temp_rate_margin_c_min"],
         config["hard_temp_rate_margin_c_min"],
     )
 
@@ -1614,6 +1684,132 @@ def curve_sweep(emitter, sweep_params, r_vs_t, config, data_saver=None):
         print("Curve sweep thread finished.")
 
 
+def voltage_ramp(emitter, ramp_params, r_vs_t, config, data_saver=None):
+    """Ramp the PSU command by elapsed time while retaining current, power, and voltage safety limits."""
+    if r_vs_t is None:
+        raise ValueError("An R-vs-T table must be loaded before starting a voltage ramp.")
+
+    config = build_control_config(config)
+    temperature_interp = build_temperature_interpolator(r_vs_t, config=config)
+    loop_time = 1.0 / float(config["experiment_frequency"])
+    ramp_speed_v_min = float(ramp_params["ramp_speed_min"])
+    if not np.isfinite(ramp_speed_v_min) or ramp_speed_v_min <= 0:
+        raise ValueError("Voltage-mode ramp_speed_min must be positive and finite.")
+
+    measurement_voltage_floor = _measurement_voltage_floor(config)
+    maximum_voltage = float(config["max_voltage"])
+    max_power_w = float(config["max_power_w"])
+    if not np.isfinite(max_power_w) or max_power_w <= 0:
+        raise ValueError("max_power_w must be positive and finite.")
+
+    resource_manager = None
+    dmm_v = None
+    dmm_i = None
+    power_supply = None
+
+    try:
+        resource_manager = pyvisa.ResourceManager()
+        dmm_v = resource_manager.open_resource(config["DMM_v"])
+        dmm_i = resource_manager.open_resource(config["DMM_i"])
+        power_supply = resource_manager.open_resource(config["PS"])
+        power_supply.write_termination = "\n"
+        power_supply.read_termination = "\n"
+
+        prepare_power_supply_output(power_supply, config)
+        siglent.configure_dc_range_from_config(dmm_v, "VOLT", config)
+        siglent.configure_dc_range_from_config(dmm_i, "CURR", config)
+        siglent.set_mode_speed(dmm_i, "CURR", config["DMM_speed"])
+        siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
+        time.sleep(1.0)
+
+        commanded_voltage, previous_voltage = _start_control_at_initial_voltage(
+            power_supply,
+            config,
+            previous_voltage=None,
+            loop_time=loop_time,
+        )
+        ramp_started = time.monotonic()
+        previous_resistance = None
+        print(
+            f"Voltage mode: start={commanded_voltage:.6f} V, "
+            f"ramp_speed={ramp_speed_v_min:.6f} V/min, max_power={max_power_w:.6f} W, "
+            f"absolute_voltage_ceiling={maximum_voltage:.6f} V."
+        )
+
+        while not emitter.stopped:
+            loop_started = time.monotonic()
+            applied_voltage = float(commanded_voltage)
+            measured_voltage, measured_current, temperature, measured_resistance, _ = _measure_with_retry(
+                dmm_v,
+                dmm_i,
+                siglent,
+                temperature_interp,
+                config=config,
+                previous_resistance=previous_resistance,
+            )
+            _enforce_electrical_safety(measured_voltage, measured_current, config)
+            measured_power_w = _sample_power_w(measured_voltage, measured_current)
+            if np.isfinite(measured_resistance):
+                previous_resistance = measured_resistance
+
+            print(
+                f"Voltage mode: T={temperature if np.isfinite(temperature) else float('nan'):.2f} C, "
+                f"Vsample={measured_voltage:.6f} V, Current={measured_current:.6e} A, "
+                f"Power={measured_power_w:.6f} W, PSU command={applied_voltage:.6f} V."
+            )
+            _persist_measurement(
+                data_saver,
+                np.nan,
+                temperature,
+                measured_voltage,
+                measured_current,
+                applied_voltage,
+            )
+            _emit_measurement(
+                emitter,
+                np.nan,
+                temperature,
+                measured_voltage,
+                measured_current,
+                applied_voltage,
+            )
+
+            elapsed_ramp_s = time.monotonic() - ramp_started
+            commanded_voltage = _voltage_ramp_command(
+                measurement_voltage_floor,
+                ramp_speed_v_min,
+                elapsed_ramp_s,
+                applied_voltage,
+                config,
+            )
+            if (
+                applied_voltage >= maximum_voltage - float(config.get("minimum_voltage_change", 1e-4))
+                and commanded_voltage <= applied_voltage + 1e-12
+            ):
+                raise ExperimentSafetyError(
+                    f"Voltage mode reached the absolute software voltage ceiling {maximum_voltage:.6f} V "
+                    f"before reaching max_power_w {max_power_w:.6f} W."
+                )
+            previous_voltage = _set_voltage_if_needed(
+                power_supply,
+                commanded_voltage,
+                previous_voltage,
+                config,
+            )
+
+            elapsed_loop_s = time.monotonic() - loop_started
+            if elapsed_loop_s < loop_time:
+                time.sleep(loop_time - elapsed_loop_s)
+
+        if emitter.stopped:
+            print("Stop signal received.")
+    finally:
+        _shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager, config=config)
+        if data_saver is not None:
+            data_saver.finalize()
+        print("Voltage-ramp thread finished.")
+
+
 def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
     if r_vs_t is None:
         raise ValueError("A resistivity-versus-temperature table must be loaded before starting an experiment.")
@@ -1650,7 +1846,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                 start_T=ex_param["start_T"],
                 step_T=ex_param["step_T"],
                 target_T=ex_param["target_T"],
-                ramp_speed_c_min=ex_param["ramp_speed_c_min"],
+                ramp_speed_min=ex_param["ramp_speed_min"],
                 hold_step_time_min=ex_param["hold_step_time_min"],
                 temperature_tolerance_c=config["temperature_tolerance_c"],
                 hold_entry_tolerance_c=config["hold_entry_tolerance_c"],
@@ -2053,7 +2249,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             measured_current=measured_current,
                             target_temperature=program.target_T,
                             temp_rate_c_min=0.0,
-                            ramp_speed_c_min=program.ramp_speed_c_min,
+                            ramp_speed_min=program.ramp_speed_min,
                             config=config,
                             loop_time=loop_time,
                         )
@@ -2279,7 +2475,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     measured_current=measured_current,
                     target_temperature=program.target_T,
                     temp_rate_c_min=temp_rate_c_min,
-                    ramp_speed_c_min=program.ramp_speed_c_min,
+                    ramp_speed_min=program.ramp_speed_min,
                     config=config,
                     loop_time=loop_time,
                 )
@@ -2364,6 +2560,9 @@ def measure_resistivity(dmm_v, dmm_i, siglent_module, temperature_interp, calibr
 
     if not np.isfinite(measured_voltage) or not np.isfinite(measured_current) or abs(measured_current) < 1e-12:
         return measured_voltage, measured_current, np.nan
+
+    if config is not None:
+        _enforce_electrical_safety(measured_voltage, measured_current, config)
 
     resistance = _calculate_resistance(measured_voltage, measured_current, config=config)
     if not np.isfinite(resistance) or resistance <= 0:

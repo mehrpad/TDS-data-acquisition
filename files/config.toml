@@ -8,28 +8,31 @@
 # Choose "PI" or "PID". PI is the default and recommended starting mode.
 controller_mode = "PI"
 
-# Choose "CONTROLLED" for the PID-based temperature program or "CURVE_SWEEP" for open-loop voltage sweeping.
-experiment_mode = "CONTROLLED"
+# Choose "TEMPERATURE" for PI/PID control or "VOLTAGE" for an elapsed-time voltage ramp.
+experiment_mode = "TEMPERATURE"
 
 # Control loop frequency in Hz.
 experiment_frequency = 1
 
-# Absolute software voltage limit for the power supply.
+# Internal absolute software voltage ceiling for the power supply.
 max_voltage = 30
 
 # Absolute software current limit in amps.
 max_current = 3
 
+# Maximum sample power in watts, calculated as the absolute synchronized Kelvin voltage times current.
+max_power_w = 2.5
+
 # Measurement speed setting sent to both DMMs. Explicit fixed DC ranges are used; auto-ranging is disabled.
 DMM_speed = 10
 
-# Start both DMM conversions before fetching voltage and current so V/I represents nearly the same instant.
+# Start both DMM conversions before fetching voltage and current.
 dmm_synchronized_reading = true
 
-# Fixed voltage-DMM range in volts. The 20 V range covers higher-voltage wire experiments; Auto Range remains off.
-dmm_voltage_range_v = 20.0
+# Explicit fixed voltage-DMM range in volts; use the smallest range that covers the sample signal.
+dmm_voltage_range_v = 20
 
-# Fixed current-DMM range in amps. Use the smallest range that covers the sample current; Auto Range remains off.
+# Explicit fixed current-DMM range in amps; use the smallest range that covers the sample signal.
 dmm_current_range_a = 0.2
 
 # VISA address of the voltage DMM.
@@ -57,13 +60,13 @@ pid_integral_limit = 400
 # Low-pass filter factor for derivative smoothing.
 pid_derivative_filter = 0.6
 
-# Initial PSU voltage at the start of an experiment. Start gently from the
-# same low measurement floor used by PI/PID tuning.
+# Initial PSU voltage at the start of an experiment.
 startup_voltage = 0.01
+
 # Lowest voltage the controller may request.
 min_voltage = 0
 
-# Keeps PSU CH1 enabled between calibration/experiment runs without materially heating the sample.
+# Small non-zero PSU voltage that keeps CH1 enabled between operations.
 psu_keepalive_voltage = 0.001
 
 # Optional verified external series resistance to subtract from V/I. Keep this at 0 for a Kelvin sample measurement.
@@ -75,13 +78,13 @@ max_voltage_step_up = 0.01
 # Largest downward voltage step per loop.
 max_voltage_step_down = 0.01
 
-# Below this PSU voltage, use the finer step limits below to avoid low-voltage oscillation.
+# PSU voltage at or below which the finer low-voltage slew limits apply.
 low_voltage_step_threshold = 0.05
 
-# Largest upward PSU change per action while at or below the low-voltage threshold.
+# Largest upward PSU action at or below the low-voltage threshold.
 low_voltage_max_step_up = 0.001
 
-# Largest downward PSU change per action while at or below the low-voltage threshold.
+# Largest downward PSU action at or below the low-voltage threshold.
 low_voltage_max_step_down = 0.001
 
 # Larger upward step allowed when the sample is far below the setpoint.
@@ -95,12 +98,6 @@ rate_limit_activation_band_c = 2
 
 # Below this band the controller avoids decreasing voltage.
 under_target_no_decrease_band_c = 1.5
-
-# Starting PSU voltage used in CURVE_SWEEP mode.
-curve_sweep_start_voltage = 0.01
-
-# Voltage increment basis used to derive the number of CURVE_SWEEP steps from the GUI Max Voltage.
-curve_sweep_voltage_step = 0.005
 
 # Safety, filtering, and invalid-reading handling
 # Main temperature tolerance around the setpoint.
@@ -133,19 +130,19 @@ measurement_voltage_floor = 0.01
 # Median filter window for accepted temperature readings.
 measurement_filter_samples = 3
 
-# Resistance outliers farther than this many robust standard deviations from the median are ignored.
+# Robust standard-deviation multiplier used to reject resistance outliers.
 resistance_outlier_mad_multiplier = 4
 
 # Minimum absolute resistance window used by robust outlier filtering.
 resistance_outlier_min_ohm = 0.0005
 
-# Maximum stable resistance deviation from the median as a fraction of median resistance.
+# Maximum stable resistance deviation from the median as a fraction of resistance.
 stable_resistance_spread_ratio = 0.005
 
-# Minimum absolute stable resistance-deviation allowance in ohms.
+# Minimum absolute stable resistance-deviation allowance.
 stable_resistance_spread_ohm = 0.03
 
-# Settling delay after Initial Voltage is applied before the controller loop begins.
+# Settling delay after Initial Voltage is applied before control begins.
 startup_settle_time_s = 1
 
 # Extra fractional margin allowed outside the loaded R-vs-T range.
@@ -154,8 +151,7 @@ resistance_range_margin_ratio = 0
 # Extra absolute resistance margin allowed outside the loaded R-vs-T range.
 resistance_range_margin_ohm = 0.01
 
-# Enable bounded linear endpoint extrapolation outside the measured R-vs-T temperature range.
-# Keep disabled unless the extrapolated material curve has been independently validated.
+# Enable bounded endpoint extrapolation outside the measured R-vs-T range; keep false unless independently validated.
 curve_extrapolation_enabled = false
 
 # Lowest temperature that extrapolation may return.
@@ -167,26 +163,26 @@ curve_extrapolation_max_temperature_c = 600
 # Number of points at each end used for the endpoint linear fits.
 curve_extrapolation_fit_points = 20
 
-# Minimum temperature span covered by each endpoint fit. Dense or noisy tables automatically use more points.
+# Minimum temperature span used by each endpoint linear fit.
 curve_extrapolation_min_fit_span_c = 5
 
 # Largest small resistance reversal corrected before extrapolation, as a fraction of the curve span.
 curve_extrapolation_max_monotonic_correction_ratio = 0.02
 
-# Allow dense, noisy source tables to be temperature-binned and median-smoothed before extrapolation.
+# Allow robust smoothing of dense, noisy curves before extrapolation.
 curve_smoothing_enabled = true
 
-# Minimum source rows required before automatic smoothing is allowed.
+# Minimum source rows required before automatic robust smoothing is allowed.
 curve_smoothing_min_points = 100
 
-# Temperature-bin width used to suppress repeated-point noise.
+# Temperature-bin width used before median smoothing.
 curve_smoothing_temperature_bin_c = 0.5
 
-# Largest adaptive centered-median window allowed for finding the underlying trend.
+# Largest adaptive centered-median window allowed for trend recovery.
 curve_smoothing_max_window_c = 15
 
-# Maximum 99th-percentile raw residual from the smoothed curve, as a fraction of total resistance span.
-curve_smoothing_max_residual_ratio = 0.10
+# Maximum 99th-percentile raw residual from the smoothed curve as a fraction of resistance span.
+curve_smoothing_max_residual_ratio = 0.1
 
 # Base resistance-jump threshold before a retry is triggered.
 resistance_glitch_jump_ohm = 0.03
@@ -227,25 +223,25 @@ measurement_temp_jump_accept_up_c = 35
 # How far above the live setpoint an accepted upward jump may land.
 measurement_temp_jump_accept_setpoint_margin_c = 15
 
-# Repeated matching samples required before a large low-voltage temperature jump replaces trusted T0.
+# Matching samples required before a large low-voltage temperature jump replaces trusted T0.
 low_signal_jump_confirm_samples = 3
 
-# Maximum temperature difference between low-signal jump confirmation samples.
+# Temperature agreement required between low-signal jump confirmation samples.
 low_signal_jump_temperature_tolerance_c = 10
 
-# Maximum resistance difference between low-signal jump confirmation samples.
+# Resistance agreement required between low-signal jump confirmation samples.
 low_signal_jump_resistance_tolerance_ohm = 0.015
 
-# Start low-signal voltage recovery after this many consecutive invalid readings.
+# Consecutive invalid low-signal readings required before voltage recovery begins.
 low_signal_recovery_trigger_cycles = 5
 
-# Measurements observed at each recovery voltage before another increase is allowed.
+# Measurements observed at each low-signal recovery voltage.
 low_signal_recovery_observe_cycles = 5
 
-# Fixed upward PSU step used to escape an invalid low-voltage measurement deadlock.
+# Upward PSU step used by low-signal invalid-reading recovery.
 low_signal_recovery_voltage_step = 0.01
 
-# Maximum number of upward low-signal recovery probes in one invalid-reading episode.
+# Maximum upward recovery probes in one invalid low-signal episode.
 low_signal_recovery_max_attempts = 5
 
 # How many downward jump confirmations are required before accepting cooldown.
@@ -254,19 +250,19 @@ measurement_cooldown_confirm_samples = 2
 # How many upward jump confirmations are required before accepting heatup jumps.
 measurement_heatup_confirm_samples = 2
 
-# Temperature jump size that triggers a directed micro-voltage probe instead of immediate acceptance.
+# Temperature jump size that requires a directed micro-voltage probe.
 measurement_jump_probe_threshold_c = 35
 
-# Small PSU change used by a jump probe: decrease after an upward jump, increase after a downward jump.
+# Small PSU change used to test whether a large resistance/temperature jump persists.
 measurement_jump_probe_voltage_step = 0.002
 
 # Fixed +/- temperature window around the first jump-probe candidate.
 measurement_jump_probe_temperature_tolerance_c = 50
 
-# Maximum relative resistance spread allowed between jump-probe confirmation samples.
+# Maximum relative resistance spread allowed between jump-probe samples.
 measurement_jump_probe_resistance_ratio = 0.02
 
-# Stop with a specific safety error if a jump probe does not stabilize within this many samples.
+# Maximum jump-probe samples before stopping on uncertain temperature.
 measurement_jump_probe_max_samples = 20
 
 # Below this PSU voltage, invalid readings are treated more leniently.
@@ -295,7 +291,7 @@ autosave_batch_size = 10
 # Voltage increment while searching for the safe tuning baseline.
 tuning_voltage_step = 0.01
 
-# Starting PSU voltage for controller tuning. Keep this low enough that the wire remains near T0.
+# Starting PSU voltage for controller tuning.
 tuning_start_voltage = 0.01
 
 # Maximum PSU voltage allowed during controller tuning.
@@ -359,7 +355,7 @@ t0_voltage_step = 0.01
 # How long the sample is allowed to settle before T0 sampling.
 t0_settle_time_s = 3
 
-# How many paired T0 samples are used for the final calibration point.
+# How many T0 samples are used for the final calibration point.
 t0_calibration_samples = 9
 
 # How many initial T0 samples are discarded as warmup.
@@ -371,8 +367,8 @@ t0_stable_current_samples = 3
 # Minimum stable current for the T0 baseline.
 t0_stable_current_a = 0.0001
 
-# Raw uncalibrated-temperature difference that triggers a warning. It does not reject T0 calibration.
+# Raw uncalibrated-temperature difference that triggers a T0 warning.
 t0_max_temp_error_c = 80
 
-# Equivalent calibrated-temperature spread that triggers a low-TCR measurement warning.
+# Equivalent calibrated-temperature spread that triggers a low-TCR warning.
 t0_temperature_spread_warning_c = 5
