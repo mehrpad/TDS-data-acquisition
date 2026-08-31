@@ -5,6 +5,7 @@ import numpy as np
 from tds_control.tds_experiment import (
     CONTROL_DEFAULTS,
     _extend_curve_for_configured_extrapolation,
+    _validate_temperature_program_bounds,
     build_temperature_interpolator,
 )
 
@@ -16,6 +17,36 @@ def _config(**overrides):
 
 
 class CurveExtrapolationSmoothingTests(unittest.TestCase):
+    def test_extrapolation_is_disabled_by_default(self):
+        curve = np.array(
+            [
+                [1.0, 2.0, 3.0],
+                [25.0, 100.0, 300.0],
+            ]
+        )
+
+        unchanged, bounds, source_bounds = _extend_curve_for_configured_extrapolation(
+            curve,
+            _config(),
+        )
+
+        np.testing.assert_array_equal(unchanged, curve)
+        self.assertEqual(bounds, (25.0, 300.0))
+        self.assertEqual(source_bounds, (25.0, 300.0))
+
+    def test_disabled_extrapolation_rejects_target_outside_measured_curve(self):
+        curve = np.array(
+            [
+                [1.0, 2.0, 3.0],
+                [25.0, 100.0, 300.0],
+            ]
+        )
+        model = build_temperature_interpolator(curve, _config())
+        experiment_params = [{"start_T": 25.0, "target_T": 500.0}]
+
+        with self.assertRaisesRegex(ValueError, "outside the allowed R vs. T conversion range"):
+            _validate_temperature_program_bounds(experiment_params, model)
+
     def test_dense_noisy_curve_is_smoothed_and_extrapolated(self):
         temperatures = np.linspace(25.0, 300.0, 2400)
         trend = 20.0 + 0.012 * temperatures
@@ -27,7 +58,7 @@ class CurveExtrapolationSmoothingTests(unittest.TestCase):
 
         extended, bounds, source_bounds = _extend_curve_for_configured_extrapolation(
             curve,
-            _config(),
+            _config(curve_extrapolation_enabled=True),
         )
 
         self.assertEqual(bounds, (0.0, 600.0))
@@ -36,7 +67,7 @@ class CurveExtrapolationSmoothingTests(unittest.TestCase):
         self.assertLess(extended.shape[1], curve.shape[1])
         self.assertTrue(np.all(np.diff(extended[0, :]) >= -1e-12))
 
-        model = build_temperature_interpolator(curve, _config())
+        model = build_temperature_interpolator(curve, _config(curve_extrapolation_enabled=True))
         resistance_600 = float(np.interp(600.0, extended[1, :], extended[0, :]))
         self.assertAlmostEqual(float(model(resistance_600)), 600.0, places=6)
 
@@ -49,7 +80,10 @@ class CurveExtrapolationSmoothingTests(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(ValueError, "resistance reversals"):
-            _extend_curve_for_configured_extrapolation(curve, _config())
+            _extend_curve_for_configured_extrapolation(
+                curve,
+                _config(curve_extrapolation_enabled=True),
+            )
 
     def test_smoothing_can_be_disabled_for_strict_validation(self):
         temperatures = np.linspace(20.0, 200.0, 400)
@@ -59,7 +93,7 @@ class CurveExtrapolationSmoothingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "resistance reversals"):
             _extend_curve_for_configured_extrapolation(
                 curve,
-                _config(curve_smoothing_enabled=False),
+                _config(curve_extrapolation_enabled=True, curve_smoothing_enabled=False),
             )
 
 

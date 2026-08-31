@@ -342,7 +342,11 @@ This is intended to reduce aggressive heating before the real experiment starts.
 
 ### Bounded curve extrapolation
 
-`curve_extrapolation_enabled = true` extends a calibrated R-vs-T curve to the configured
+Curve extrapolation is disabled by default. In this safe configuration, the software accepts only experiment
+temperatures covered by the loaded calibration curve and rejects an out-of-range program before opening the
+instruments or enabling the PSU.
+
+Setting `curve_extrapolation_enabled = true` explicitly extends a calibrated R-vs-T curve to the configured
 `curve_extrapolation_min_temperature_c` and `curve_extrapolation_max_temperature_c` limits. Outside the
 measured range, the software fits a straight line to at least `curve_extrapolation_fit_points` points at the
 corresponding end. Each endpoint fit also covers at least `curve_extrapolation_min_fit_span_c`, so dense
@@ -357,10 +361,11 @@ files with at least `curve_smoothing_min_points` rows, and the 99th-percentile r
 `curve_smoothing_max_residual_ratio` of the curve's total resistance span. The console reports the selected
 window, correction, and residual whenever this recovery path is used.
 
-The default configured conversion range is 0 to 600 C. Extrapolated temperatures are estimates, not measured
-calibration data. The application still rejects sparse curves with large reversals, dense curves that cannot be
-made reliably monotonic within the configured limits, and experiment targets outside the conversion limits.
-Use reference or measured data covering the full range whenever possible.
+The configured extrapolation limits remain 0 to 600 C, but they have no effect while extrapolation is disabled.
+Extrapolated temperatures are estimates rather than measured calibration data and must not be used for
+closed-loop heating unless they have been independently validated for the particular material and geometry.
+The application rejects experiment targets outside the active conversion range. Use reference or measured data
+covering the full experiment range whenever possible.
 
 ## Development
 
