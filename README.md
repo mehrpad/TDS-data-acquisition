@@ -306,12 +306,21 @@ data/<experiment_counter>_<experiment_name>/
 Saved files:
 
 - `data.csv`: continuously appended human-readable data file
+- `data.xlsx`: Excel workbook containing the completed experiment data and the corrected curve used by the run
 - `data.h5`: continuously appended HDF5 data file
 - `r_vs_t.csv`: the exact calibration curve used for that run
+- `corrected_r_vs_t_curve.pdf`: plotted temperature-versus-corrected-resistance curve used for conversion
 - `calibration_info.txt`: written when T0 calibration detected a large raw curve-to-T0 mismatch
 
 Autosave runs in a background thread so disk writing does not block experiment control.
 The `P` / `sample_power` column records `|Vsample x I|` in watts.
+The `R_ohm` / `calculated_resistance` value records the corrected Kelvin resistance
+`Vsample / I - fixed_series_resistance_ohm` in both Temperature and Voltage modes.
+For compatibility with the GUI's historical terminology, HDF5 also exposes the same data through
+the `calculated_resistivity` dataset name. These values are resistance in ohms, not bulk resistivity
+in ohm-metre, because the software does not have the wire length and cross-sectional area.
+The Excel workbook's `Corrected R vs T` sheet and the PDF are produced from the same post-T0 curve
+that the controller used during that experiment.
 
 ## Notes on Calibration
 

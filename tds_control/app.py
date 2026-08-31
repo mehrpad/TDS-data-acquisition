@@ -70,6 +70,7 @@ class Ui_TDS(object):
             "I",  # Current
             "C_V",  # Calculated Power supply voltage
             "P",  # Measured sample power
+            "R_ohm",  # Calculated Kelvin sample resistance
         ]
 
     def setupUi(self, TDS):
@@ -988,6 +989,7 @@ class Ui_TDS(object):
             temperature=data[2],
             voltage=data[4],
             current=data[5],
+            resistivity=data[8] if len(data) > 8 else None,
         )
         self.commanded_voltage = float(data[6]) if self._is_finite_number(data[6]) else 0.0
         self.sample_power = float(data[7]) if len(data) > 7 and self._is_finite_number(data[7]) else 0.0
@@ -1001,6 +1003,8 @@ class Ui_TDS(object):
         # "V",  # Voltage
         # "I",  # Current
         # "C_V",  # Calculated Power supply voltage
+        # "P",  # Measured sample power
+        # "R_ohm",  # Calculated Kelvin sample resistance
         self.data_list.append(list(data))
 
     def _is_finite_number(self, value):

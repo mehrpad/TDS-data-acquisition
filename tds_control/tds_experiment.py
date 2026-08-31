@@ -791,7 +791,15 @@ class TemperatureProgram:
             raise RuntimeError(f"Unknown experiment phase: {self.phase}")
 
 
-def _emit_measurement(emitter, target_temperature, temperature, measured_voltage, measured_current, pid_voltage):
+def _emit_measurement(
+    emitter,
+    target_temperature,
+    temperature,
+    measured_voltage,
+    measured_current,
+    pid_voltage,
+    measured_resistance,
+):
     measured_power = _sample_power_w(measured_voltage, measured_current)
     emitter.experiment_signal.emit(
         [
@@ -803,11 +811,20 @@ def _emit_measurement(emitter, target_temperature, temperature, measured_voltage
             measured_current,
             pid_voltage,
             measured_power,
+            measured_resistance,
         ]
     )
 
 
-def _persist_measurement(data_saver, target_temperature, temperature, measured_voltage, measured_current, pid_voltage):
+def _persist_measurement(
+    data_saver,
+    target_temperature,
+    temperature,
+    measured_voltage,
+    measured_current,
+    pid_voltage,
+    measured_resistance,
+):
     if data_saver is None:
         return
     measured_power = _sample_power_w(measured_voltage, measured_current)
@@ -821,6 +838,7 @@ def _persist_measurement(data_saver, target_temperature, temperature, measured_v
             measured_current,
             pid_voltage,
             measured_power,
+            measured_resistance,
         ]
     )
 
@@ -1663,6 +1681,7 @@ def curve_sweep(emitter, sweep_params, r_vs_t, config, data_saver=None):
                 measured_voltage,
                 measured_current,
                 float(previous_voltage),
+                measured_resistance,
             )
             _emit_measurement(
                 emitter,
@@ -1671,6 +1690,7 @@ def curve_sweep(emitter, sweep_params, r_vs_t, config, data_saver=None):
                 measured_voltage,
                 measured_current,
                 float(previous_voltage),
+                measured_resistance,
             )
 
             elapsed = time.time() - loop_started
@@ -1764,6 +1784,7 @@ def voltage_ramp(emitter, ramp_params, r_vs_t, config, data_saver=None):
                 measured_voltage,
                 measured_current,
                 applied_voltage,
+                measured_resistance,
             )
             _emit_measurement(
                 emitter,
@@ -1772,6 +1793,7 @@ def voltage_ramp(emitter, ramp_params, r_vs_t, config, data_saver=None):
                 measured_voltage,
                 measured_current,
                 applied_voltage,
+                measured_resistance,
             )
 
             elapsed_ramp_s = time.monotonic() - ramp_started
@@ -2375,6 +2397,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             measured_voltage,
                             measured_current,
                             applied_voltage,
+                            measured_resistance,
                         )
                         _emit_measurement(
                             emitter,
@@ -2383,6 +2406,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             measured_voltage,
                             measured_current,
                             applied_voltage,
+                            measured_resistance,
                         )
                         if finished:
                             print("Experiment step finished.")
@@ -2434,6 +2458,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                         measured_voltage,
                         measured_current,
                         applied_voltage,
+                        measured_resistance,
                     )
                     _emit_measurement(
                         emitter,
@@ -2442,6 +2467,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                         measured_voltage,
                         measured_current,
                         applied_voltage,
+                        measured_resistance,
                     )
                     elapsed = time.time() - loop_started
                     if elapsed < loop_time:
@@ -2494,6 +2520,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     measured_voltage,
                     measured_current,
                     applied_voltage,
+                    measured_resistance,
                 )
                 _emit_measurement(
                     emitter,
@@ -2502,6 +2529,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     measured_voltage,
                     measured_current,
                     applied_voltage,
+                    measured_resistance,
                 )
                 previous_temperature = filtered_temperature
                 if np.isfinite(measured_resistance):
