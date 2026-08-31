@@ -109,6 +109,7 @@ Important fields:
 - `dmm_staged_ranging_enabled`: enables deterministic upward fixed-range changes without instrument autorange
 - `dmm_range_switch_fraction`: upward range-change threshold; default `0.8` (80% of full scale)
 - `dmm_range_settle_time_s` / `dmm_range_discard_readings`: settling controls after a range change
+- `dmm_range_recovery_attempts`: maximum upward range changes within one measurement; default `5`
 - `dmm_synchronized_reading`: start both DMM conversions before fetching either value
 - `startup_settle_time_s`: short delay after applying Initial Voltage before control begins
 - `low_voltage_max_step_up` / `low_voltage_max_step_down`: fine controller steps used near zero voltage
@@ -136,7 +137,11 @@ prints a warning.
 
 After a range change, the software waits `dmm_range_settle_time_s`, discards
 `dmm_range_discard_readings` synchronized pairs, and then uses a fresh pair. This prevents a transition sample
-from entering the resistance or temperature calculation. `max_power_w`, `max_current`, and the internal
+from entering the resistance or temperature calculation. The SDM3055 remote overload response
+`+9.90000000E+37` is detected explicitly. An overloaded meter is moved upward by one fixed range and measured
+again, up to `dmm_range_recovery_attempts` times inside the same sample. These transitions do not count as
+experiment measurement failures. If overload remains on the largest range, that sample is rejected safely.
+`max_power_w`, `max_current`, and the internal
 `max_voltage` ceiling remain independent software safety limits; the power supply must also have an appropriate
 hardware current limit/OCP.
 Do not enable Auto Range manually during calibration, tuning, or an experiment.

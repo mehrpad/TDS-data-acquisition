@@ -47,6 +47,9 @@ dmm_range_settle_time_s = 0.3
 # Number of synchronized readings discarded after a fixed-range change.
 dmm_range_discard_readings = 2
 
+# Maximum fixed-range increases attempted inside one measurement after overload or near-full-scale readings.
+dmm_range_recovery_attempts = 5
+
 # VISA address of the voltage DMM.
 DMM_v = "USB0::0xF4EC::0xEE38::SDM35FAC4R0253::INSTR"
 

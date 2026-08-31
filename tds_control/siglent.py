@@ -8,10 +8,22 @@ _SDM3055_DC_RANGES = {
     "VOLT": (0.2, 2.0, 20.0, 200.0, 1000.0),
     "CURR": (0.0002, 0.002, 0.02, 0.2, 2.0, 10.0),
 }
+_SDM3055_OVERLOAD_SENTINEL = 9.9e37
 
 
 def _active_range_key(mode):
     return f"_active_dmm_{mode.lower()}_range"
+
+
+def is_overload_reading(value):
+    """Recognize SDM3055 overload text and its +9.90000000E+37 SCPI sentinel."""
+    if isinstance(value, str) and "OVERLOAD" in value.strip().upper():
+        return True
+    try:
+        numeric_value = abs(float(value))
+    except (TypeError, ValueError):
+        return False
+    return math.isfinite(numeric_value) and numeric_value >= _SDM3055_OVERLOAD_SENTINEL * 0.99
 
 
 def _pick_sdm3055_dc_range(expected_max, allowed_ranges):
@@ -128,7 +140,7 @@ def configure_dc_range_from_config(DMM, mode, config):
     return configured_range
 
 
-def increase_dc_range_if_needed(DMM, mode, measured_value, config):
+def increase_dc_range_if_needed(DMM, mode, measured_value, config, force_next=False):
     """Step a manually ranged DMM upward when its reading approaches full scale.
 
     The instrument remains in explicit fixed-range mode. Ranges only move up
@@ -141,11 +153,11 @@ def increase_dc_range_if_needed(DMM, mode, measured_value, config):
     if mode not in _SDM3055_DC_RANGES:
         raise ValueError(f"Unsupported DMM mode for range configuration: {mode}")
     try:
-        magnitude = abs(float(measured_value))
+        magnitude = abs(float(measured_value)) if not force_next else math.nan
         switch_fraction = float(config.get("dmm_range_switch_fraction", 0.8))
     except (TypeError, ValueError) as exc:
         raise ValueError("DMM staged-ranging values must be numeric.") from exc
-    if not math.isfinite(magnitude):
+    if not force_next and not math.isfinite(magnitude):
         return None
     if not math.isfinite(switch_fraction) or not 0 < switch_fraction <= 1:
         raise ValueError("dmm_range_switch_fraction must be greater than 0 and at most 1.")
@@ -167,18 +179,23 @@ def increase_dc_range_if_needed(DMM, mode, measured_value, config):
 
     selected_range = active_range
     selected_index = allowed_ranges.index(active_range)
-    while magnitude >= selected_range * switch_fraction and selected_index < len(allowed_ranges) - 1:
+    if force_next and selected_index < len(allowed_ranges) - 1:
         selected_index += 1
         selected_range = allowed_ranges[selected_index]
+    else:
+        while magnitude >= selected_range * switch_fraction and selected_index < len(allowed_ranges) - 1:
+            selected_index += 1
+            selected_range = allowed_ranges[selected_index]
     if selected_range == active_range:
         return None
 
     configure_dc_range(DMM, mode, selected_range)
     config[active_key] = selected_range
     unit = "V" if mode == "VOLT" else "A"
+    reason = "after an overload response" if force_next else f"after reading {magnitude:.6g} {unit}"
     print(
         f"DMM {mode} fixed range increased from {active_range:g} {unit} to "
-        f"{selected_range:g} {unit} after reading {magnitude:.6g} {unit}."
+        f"{selected_range:g} {unit} {reason}."
     )
     return active_range, selected_range
 
