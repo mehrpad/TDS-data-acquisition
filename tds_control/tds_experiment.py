@@ -47,7 +47,7 @@ CONTROL_DEFAULTS = {
     "startup_settle_time_s": 1.0,
     "resistance_range_margin_ratio": 0.0,
     "resistance_range_margin_ohm": 0.01,
-    "curve_extrapolation_enabled": True,
+    "curve_extrapolation_enabled": False,
     "curve_extrapolation_min_temperature_c": 0.0,
     "curve_extrapolation_max_temperature_c": 600.0,
     "curve_extrapolation_fit_points": 20,
