@@ -7,14 +7,19 @@ from tds_control import siglent
 from tds_control.calibration import _calibrated_temperature_spread, _resistance_series_is_stable
 from tds_control.tds_experiment import (
     CONTROL_DEFAULTS,
+    ExperimentSafetyError,
     LowSignalTemperatureConfirmation,
     LowSignalVoltageRecovery,
     TemperatureProgram,
     _advance_low_signal_voltage_recovery,
+    _enforce_electrical_safety,
     _limit_voltage_slew,
     _measurement_voltage_floor,
     _screen_low_signal_temperature,
+    _sample_power_w,
     _start_control_at_initial_voltage,
+    _voltage_ramp_command,
+    get_experiment_mode,
     measure_resistivity,
 )
 
@@ -77,7 +82,7 @@ class LowVoltageStartupTests(unittest.TestCase):
             start_T=40.0,
             step_T=500.0,
             target_T=500.0,
-            ramp_speed_c_min=60.0,
+            ramp_speed_min=60.0,
             hold_step_time_min=1.0,
             temperature_tolerance_c=2.0,
             hold_entry_tolerance_c=3.0,
@@ -89,6 +94,52 @@ class LowVoltageStartupTests(unittest.TestCase):
         self.assertTrue(all(later >= earlier for earlier, later in zip(targets, targets[1:])))
         self.assertAlmostEqual(targets[-1], 43.0)
         self.assertEqual(program.phase, "final_ramp")
+
+    def test_mode_names_and_legacy_values_are_normalized(self):
+        self.assertEqual(get_experiment_mode({"experiment_mode": "TEMPERATURE"}), "TEMPERATURE")
+        self.assertEqual(get_experiment_mode({"experiment_mode": "VOLTAGE"}), "VOLTAGE")
+        self.assertEqual(get_experiment_mode({"experiment_mode": "CONTROLLED"}), "TEMPERATURE")
+        self.assertEqual(get_experiment_mode({"experiment_mode": "CURVE_SWEEP"}), "VOLTAGE")
+
+    def test_voltage_ramp_uses_volts_per_minute_and_normal_slew_limits(self):
+        config = _config()
+        command = _voltage_ramp_command(
+            start_voltage=0.01,
+            ramp_speed_min=0.001,
+            elapsed_s=60.0,
+            applied_voltage=0.01,
+            config=config,
+        )
+        self.assertAlmostEqual(command, 0.011)
+
+        slew_limited = _voltage_ramp_command(
+            start_voltage=0.01,
+            ramp_speed_min=60.0,
+            elapsed_s=1.0,
+            applied_voltage=0.01,
+            config=config,
+        )
+        self.assertAlmostEqual(slew_limited, 0.011)
+
+    def test_max_power_uses_synchronized_sample_voltage_and_current(self):
+        config = _config(max_current=3.0, max_power_w=2.5)
+        self.assertAlmostEqual(_sample_power_w(2.0, 1.24), 2.48)
+        _enforce_electrical_safety(2.0, 1.24, config)
+        with self.assertRaisesRegex(ExperimentSafetyError, "sample power"):
+            _enforce_electrical_safety(2.0, 1.25, config)
+
+    def test_shared_measurement_path_stops_at_max_power(self):
+        siglent_module = Mock()
+        siglent_module.read_DMM_pair.return_value = (2.0, 1.25)
+
+        with self.assertRaisesRegex(ExperimentSafetyError, "2.500000 W"):
+            measure_resistivity(
+                Mock(),
+                Mock(),
+                siglent_module,
+                LinearTemperatureModel(),
+                config=_config(max_current=3.0, max_power_w=2.5),
+            )
 
     def test_single_low_signal_92_c_spike_does_not_replace_room_temperature(self):
         confirmation = LowSignalTemperatureConfirmation()

@@ -23,6 +23,8 @@ class Ui_TDS(object):
         self.current = 0
         self.temperature = 0
         self.resistivity = 0
+        self.commanded_voltage = 0
+        self.sample_power = 0
         self.index_plot_start = 0
         self.plot_window_last60_selected = False
         self.plot_window_seconds = 60.0
@@ -39,6 +41,14 @@ class Ui_TDS(object):
         self.experiment_name = 'TDS_test'
         self.t_zero_calibrated = False
         self.t0_calibration_warning = None
+        self._active_experiment_mode = None
+        self._program_text_by_mode = {
+            "TEMPERATURE": (
+                "{start_T=40;step_T=200;target_T=200;"
+                "ramp_speed_min=10;hold_step_time_min=1}"
+            ),
+            "VOLTAGE": "{ramp_speed_min=0.001}",
+        }
         ensure_runtime_dirs()
         if EXPERIMENT_COUNTER_PATH.exists():
             # Read the experiment counter
@@ -59,6 +69,7 @@ class Ui_TDS(object):
             "V",  # Voltage
             "I",  # Current
             "C_V",  # Calculated Power supply voltage
+            "P",  # Measured sample power
         ]
 
     def setupUi(self, TDS):
@@ -144,19 +155,19 @@ class Ui_TDS(object):
         self.label_177.setSizePolicy(sizePolicy)
         self.label_177.setObjectName("label_177")
         self.gridLayout.addWidget(self.label_177, 3, 0, 1, 1)
-        self.max_voltage = QtWidgets.QLineEdit(parent=self.centralwidget)
+        self.max_power = QtWidgets.QLineEdit(parent=self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Minimum)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
-        sizePolicy.setHeightForWidth(self.max_voltage.sizePolicy().hasHeightForWidth())
-        self.max_voltage.setSizePolicy(sizePolicy)
-        self.max_voltage.setMinimumSize(QtCore.QSize(100, 20))
-        self.max_voltage.setStyleSheet("QLineEdit{\n"
+        sizePolicy.setHeightForWidth(self.max_power.sizePolicy().hasHeightForWidth())
+        self.max_power.setSizePolicy(sizePolicy)
+        self.max_power.setMinimumSize(QtCore.QSize(100, 20))
+        self.max_power.setStyleSheet("QLineEdit{\n"
                                        "                                                background: rgb(223,223,233)\n"
                                        "                                                }\n"
                                        "                                            ")
-        self.max_voltage.setObjectName("max_voltage")
-        self.gridLayout.addWidget(self.max_voltage, 3, 1, 1, 1)
+        self.max_power.setObjectName("max_power")
+        self.gridLayout.addWidget(self.max_power, 3, 1, 1, 1)
         self.label_178 = QtWidgets.QLabel(parent=self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Minimum)
         sizePolicy.setHorizontalStretch(0)
@@ -483,8 +494,8 @@ class Ui_TDS(object):
         QtCore.QMetaObject.connectSlotsByName(TDS)
         TDS.setTabOrder(self.ex_number, self.ex_name)
         TDS.setTabOrder(self.ex_name, self.calib_temperature)
-        TDS.setTabOrder(self.calib_temperature, self.max_voltage)
-        TDS.setTabOrder(self.max_voltage, self.max_current)
+        TDS.setTabOrder(self.calib_temperature, self.max_power)
+        TDS.setTabOrder(self.max_power, self.max_current)
         TDS.setTabOrder(self.max_current, self.calibration_start_voltage)
         TDS.setTabOrder(self.calibration_start_voltage, self.measurement_conversion_mode)
         TDS.setTabOrder(self.measurement_conversion_mode, self.parameters_text)
@@ -559,14 +570,14 @@ class Ui_TDS(object):
         self.ex_number.setEnabled(False)
         self.ex_number.setText(str(self.ex_counter))
 
-        self.max_voltage.editingFinished.connect(self.update_max_voltage)
+        self.max_power.editingFinished.connect(self.update_max_power)
         self.max_current.editingFinished.connect(self.update_max_current)
         self.calibration_start_voltage.editingFinished.connect(self.update_calibration_start_voltage)
         self.measurement_conversion_mode.currentIndexChanged.connect(self.update_experiment_mode)
         self.calib_temperature.textEdited.connect(self.invalidate_t_zero_calibration)
 
         # Populate inputs from configuration.
-        self.max_voltage.setText(str(self.config['max_voltage']))
+        self.max_power.setText(str(self.config['max_power_w']))
         self.max_current.setText(str(self.config['max_current']))
         self.calibration_start_voltage.setText(str(self.config['t0_voltage_search_start']))
         self.measurement_conversion_mode.setCurrentText(
@@ -591,15 +602,15 @@ class Ui_TDS(object):
         self.ex_name.setText(_translate("TDS", "test"))
         self.label_176.setText(_translate("TDS", "Zero Temperature (°C)"))
         self.calib_temperature.setText(_translate("TDS", "23"))
-        self.label_177.setText(_translate("TDS", "Max Voltage (V)"))
-        self.max_voltage.setText(_translate("TDS", "10"))
+        self.label_177.setText(_translate("TDS", "Max Power (W)"))
+        self.max_power.setText(_translate("TDS", "2.5"))
         self.label_178.setText(_translate("TDS", "Max Current (A)"))
         self.max_current.setText(_translate("TDS", "5"))
         self.label_calibration_start_voltage.setText(_translate("TDS", "Initial Voltage (V)"))
         self.calibration_start_voltage.setText(_translate("TDS", "0.01"))
-        self.label_179.setText(_translate("TDS", "Experiment Mode"))
-        self.measurement_conversion_mode.setItemText(0, _translate("TDS", "CONTROLLED"))
-        self.measurement_conversion_mode.setItemText(1, _translate("TDS", "CURVE_SWEEP"))
+        self.label_179.setText(_translate("TDS", "Mode"))
+        self.measurement_conversion_mode.setItemText(0, _translate("TDS", "TEMPERATURE"))
+        self.measurement_conversion_mode.setItemText(1, _translate("TDS", "VOLTAGE"))
         self.label_4.setText(_translate("TDS", "Target Temp. (°C)    "))
         self.label_1.setText(_translate("TDS", "Measured Temp (°C)"))
         self.label_2.setText(_translate("TDS", "Voltage (V)              "))
@@ -610,7 +621,7 @@ class Ui_TDS(object):
                                                 "<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\n"
                                                 "p, li { white-space: pre-wrap; }\n"
                                                 "</style></head><body style=\" font-family:\'Segoe UI\'; font-size:9pt; font-weight:400; font-style:normal;\">\n"
-                                                "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-family:\'JetBrains Mono,monospace\'; font-size:8pt; color:#000000;\">{start_T=40;step_T</span><span style=\" font-family:\'MS Shell Dlg 2\'; font-size:7.875pt;\">=600;target_T=600;ramp_speed_c_min=10;hold_step_time_min=1</span><span style=\" font-family:\'JetBrains Mono,monospace\'; font-size:8pt; color:#000000;\">}</span>                                                                              </p></body></html>"))
+                                                "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-family:\'JetBrains Mono,monospace\'; font-size:8pt; color:#000000;\">{start_T=40;step_T</span><span style=\" font-family:\'MS Shell Dlg 2\'; font-size:7.875pt;\">=200;target_T=200;ramp_speed_min=10;hold_step_time_min=1</span><span style=\" font-family:\'JetBrains Mono,monospace\'; font-size:8pt; color:#000000;\">}</span>                                                                              </p></body></html>"))
         self.start_botton.setText(_translate("TDS", "Start"))
         self.find_csv_botton.setText(_translate("TDS", "Find R vs. T"))
         self.calibrate_botton_base_t.setText(_translate("TDS", "Calibrate T. Zero"))
@@ -623,13 +634,24 @@ class Ui_TDS(object):
         self.menuHelp.setTitle(_translate("TDS", "Help"))
         self.actionExit.setText(_translate("TDS", "Exit"))
 
-    def update_max_voltage(self):
-        """
-        Update the maximum voltage
-        """
-        self.config['max_voltage'] = float(self.max_voltage.text())
-        self.emitter.max_voltage_signal.emit(self.config['max_voltage'])
+    def update_max_power(self):
+        """Validate and save the maximum measured sample power."""
+        previous_value = float(self.config['max_power_w'])
+        try:
+            max_power_w = float(self.max_power.text())
+            if not np.isfinite(max_power_w) or max_power_w <= 0:
+                raise ValueError('Max Power must be positive and finite.')
+        except ValueError as exc:
+            self.max_power.setText(f'{previous_value:g}')
+            self.error_message(str(exc), color='red')
+            return False
+
+        self.config['max_power_w'] = max_power_w
+        self.max_power.setText(f'{max_power_w:g}')
+        self.emitter.max_power_signal.emit(max_power_w)
         self.save_config()
+        return True
+
     def update_max_current(self):
         """
         Update the maximum current
@@ -646,7 +668,7 @@ class Ui_TDS(object):
             if not np.isfinite(voltage) or voltage < 0.005:
                 raise ValueError('Initial calibration voltage must be at least 0.005 V.')
             if voltage > float(self.config['max_voltage']):
-                raise ValueError('Initial calibration voltage cannot exceed Max Voltage.')
+                raise ValueError('Initial calibration voltage exceeds the internal PSU voltage ceiling.')
         except ValueError as exc:
             self.calibration_start_voltage.setText(f'{previous_value:g}')
             self.error_message(str(exc), color='red')
@@ -655,7 +677,6 @@ class Ui_TDS(object):
         self.config['t0_voltage_search_start'] = voltage
         self.config['tuning_start_voltage'] = voltage
         self.config['startup_voltage'] = voltage
-        self.config['curve_sweep_start_voltage'] = voltage
         self.calibration_start_voltage.setText(f'{voltage:g}')
         self.save_config()
         return True
@@ -664,6 +685,8 @@ class Ui_TDS(object):
         """
         Update the selected experiment mode.
         """
+        if self._active_experiment_mode is not None:
+            self._program_text_by_mode[self._active_experiment_mode] = self.parameters_text.toPlainText()
         self.config['experiment_mode'] = self.measurement_conversion_mode.currentText()
         self.apply_experiment_mode_ui()
         self.save_config()
@@ -672,17 +695,25 @@ class Ui_TDS(object):
         """Enable or disable controls based on the selected experiment mode."""
         if self._operation_running:
             return
-        curve_sweep = tds_experiment.get_experiment_mode(self.config) == "CURVE_SWEEP"
+        experiment_mode = tds_experiment.get_experiment_mode(self.config)
+        voltage_mode = experiment_mode == "VOLTAGE"
+        if experiment_mode != self._active_experiment_mode:
+            self.parameters_text.setPlainText(self._program_text_by_mode[experiment_mode])
+            self._active_experiment_mode = experiment_mode
         # T0 calibration anchors the loaded material curve to the current wire,
-        # so it is required in both CONTROLLED and CURVE_SWEEP modes.
+        # so it is required in both Temperature and Voltage modes.
         self.calib_temperature.setEnabled(True)
         self.calibrate_botton_base_t.setEnabled(True)
-        self.calibrate_botton_pid.setEnabled(not curve_sweep)
-        self.parameters_text.setEnabled(not curve_sweep)
-        if curve_sweep:
-            self.parameters_text.setPlaceholderText("Disabled in CURVE_SWEEP mode")
+        self.calibrate_botton_pid.setEnabled(not voltage_mode)
+        self.parameters_text.setEnabled(True)
+        if voltage_mode:
+            self.parameters_text.setPlaceholderText("{ramp_speed_min=0.001}  (V/min)")
+            self.label_4.setText("PSU Command (V)")
         else:
-            self.parameters_text.setPlaceholderText("")
+            self.parameters_text.setPlaceholderText(
+                "{start_T=40;step_T=200;target_T=200;ramp_speed_min=10;hold_step_time_min=1}"
+            )
+            self.label_4.setText("Target Temp. (°C)    ")
 
     def _set_operation_running(self, running):
         """Lock setup controls while hardware is calibrating, tuning, or running."""
@@ -690,7 +721,7 @@ class Ui_TDS(object):
         setup_controls = (
             self.ex_name,
             self.calib_temperature,
-            self.max_voltage,
+            self.max_power,
             self.max_current,
             self.calibration_start_voltage,
             self.measurement_conversion_mode,
@@ -729,6 +760,10 @@ class Ui_TDS(object):
         )
         self.calibrate_botton_pid.setToolTip(
             'Tune the PI/PID controller after a successful T. Zero calibration.'
+        )
+        self.max_power.setToolTip(
+            'Hard software cutoff for measured sample power |Vsample x I| (default: 2.5 W).\n'
+            'For thin wires, choose a much lower value validated with an independent temperature measurement.'
         )
 
     def find_csv_clicked(self):
@@ -781,8 +816,8 @@ class Ui_TDS(object):
             self.t_zero_calibrated = False
             self.t0_calibration_warning = None
             self.apply_experiment_mode_ui()
-            if tds_experiment.get_experiment_mode(self.config) == "CURVE_SWEEP":
-                self.error_message('R vs. T loaded. Run Calibrate T. Zero before starting the curve sweep.', color='black')
+            if tds_experiment.get_experiment_mode(self.config) == "VOLTAGE":
+                self.error_message('R vs. T loaded. Run Calibrate T. Zero before starting Voltage mode.', color='black')
             else:
                 self.error_message('R vs. T loaded. Run Calibrate T. Zero before Tune PI/PID or Start.', color='black')
         else:
@@ -797,7 +832,7 @@ class Ui_TDS(object):
         if not text:
             raise ValueError('Experiment parameters are empty')
 
-        required_keys = {'start_T', 'step_T', 'target_T', 'ramp_speed_c_min', 'hold_step_time_min'}
+        required_keys = {'start_T', 'step_T', 'target_T', 'ramp_speed_min', 'hold_step_time_min'}
         for raw_line in text.splitlines():
             line = raw_line.strip()
             if not line:
@@ -823,13 +858,34 @@ class Ui_TDS(object):
             raise ValueError('No experiment parameters found')
         return parsed_params
 
-    def parse_curve_sweep_params(self):
-        """
-        Build curve sweep settings from GUI limits and config.
-        """
-        return {
-            'max_voltage': float(self.max_voltage.text()),
-        }
+    def parse_voltage_ramp_params(self):
+        """Parse the single open-loop voltage ramp rate in volts per minute."""
+        text = self.parameters_text.toPlainText().strip().strip("{}").strip()
+        if not text:
+            raise ValueError('Voltage mode requires {ramp_speed_min=...}.')
+
+        parsed = {}
+        for pair in text.split(";"):
+            pair = pair.strip()
+            if not pair:
+                continue
+            if "=" not in pair:
+                raise ValueError(f'Invalid voltage-mode parameter entry: {pair}')
+            key, value = pair.split("=", 1)
+            parsed[key.strip()] = float(value.strip(" }"))
+
+        unexpected = set(parsed) - {'ramp_speed_min'}
+        if unexpected:
+            raise ValueError(
+                'Voltage mode accepts only ramp_speed_min in V/min. '
+                f'Unexpected parameters: {", ".join(sorted(unexpected))}'
+            )
+        if 'ramp_speed_min' not in parsed:
+            raise ValueError('Voltage mode requires ramp_speed_min in V/min.')
+        ramp_speed_min = float(parsed['ramp_speed_min'])
+        if not np.isfinite(ramp_speed_min) or ramp_speed_min <= 0:
+            raise ValueError('Voltage-mode ramp_speed_min must be positive and finite.')
+        return {'ramp_speed_min': ramp_speed_min}
 
     def save_config(self):
         """
@@ -926,12 +982,17 @@ class Ui_TDS(object):
         Return:
             None
         """
+        voltage_mode = tds_experiment.get_experiment_mode(self.config) == "VOLTAGE"
         self._apply_measurement_to_displays(
-            target_temperature=data[1],
+            target_temperature=None if voltage_mode else data[1],
             temperature=data[2],
             voltage=data[4],
             current=data[5],
         )
+        self.commanded_voltage = float(data[6]) if self._is_finite_number(data[6]) else 0.0
+        self.sample_power = float(data[7]) if len(data) > 7 and self._is_finite_number(data[7]) else 0.0
+        if voltage_mode:
+            self.temperature_target_lcd.display(self._format_lcd_value(self.commanded_voltage, decimals=4))
 
         # "time",  # Time in UNIX-readable format
         # "set_T",  # Set temperature
@@ -940,7 +1001,7 @@ class Ui_TDS(object):
         # "V",  # Voltage
         # "I",  # Current
         # "C_V",  # Calculated Power supply voltage
-        self.data_list.append([data[0], data[1], data[2], data[3], data[4], data[5], data[6]])
+        self.data_list.append(list(data))
 
     def _is_finite_number(self, value):
         try:
@@ -1070,20 +1131,26 @@ class Ui_TDS(object):
             self.temperature_y_target = [np.nan] * len(self.temperature_x)
             self.h_flux_y = [np.nan] * len(self.h_flux_x)
 
+        voltage_mode = tds_experiment.get_experiment_mode(self.config) == "VOLTAGE"
+        plotted_target = np.nan if voltage_mode else self.target_temperature
+
         # Update the temperature graph
         if self.index_plot < len(self.temperature_y):
             self.temperature_y[self.index_plot] = self.temperature
-            self.temperature_y_target[self.index_plot] = self.target_temperature
+            self.temperature_y_target[self.index_plot] = plotted_target
         else:
             self.temperature_x.append(self.temperature_x[-1] + 0.5)
             self.temperature_y.append(self.temperature)
-            self.temperature_y_target.append(self.target_temperature)
+            self.temperature_y_target.append(plotted_target)
         self.temperature_vis_line_target.setData(self.temperature_x, self.temperature_y_target)
         self.temperature_vis_line.setData(self.temperature_x, self.temperature_y)
-        self.diff_label.setText(
-            f"Diff: {abs(self.target_temperature - self.temperature):.2f} C",
-            color="#000000",
-        )
+        if voltage_mode:
+            self.diff_label.setText(f"Power: {self.sample_power:.6f} W", color="#000000")
+        else:
+            self.diff_label.setText(
+                f"Diff: {abs(self.target_temperature - self.temperature):.2f} C",
+                color="#000000",
+            )
 
         # Update the heat flux graph
         if self.index_plot < len(self.h_flux_y):
@@ -1118,6 +1185,8 @@ class Ui_TDS(object):
 
     def calibrate_base_temperature(self):
         """Anchor the loaded R-vs-T curve to the current wire at T0."""
+        if not self.update_max_power():
+            return
         if not self.require_loaded_curve('calibrating T. Zero'):
             return
         try:
@@ -1213,7 +1282,7 @@ class Ui_TDS(object):
         Calibrate the PID
         """
         controller_mode = tds_experiment.get_controller_mode(self.config)
-        if not self.update_calibration_start_voltage():
+        if not self.update_max_power() or not self.update_calibration_start_voltage():
             return
         if not self.require_loaded_curve_and_t0(f'tuning {controller_mode}'):
             return
@@ -1243,14 +1312,14 @@ class Ui_TDS(object):
         """
         Starts a new thread to execute the main functionality (replace with your logic).
         """
-        if not self.update_calibration_start_voltage():
+        if not self.update_max_power() or not self.update_calibration_start_voltage():
             return
         experiment_mode = tds_experiment.get_experiment_mode(self.config)
-        if experiment_mode == "CURVE_SWEEP":
-            if not self.require_loaded_curve_and_t0('starting the curve sweep'):
+        if experiment_mode == "VOLTAGE":
+            if not self.require_loaded_curve_and_t0('starting Voltage mode'):
                 return
             try:
-                self.experiment_params = self.parse_curve_sweep_params()
+                self.experiment_params = self.parse_voltage_ramp_params()
                 t_zero = None
             except ValueError as exc:
                 self.error_message(str(exc), color='red')
@@ -1285,11 +1354,11 @@ class Ui_TDS(object):
         self._prepare_new_experiment_plots()
         self._set_operation_running(True)
 
-        if experiment_mode == "CURVE_SWEEP":
+        if experiment_mode == "VOLTAGE":
             self.worker_thread = WorkerThread(
-                tds_experiment.curve_sweep,
+                tds_experiment.voltage_ramp,
                 emitter=self.emitter,
-                sweep_params=self.experiment_params,
+                ramp_params=self.experiment_params,
                 r_vs_t=self.r_vs_t,
                 config=self.config,
                 data_saver=self.data_saver,
@@ -1307,8 +1376,8 @@ class Ui_TDS(object):
         self.worker_thread.finished.connect(self.thread_finished)
         self.worker_thread.start()
         self.update_timer.start(500)
-        if experiment_mode == "CURVE_SWEEP":
-            self.error_message(f'Curve sweep started. Autosaving to {self.current_experiment_dir}', color='black')
+        if experiment_mode == "VOLTAGE":
+            self.error_message(f'Voltage ramp started. Autosaving to {self.current_experiment_dir}', color='black')
         else:
             self.error_message(f'Experiment started. Autosaving to {self.current_experiment_dir}', color='black')
 
@@ -1334,6 +1403,8 @@ class Ui_TDS(object):
         self.current = 0
         self.temperature = 0
         self.resistivity = 0
+        self.commanded_voltage = 0
+        self.sample_power = 0
         self._set_operation_running(False)
         self.emitter.reset_stop()
         self.worker_thread = None
@@ -1465,7 +1536,7 @@ class SignalEmitter(QtCore.QObject):
     experiment_signal = pyqtSignal(list)  # Signal to emit experiment data
     live_measurement_signal = pyqtSignal(object)  # Signal for calibration/tuning live readings
     calibration_warning_signal = pyqtSignal(str)  # Non-blocking T0 mismatch warning
-    max_voltage_signal = pyqtSignal(float)  # Signal to emit the maximum voltage
+    max_power_signal = pyqtSignal(float)  # Signal to emit the maximum measured sample power
     max_current_signal = pyqtSignal(float)  # Signal to emit the maximum current
 
     def __init__(self):

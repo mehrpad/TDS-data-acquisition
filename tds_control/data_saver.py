@@ -16,6 +16,7 @@ DEFAULT_COLUMNS = [
     ("V", "voltage"),
     ("I", "current"),
     ("C_V", "calculated_voltage"),
+    ("P", "sample_power"),
 ]
 
 
