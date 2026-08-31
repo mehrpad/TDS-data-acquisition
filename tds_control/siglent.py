@@ -6,8 +6,12 @@ from scipy.interpolate import interp1d
 
 _SDM3055_DC_RANGES = {
     "VOLT": (0.2, 2.0, 20.0, 200.0, 1000.0),
-    "CURR": (0.2, 2.0, 10.0),
+    "CURR": (0.0002, 0.002, 0.02, 0.2, 2.0, 10.0),
 }
+
+
+def _active_range_key(mode):
+    return f"_active_dmm_{mode.lower()}_range"
 
 
 def _pick_sdm3055_dc_range(expected_max, allowed_ranges):
@@ -80,6 +84,12 @@ def configure_dc_range(DMM, mode, range_value):
         )
 
     DMM.write(f"CONF:{mode}:DC {numeric_range}")
+    try:
+        setattr(DMM, _active_range_key(mode), numeric_range)
+    except Exception:
+        # The runtime config also tracks the active range. This attribute is a
+        # convenience for diagnostics and test doubles that permit it.
+        pass
     return numeric_range
 
 
@@ -111,8 +121,66 @@ def configure_dc_range_from_config(DMM, mode, config):
         raise ValueError(f"Unsupported DMM mode for range configuration: {mode}")
 
     if range_key in config:
-        return configure_dc_range(DMM, mode, config[range_key])
-    return configure_dc_range_from_limits(DMM, mode, config.get(limit_key))
+        configured_range = configure_dc_range(DMM, mode, config[range_key])
+    else:
+        configured_range = configure_dc_range_from_limits(DMM, mode, config.get(limit_key))
+    config[_active_range_key(mode)] = configured_range
+    return configured_range
+
+
+def increase_dc_range_if_needed(DMM, mode, measured_value, config):
+    """Step a manually ranged DMM upward when its reading approaches full scale.
+
+    The instrument remains in explicit fixed-range mode. Ranges only move up
+    during an operation, preventing autorange chatter and conversion-time jumps.
+    """
+    if not bool(config.get("dmm_staged_ranging_enabled", True)):
+        return None
+
+    mode = str(mode).strip().upper()
+    if mode not in _SDM3055_DC_RANGES:
+        raise ValueError(f"Unsupported DMM mode for range configuration: {mode}")
+    try:
+        magnitude = abs(float(measured_value))
+        switch_fraction = float(config.get("dmm_range_switch_fraction", 0.8))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("DMM staged-ranging values must be numeric.") from exc
+    if not math.isfinite(magnitude):
+        return None
+    if not math.isfinite(switch_fraction) or not 0 < switch_fraction <= 1:
+        raise ValueError("dmm_range_switch_fraction must be greater than 0 and at most 1.")
+
+    range_key = "dmm_voltage_range_v" if mode == "VOLT" else "dmm_current_range_a"
+    active_key = _active_range_key(mode)
+    active_range = config.get(active_key, config.get(range_key))
+    try:
+        active_range = float(active_range)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid active DMM range for {mode}: {active_range!r}") from exc
+
+    allowed_ranges = _SDM3055_DC_RANGES[mode]
+    if active_range not in allowed_ranges:
+        allowed_text = ", ".join(str(value) for value in allowed_ranges)
+        raise ValueError(
+            f"Unsupported active {mode} DC range {active_range!r}. Supported ranges are: {allowed_text}."
+        )
+
+    selected_range = active_range
+    selected_index = allowed_ranges.index(active_range)
+    while magnitude >= selected_range * switch_fraction and selected_index < len(allowed_ranges) - 1:
+        selected_index += 1
+        selected_range = allowed_ranges[selected_index]
+    if selected_range == active_range:
+        return None
+
+    configure_dc_range(DMM, mode, selected_range)
+    config[active_key] = selected_range
+    unit = "V" if mode == "VOLT" else "A"
+    print(
+        f"DMM {mode} fixed range increased from {active_range:g} {unit} to "
+        f"{selected_range:g} {unit} after reading {magnitude:.6g} {unit}."
+    )
+    return active_range, selected_range
 
 
 def read_DMM(DMM):

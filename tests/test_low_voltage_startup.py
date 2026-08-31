@@ -265,6 +265,46 @@ class LowVoltageStartupTests(unittest.TestCase):
             [call("CONF:VOLT:DC 0.2"), call("CONF:CURR:DC 0.2")],
         )
 
+    @patch("tds_control.tds_experiment.time.sleep")
+    @patch(
+        "tds_control.siglent.read_DMM_pair",
+        side_effect=[
+            (0.170, 0.00170),
+            (0.171, 0.01710),
+            (0.172, 0.01720),
+            (0.173, 0.01730),
+        ],
+    )
+    def test_staged_fixed_ranges_step_up_and_discard_transition_readings(self, read_pair, sleep):
+        voltage_dmm = Mock()
+        current_dmm = Mock()
+        config = _config(
+            max_current=0.1,
+            dmm_voltage_range_v=0.2,
+            dmm_current_range_a=0.002,
+            dmm_range_switch_fraction=0.8,
+            dmm_range_settle_time_s=0.3,
+            dmm_range_discard_readings=2,
+        )
+        siglent.configure_dc_range_from_config(voltage_dmm, "VOLT", config)
+        siglent.configure_dc_range_from_config(current_dmm, "CURR", config)
+
+        measured_voltage, measured_current, temperature = measure_resistivity(
+            voltage_dmm,
+            current_dmm,
+            siglent,
+            lambda resistance: resistance,
+            config=config,
+        )
+
+        self.assertAlmostEqual(measured_voltage, 0.173)
+        self.assertAlmostEqual(measured_current, 0.0173)
+        self.assertAlmostEqual(temperature, 10.0)
+        self.assertEqual(read_pair.call_count, 4)
+        sleep.assert_called_once_with(0.3)
+        self.assertIn(call("CONF:VOLT:DC 2.0"), voltage_dmm.write.call_args_list)
+        self.assertIn(call("CONF:CURR:DC 0.02"), current_dmm.write.call_args_list)
+
     def test_synchronized_pair_starts_both_conversions_before_fetching(self):
         voltage_dmm = Mock()
         current_dmm = Mock()

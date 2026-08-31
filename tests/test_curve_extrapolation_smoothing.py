@@ -99,6 +99,26 @@ class CurveExtrapolationSmoothingTests(unittest.TestCase):
         resistance_600 = float(np.interp(600.0, extended[1, :], extended[0, :]))
         self.assertAlmostEqual(float(model(resistance_600)), 600.0, places=6)
 
+    def test_dense_noisy_curve_is_smoothed_without_extrapolation(self):
+        temperatures = np.linspace(25.0, 300.0, 2400)
+        trend = 20.0 + 0.012 * temperatures
+        noise = 0.025 * np.sin(temperatures * 3.1) + 0.012 * np.sin(temperatures * 17.0)
+        resistances = trend + noise
+        resistances[::173] += 0.20
+        resistances[71::211] -= 0.18
+        curve = np.vstack((resistances, temperatures))
+
+        conditioned, bounds, source_bounds = _extend_curve_for_configured_extrapolation(
+            curve,
+            _config(curve_extrapolation_enabled=False),
+        )
+
+        self.assertEqual(bounds, source_bounds)
+        self.assertGreater(bounds[0], 24.0)
+        self.assertLess(bounds[1], 301.0)
+        self.assertLess(conditioned.shape[1], curve.shape[1])
+        self.assertTrue(np.all(np.diff(conditioned[0, :]) >= -1e-12))
+
     def test_sparse_curve_with_large_reversal_is_still_rejected(self):
         curve = np.array(
             [
