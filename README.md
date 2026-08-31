@@ -344,7 +344,9 @@ This is intended to reduce aggressive heating before the real experiment starts.
 
 Curve extrapolation is disabled by default. In this safe configuration, the software accepts only experiment
 temperatures covered by the loaded calibration curve and rejects an out-of-range program before opening the
-instruments or enabling the PSU.
+instruments or enabling the PSU. A completed T0 calibration adds its measured resistance and entered temperature
+as an explicit curve endpoint, so a small gap between room temperature and the source file's first furnace point
+does not require extrapolation.
 
 Setting `curve_extrapolation_enabled = true` explicitly extends a calibrated R-vs-T curve to the configured
 `curve_extrapolation_min_temperature_c` and `curve_extrapolation_max_temperature_c` limits. Outside the

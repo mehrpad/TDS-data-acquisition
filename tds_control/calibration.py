@@ -61,6 +61,31 @@ def _calibrated_temperature_spread(resistances, scale, reference_temperature_int
     return float(np.ptp(equivalent_temperatures))
 
 
+def _scale_and_anchor_curve(curve, scale, anchor_temperature, anchor_resistance):
+    """Scale an R-vs-T curve and make the measured T0 pair an explicit curve point."""
+    calibrated = np.asarray(curve, dtype=float).copy()
+    numeric_scale = float(scale)
+    temperature = float(anchor_temperature)
+    resistance = float(anchor_resistance)
+    if calibrated.ndim != 2 or calibrated.shape[0] != 2 or calibrated.shape[1] < 2:
+        raise ValueError("R vs. T data must have shape (2, N) with at least two points.")
+    if not all(np.isfinite(value) for value in (numeric_scale, temperature, resistance)):
+        raise ValueError("T0 calibration scale and anchor values must be finite.")
+    if numeric_scale <= 0 or resistance <= 0:
+        raise ValueError("T0 calibration scale and resistance must be positive.")
+
+    calibrated[0, :] *= numeric_scale
+    matching_temperature = np.isclose(calibrated[1, :], temperature, rtol=0.0, atol=1e-9)
+    calibrated = calibrated[:, ~matching_temperature]
+    calibrated = np.hstack(
+        (
+            calibrated,
+            np.array([[resistance], [temperature]], dtype=float),
+        )
+    )
+    return calibrated[:, np.argsort(calibrated[1, :])]
+
+
 def _filter_room_temperature_samples(samples, config=None):
     if len(samples) < 3:
         return samples
@@ -517,8 +542,12 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
                 "loaded material curve."
             )
 
-        calibrated = curve.copy()
-        calibrated[0, :] *= scale
+        calibrated = _scale_and_anchor_curve(
+            curve,
+            scale,
+            anchor_temperature=room_temp,
+            anchor_resistance=measured_resistivity,
+        )
         try:
             equivalent_spread = _calibrated_temperature_spread(
                 final_resistances,

@@ -2,6 +2,7 @@ import unittest
 
 import numpy as np
 
+from tds_control.calibration import _scale_and_anchor_curve
 from tds_control.tds_experiment import (
     CONTROL_DEFAULTS,
     _extend_curve_for_configured_extrapolation,
@@ -46,6 +47,33 @@ class CurveExtrapolationSmoothingTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "outside the allowed R vs. T conversion range"):
             _validate_temperature_program_bounds(experiment_params, model)
+
+    def test_t0_anchor_extends_only_to_measured_room_temperature(self):
+        curve = np.array(
+            [
+                [10.0, 20.0, 30.0],
+                [25.0, 100.0, 300.0],
+            ]
+        )
+        calibrated = _scale_and_anchor_curve(
+            curve,
+            scale=2.0,
+            anchor_temperature=23.0,
+            anchor_resistance=19.5,
+        )
+        model = build_temperature_interpolator(calibrated, _config())
+
+        self.assertEqual(model.temperature_bounds, (23.0, 300.0))
+        self.assertAlmostEqual(float(model(19.5)), 23.0)
+        _validate_temperature_program_bounds(
+            [{"start_T": 23.0, "target_T": 300.0}],
+            model,
+        )
+        with self.assertRaisesRegex(ValueError, "outside the allowed R vs. T conversion range"):
+            _validate_temperature_program_bounds(
+                [{"start_T": 23.0, "target_T": 500.0}],
+                model,
+            )
 
     def test_dense_noisy_curve_is_smoothed_and_extrapolated(self):
         temperatures = np.linspace(25.0, 300.0, 2400)
