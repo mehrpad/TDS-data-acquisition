@@ -1,16 +1,17 @@
 import os
 import re
 import sys
+import traceback
 
 import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtCore import QThread, pyqtSignal, QTimer
-import pandas as pd
 import pyqtgraph as pg
 
 from . import calibration
 from . import config_io
 from . import tds_experiment
+from .curve_io import load_resistance_temperature_file
 from .data_saver import ExperimentDataSaver
 from .paths import DATA_DIR, EXPERIMENT_COUNTER_PATH, ensure_runtime_dirs
 
@@ -777,52 +778,38 @@ class Ui_TDS(object):
         if file_path:
             self.file_path = file_path
             self._update_file_tooltips()
-            try:
-                self.load_csv_clicked()
-                self.error_message(f"Loaded R vs. T file: {os.path.basename(file_path)}", color='black')
-            except Exception as exc:
-                self.error_message(f'Failed to load R vs. T file: {exc}', color='red')
+            self.load_csv_clicked()
 
     def load_csv_clicked(self):
         """
-        Loads the selected CSV file in a separate thread to avoid blocking the UI.
+        Load a resistance/resistivity-vs-temperature CSV or Excel file.
         """
         if not self.file_path:
             self.error_message('Select an R vs. T file first', color='red')
-            return
-        if self.file_path.endswith(".csv") or self.file_path.endswith(".xlsx"):
-            if self.file_path.endswith(".csv"):
-                df = pd.read_csv(self.file_path)
-            elif self.file_path.endswith(".xlsx"):
-                df = pd.read_excel(self.file_path, header=1)
-            temperature_column = None
-            for candidate in ('temperature [C]', 'temperature', 'Temperature [C]', 'Temperature'):
-                if candidate in df.columns:
-                    temperature_column = candidate
-                    break
-            if 'resistivity' not in df.columns or temperature_column is None:
-                raise ValueError('File must contain resistivity and temperature columns')
+            return False
+        try:
+            curve, source = load_resistance_temperature_file(self.file_path)
+        except Exception as exc:
+            self.error_message(f'Failed to load R vs. T file: {exc}', color='red')
+            print(f"Failed to load R vs. T file {self.file_path!r}: {exc}")
+            return False
 
-            curve_df = pd.DataFrame(
-                {
-                    'resistivity': pd.to_numeric(df['resistivity'], errors='coerce'),
-                    'temperature': pd.to_numeric(df[temperature_column], errors='coerce'),
-                }
-            ).dropna()
-            curve_df = curve_df.drop_duplicates(subset=['temperature'], keep='last').sort_values('temperature')
-            if len(curve_df) < 2:
-                raise ValueError('R vs. T file must contain at least two valid rows')
-
-            self.r_vs_t = np.vstack((curve_df['resistivity'].to_numpy(), curve_df['temperature'].to_numpy()))
-            self.t_zero_calibrated = False
-            self.t0_calibration_warning = None
-            self.apply_experiment_mode_ui()
-            if tds_experiment.get_experiment_mode(self.config) == "VOLTAGE":
-                self.error_message('R vs. T loaded. Run Calibrate T. Zero before starting Voltage mode.', color='black')
-            else:
-                self.error_message('R vs. T loaded. Run Calibrate T. Zero before Tune PI/PID or Start.', color='black')
+        self.r_vs_t = curve
+        self.t_zero_calibrated = False
+        self.t0_calibration_warning = None
+        self.apply_experiment_mode_ui()
+        print(
+            f"Loaded R vs. T table from sheet {source['sheet']!r}, header row {source['header_row']}: "
+            f"resistance={source['resistance_column']!r}, temperature={source['temperature_column']!r}, "
+            f"points={source['points']}."
+        )
+        file_name = os.path.basename(self.file_path)
+        if tds_experiment.get_experiment_mode(self.config) == "VOLTAGE":
+            message = f'Loaded {file_name}. Run Calibrate T. Zero before starting Voltage mode.'
         else:
-            raise ValueError("Invalid file type")
+            message = f'Loaded {file_name}. Run Calibrate T. Zero before Tune PI/PID or Start.'
+        self.error_message(message, color='black')
+        return True
 
     def parse_experiment_params(self):
         """
@@ -1518,6 +1505,7 @@ class WorkerThread(QThread):
             self.func(self.emitter, *self.args, **self.kwargs)
             self.finished.emit(None)  # Emit when finished without exception
         except Exception as e:
+            traceback.print_exc()
             self.finished.emit(e)  # Emit the exception if any error occurs
 
 class CalibrationWorkerThread(QThread):
@@ -1536,6 +1524,7 @@ class CalibrationWorkerThread(QThread):
             result = self.func(*self.args, emitter=self.emitter, **self.kwargs)
             self.finished.emit(result)  # Emit the result when finished successfully
         except Exception as e:
+            traceback.print_exc()
             self.finished.emit(e)  # Emit the exception if any error occurs
 
 
