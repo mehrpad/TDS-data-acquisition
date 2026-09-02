@@ -7,6 +7,8 @@ from tds_control.tds_experiment import (
     ExperimentSafetyError,
     TemperatureJumpProbe,
     _advance_temperature_jump_probe,
+    _confirmed_downward_temperature_jump,
+    _confirmed_upward_temperature_jump,
     _temperature_jump_probe_eligible,
 )
 
@@ -24,6 +26,35 @@ def _config(**overrides):
 
 
 class TemperatureJumpProbeTests(unittest.TestCase):
+    def test_first_control_sample_with_no_previous_resistance_is_not_a_type_error(self):
+        config = _config()
+
+        upward = _confirmed_upward_temperature_jump(
+            temperature=25.0,
+            previous_temperature=23.0,
+            measured_resistance=20.0,
+            previous_resistance=None,
+            measured_current=0.001,
+            applied_voltage=0.01,
+            resistance_confirmed=True,
+            setpoint=40.0,
+            config=config,
+        )
+        downward = _confirmed_downward_temperature_jump(
+            temperature=21.0,
+            previous_temperature=23.0,
+            measured_resistance=19.0,
+            previous_resistance=None,
+            measured_current=0.001,
+            applied_voltage=0.01,
+            resistance_confirmed=True,
+            setpoint=40.0,
+            config=config,
+        )
+
+        self.assertFalse(upward)
+        self.assertFalse(downward)
+
     def test_large_downward_jump_uses_small_increase_then_accepts_consensus(self):
         config = _config()
         probe = TemperatureJumpProbe()

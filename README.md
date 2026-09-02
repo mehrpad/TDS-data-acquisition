@@ -201,14 +201,14 @@ Accepted input:
 - Excel `.xlsx`
 - CSV `.csv`
 
-Required columns:
+The importer scans every Excel sheet and the first 12 rows for a recognizable pair of columns. Common names are
+accepted, including:
 
-- `resistivity`
-- `temperature [C]`
+- temperature: `T`, `Temperature`, `Temperature [C]`, or `Temperature (°C)`
+- resistance/resistivity: `R`, `R_ohm`, `Resistance`, `Resistivity`, or `Corrected Resistance (Ohm)`
 
-Also accepted for reloads created by this app:
-
-- `temperature`
+At least two rows must contain numeric values in both selected columns. Unlabelled numeric columns are rejected
+instead of being guessed. The console reports the selected sheet, header row, columns, and point count.
 
 ## Running the GUI
 

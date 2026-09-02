@@ -202,6 +202,14 @@ def _sample_power_w(measured_voltage, measured_current):
     return abs(float(measured_voltage) * float(measured_current))
 
 
+def _is_finite_scalar(value):
+    """Return False for None/object values instead of letting numpy raise TypeError."""
+    try:
+        return bool(np.isfinite(float(value)))
+    except (TypeError, ValueError, OverflowError):
+        return False
+
+
 def _enforce_electrical_safety(measured_voltage, measured_current, config):
     if not np.isfinite(measured_voltage) or not np.isfinite(measured_current):
         return
@@ -861,7 +869,7 @@ def _persist_measurement(
 
 
 def _is_valid_measurement(measured_voltage, measured_current, temperature, config):
-    if not all(np.isfinite(value) for value in (measured_voltage, measured_current, temperature)):
+    if not all(_is_finite_scalar(value) for value in (measured_voltage, measured_current, temperature)):
         return False
     if abs(measured_current) < config["minimum_current_a"]:
         return False
@@ -1267,7 +1275,7 @@ def _confirmed_upward_temperature_jump(
     if not resistance_confirmed:
         return False
     if not all(
-        np.isfinite(value)
+        _is_finite_scalar(value)
         for value in (
             temperature,
             previous_temperature,
@@ -1314,7 +1322,7 @@ def _confirmed_downward_temperature_jump(
     config,
 ):
     if not all(
-        np.isfinite(value)
+        _is_finite_scalar(value)
         for value in (
             temperature,
             previous_temperature,
@@ -1423,7 +1431,7 @@ def _temperature_jump_probe_eligible(
     if direction not in {"up", "down"} or not resistance_confirmed:
         return False
     if not all(
-        np.isfinite(value)
+        _is_finite_scalar(value)
         for value in (
             temperature,
             previous_temperature,
