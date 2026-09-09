@@ -24,7 +24,7 @@ CONTROL_DEFAULTS = {
     "dmm_range_discard_readings": 2,
     "dmm_range_recovery_attempts": 5,
     "resistivity_mode": "V_OVER_I",
-    "resistivity_heat_time_s": 3.0,
+    "resistivity_heat_time_s": 10.0,
     "resistivity_measure_time_s": 2.0,
     "resistivity_output_settle_s": 0.3,
     "dmm_resistance_range_ohm": 200.0,
@@ -2857,9 +2857,11 @@ def measure_resistivity(
     if config is not None and not _resistance_in_curve_bounds(resistance, temperature_interp, config):
         print(
             f"Measured resistance {resistance:.6f} Ohm is outside the configured R vs. T range; "
-            "treating it as invalid."
+            "no temperature can be inferred from it."
         )
-        return measured_voltage, measured_current, np.nan, np.nan
+        # The resistance itself is a good measurement; only the conversion is out
+        # of range. T0 calibration relies on that to anchor an unscaled curve.
+        return measured_voltage, measured_current, np.nan, resistance
 
     temperature_bounds = getattr(temperature_interp, "temperature_bounds", None)
     if np.isfinite(temperature) and temperature_bounds is not None:

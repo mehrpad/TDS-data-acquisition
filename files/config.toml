@@ -54,7 +54,7 @@ dmm_range_recovery_attempts = 5
 resistivity_mode = "V_OVER_I"
 
 # Seconds the supply heats the sample per cycle in the duty-cycled resistivity modes.
-resistivity_heat_time_s = 3
+resistivity_heat_time_s = 10
 
 # Seconds the supply output stays off per cycle while resistance is measured.
 resistivity_measure_time_s = 2

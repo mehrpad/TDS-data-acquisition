@@ -137,6 +137,29 @@ class ResistivityModeTests(unittest.TestCase):
         )
         self.assertAlmostEqual(resistivity_loop_time(duty_cycled), 5.0)
 
+    def test_a_resistance_below_the_curve_survives_so_t0_can_still_anchor_it(self):
+        """An out-of-range resistance is a good measurement with no conversion.
+
+        T0 calibration exists to scale an unanchored curve, and its
+        current-only fallback needs the resistance that the curve cannot yet
+        convert. Nulling it here stalls the calibration that would fix it.
+        """
+        curve = IdentityTemperatureModel()
+        curve.x = np.array([21.0, 24.5])
+        siglent = _siglent_double([("0.0091", "0.000425")], resistance_reading="20.5840")
+
+        _, _, temperature, resistance = measure_resistivity(
+            Mock(),
+            Mock(),
+            siglent,
+            curve,
+            calibration=True,
+            config=_config(resistivity_mode="FOUR_WIRE"),
+            power_supply=Mock(),
+        )
+        self.assertTrue(np.isnan(temperature))
+        self.assertAlmostEqual(resistance, 20.584)
+
     def test_an_unknown_mode_falls_back_to_the_continuous_measurement(self):
         self.assertEqual(get_resistivity_mode({"resistivity_mode": "nonsense"}), "V_OVER_I")
         self.assertEqual(get_resistivity_mode({"resistivity_mode": "four_wire"}), "FOUR_WIRE")
