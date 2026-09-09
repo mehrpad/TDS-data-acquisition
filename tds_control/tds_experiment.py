@@ -132,7 +132,7 @@ CONTROL_DEFAULTS = {
     "t0_voltage_search_start": 0.01,
     "t0_voltage_step": 0.01,
     "t0_settle_time_s": 3.0,
-    "t0_calibration_samples": 9,
+    "t0_calibration_samples": 5,
     "t0_warmup_samples": 1,
     "t0_stable_current_samples": 3,
     "t0_stable_current_a": 1e-4,
