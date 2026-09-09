@@ -24,8 +24,8 @@ CONTROL_DEFAULTS = {
     "dmm_range_discard_readings": 2,
     "dmm_range_recovery_attempts": 5,
     "resistivity_mode": "V_OVER_I",
-    "resistivity_heat_time_s": 10.0,
-    "resistivity_measure_time_s": 2.0,
+    "resistivity_heat_time_s": 4.0,
+    "resistivity_measure_time_s": 1.0,
     "resistivity_output_settle_s": 0.3,
     "dmm_resistance_range_ohm": 200.0,
     "pid_kp": 0.008,
@@ -249,15 +249,37 @@ def _measurement_voltage_floor(config):
     return _clamp(max(candidates), minimum, maximum)
 
 
+def voltage_step_scale(config):
+    """Scale per-loop voltage limits to the loop period actually in use.
+
+    The step limits are expressed per control cycle but were chosen for the
+    1/experiment_frequency period. A duty-cycled resistivity mode runs a much
+    longer cycle, so holding the per-loop step fixed would quietly divide the
+    achievable ramp rate by the ratio between the two periods. Scaling keeps
+    the volts-per-minute the limits were tuned for.
+    """
+    try:
+        reference_period_s = 1.0 / float(config["experiment_frequency"])
+        actual_period_s = float(resistivity_loop_time(config))
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        return 1.0
+    if not np.isfinite(reference_period_s) or reference_period_s <= 0:
+        return 1.0
+    if not np.isfinite(actual_period_s) or actual_period_s <= 0:
+        return 1.0
+    return max(actual_period_s / reference_period_s, 1.0)
+
+
 def _limit_voltage_slew(target_voltage, current_voltage, min_voltage, max_voltage, config):
     if not np.isfinite(target_voltage) or not np.isfinite(current_voltage):
         return _clamp(current_voltage, min_voltage, max_voltage)
-    max_step_up = float(config.get("max_voltage_step_up", 0.01))
-    max_step_down = float(config.get("max_voltage_step_down", 0.01))
+    step_scale = voltage_step_scale(config)
+    max_step_up = float(config.get("max_voltage_step_up", 0.01)) * step_scale
+    max_step_down = float(config.get("max_voltage_step_down", 0.01)) * step_scale
     low_voltage_threshold = float(config.get("low_voltage_step_threshold", 0.05))
     if current_voltage <= low_voltage_threshold + 1e-12:
-        max_step_up = min(max_step_up, float(config.get("low_voltage_max_step_up", 0.001)))
-        max_step_down = min(max_step_down, float(config.get("low_voltage_max_step_down", 0.001)))
+        max_step_up = min(max_step_up, float(config.get("low_voltage_max_step_up", 0.001)) * step_scale)
+        max_step_down = min(max_step_down, float(config.get("low_voltage_max_step_down", 0.001)) * step_scale)
     if max_step_up <= 0 or max_step_down <= 0:
         raise ValueError("Voltage slew limits must be positive.")
     delta = target_voltage - current_voltage
@@ -1255,7 +1277,11 @@ def _compute_next_voltage(
     if temperature <= setpoint - under_target_band and delta_voltage < 0.0:
         delta_voltage = 0.0
 
-    aggressive_step = float(config.get("max_voltage_step_up_far", config["max_voltage_step_up"]))
+    step_scale = voltage_step_scale(config)
+    aggressive_step = (
+        float(config.get("max_voltage_step_up_far", config["max_voltage_step_up"])) * step_scale
+    )
+    catchup_step = float(config["max_voltage_step_up"]) * step_scale
     far_below_setpoint = temperature <= setpoint - config.get("aggressive_step_band_c", 4.0)
     significantly_below_setpoint = temperature <= setpoint - rate_limit_band
     catchup_rate_c_min = max(ramp_speed_min * 0.6, ramp_speed_min - 3.0, 1.0)
@@ -1263,9 +1289,9 @@ def _compute_next_voltage(
         if temp_rate_c_min is None or not np.isfinite(temp_rate_c_min) or temp_rate_c_min < catchup_rate_c_min:
             delta_voltage = max(delta_voltage, aggressive_step)
         else:
-            delta_voltage = max(delta_voltage, config["max_voltage_step_up"])
+            delta_voltage = max(delta_voltage, catchup_step)
     elif significantly_below_setpoint and not current_limited:
-        delta_voltage = max(delta_voltage, config["max_voltage_step_up"])
+        delta_voltage = max(delta_voltage, catchup_step)
 
     if temperature >= setpoint + config["temperature_tolerance_c"]:
         delta_voltage = min(delta_voltage, 0.0)
@@ -1958,7 +1984,10 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                 ki=config["pid_ki"],
                 kd=config["pid_kd"] if controller_mode == "PID" else 0.0,
                 setpoint=t_zero,
-                output_limits=(-config["max_voltage_step_down"], config["max_voltage_step_up"]),
+                output_limits=(
+                    -config["max_voltage_step_down"] * voltage_step_scale(config),
+                    config["max_voltage_step_up"] * voltage_step_scale(config),
+                ),
                 integral_limits=(-config["pid_integral_limit"], config["pid_integral_limit"]),
                 derivative_filter=config["pid_derivative_filter"],
             )
