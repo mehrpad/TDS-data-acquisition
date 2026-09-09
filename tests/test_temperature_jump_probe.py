@@ -154,6 +154,7 @@ class TemperatureJumpProbeTests(unittest.TestCase):
 
     def test_voltage_updates_do_not_reassert_output(self):
         ps = Mock()
+        ps.query.return_value = "0x0010"
         with patch.object(siglent.time, "sleep", return_value=None):
             siglent.set_voltage(ps, 0.2)
             self.assertEqual(ps.write.call_args_list, [call("VOLT 0.2")])
@@ -163,6 +164,24 @@ class TemperatureJumpProbeTests(unittest.TestCase):
                 ps.write.call_args_list,
                 [call("VOLT 0.2"), call("OUTP CH1,ON")],
             )
+
+    def test_set_output_retries_with_unlock_when_the_key_lock_blocks_it(self):
+        ps = Mock()
+        ps.query.side_effect = ["0x0000", "0x0010"]
+        with patch.object(siglent.time, "sleep", return_value=None):
+            siglent.set_output(ps, "ON")
+        self.assertEqual(
+            ps.write.call_args_list,
+            [call("OUTP CH1,ON"), call("*UNLOCK"), call("OUTP CH1,ON")],
+        )
+
+    def test_set_output_reports_an_unswitchable_output(self):
+        ps = Mock()
+        ps.query.return_value = "0x0000"
+        with patch.object(siglent.time, "sleep", return_value=None):
+            with self.assertRaises(RuntimeError) as raised:
+                siglent.set_output(ps, "ON")
+        self.assertIn("Ver/Lock", str(raised.exception))
 
 
 if __name__ == "__main__":

@@ -46,6 +46,47 @@ R_sample = V_DMM / I
 
 Use an `R vs. T` calibration obtained with the same Kelvin setup. Leave `fixed_series_resistance_ohm = 0` unless there is a known, independently verified external series resistor that should be removed from the result.
 
+## Resistivity measurement mode
+
+The GUI `Resistivity Mode` field selects how resistance is obtained. All three modes
+feed the same R-vs-T inversion, so T0 calibration, PI/PID tuning, and experiment runs
+always use the mode currently selected.
+
+| Mode | What it does | Wiring |
+| --- | --- | --- |
+| `V_OVER_I` | Continuous `R = V / I` while the heating current flows. | The Kelvin wiring above. |
+| `OFFSET_CORRECTED` | Each cycle: heat, read `V_on`/`I_on`, switch CH1 off, read the sense voltage again. With no current flowing that second reading is the contact thermal EMF, so `R = (V_on - V_off) / I_on`. | Unchanged from the Kelvin wiring above. |
+| `FOUR_WIRE` | Each cycle: heat, read `V_on`/`I_on`, switch CH1 off, and let the voltage DMM source its own test current for a direct `CONF:FRES` reading. | The voltage DMM additionally needs its **Input HI/LO** source leads on the sample, not just **Sense HI/LO**. |
+
+`V_OVER_I` measures the sample while it is being heated, so any contact thermal EMF
+adds directly to a sense voltage that is only a few millivolts. On a 2-5 ohm sample
+run to several hundred degrees, that offset is the largest error in the measurement.
+The other two modes remove it by measuring while no heating current flows.
+
+### Duty cycle
+
+The two duty-cycled modes set the control-loop period themselves from
+`resistivity_heat_time_s + resistivity_measure_time_s` (default 3 s + 2 s = 5 s);
+`experiment_frequency` does not apply to them. Within each cycle the supply heats for
+`resistivity_heat_time_s`, then CH1 switches off, `resistivity_output_settle_s` elapses,
+the quiet reading is taken, and CH1 switches back on.
+
+Because the sample only heats for part of each cycle, controller gains tuned under
+`V_OVER_I` will be too weak. Re-run **Tune PI/PID** after changing the mode.
+
+`FOUR_WIRE` uses the fixed `dmm_resistance_range_ohm` range. The SDM3055's lowest
+four-wire range is 200 ohm, so a low-resistance sample sits near the bottom of it;
+repeatability rather than absolute accuracy is what carries the temperature inversion,
+and the R-vs-T calibration must be taken in the same mode.
+
+### Remote output control
+
+The duty-cycled modes require the SPD1000X to accept `OUTPut CH1,ON` over USB. If the
+instrument's key lock is engaged the supply accepts that command and ignores it, so the
+software verifies every switch against `SYSTem:STATus?` bit 4 and sends `*UNLOCK` before
+retrying. Clear the lock from the front panel by holding `Ver/Lock` until the lock icon
+disappears. `python tools/psu_output_diag.py` reports what the instrument is doing.
+
 ## DMM range and low-voltage startup policy
 
 Auto Range is not permitted for either DMM. It can insert range-change delays and transient readings that corrupt resistance calculations and the temperature-control loop.
