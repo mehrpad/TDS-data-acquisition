@@ -182,7 +182,7 @@ resistance_range_margin_ratio = 0
 resistance_range_margin_ohm = 0.01
 
 # Enable bounded endpoint extrapolation outside the measured R-vs-T range; keep false unless independently validated.
-curve_extrapolation_enabled = false
+curve_extrapolation_enabled = true
 
 # Lowest temperature that extrapolation may return.
 curve_extrapolation_min_temperature_c = 0
