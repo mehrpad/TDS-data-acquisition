@@ -66,13 +66,23 @@ The other two modes remove it by measuring while no heating current flows.
 ### Duty cycle
 
 The two duty-cycled modes set the control-loop period themselves from
-`resistivity_heat_time_s + resistivity_measure_time_s` (default 3 s + 2 s = 5 s);
+`resistivity_heat_time_s + resistivity_measure_time_s` (default 10 s + 2 s = 12 s);
 `experiment_frequency` does not apply to them. Within each cycle the supply heats for
 `resistivity_heat_time_s`, then CH1 switches off, `resistivity_output_settle_s` elapses,
 the quiet reading is taken, and CH1 switches back on.
 
 Because the sample only heats for part of each cycle, controller gains tuned under
 `V_OVER_I` will be too weak. Re-run **Tune PI/PID** after changing the mode.
+
+In `OFFSET_CORRECTED` and `FOUR_WIRE` the reported resistance is the one measured
+with the heating current off. `V` and `I` remain on their own displays for monitoring,
+but `V / I` is no longer the resistance and is not used as one.
+
+A resistance that falls outside the loaded R-vs-T table is still a valid measurement:
+only its conversion to temperature is unavailable. T0 calibration depends on this,
+because its whole job is to anchor a curve whose absolute scale does not yet match the
+sample. If the four-wire resistance sits outside the table by more than T0 can absorb,
+re-measure the R-vs-T curve in the same mode.
 
 `FOUR_WIRE` uses the fixed `dmm_resistance_range_ohm` range. The SDM3055's lowest
 four-wire range is 200 ohm, so a low-resistance sample sits near the bottom of it;

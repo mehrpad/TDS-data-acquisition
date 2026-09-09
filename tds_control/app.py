@@ -1067,7 +1067,12 @@ class Ui_TDS(object):
             self.current = float(current)
         if self._is_finite_number(resistivity):
             self.resistivity = float(resistivity)
-        elif self._is_finite_number(self.voltage) and self._is_finite_number(self.current) and abs(self.current) > 1e-12:
+        elif (
+            tds_experiment.get_resistivity_mode(self.config) == "V_OVER_I"
+            and self._is_finite_number(self.voltage)
+            and self._is_finite_number(self.current)
+            and abs(self.current) > 1e-12
+        ):
             corrected_resistance = float(self.voltage / self.current) - float(
                 self.config.get("fixed_series_resistance_ohm", 0.0)
             )

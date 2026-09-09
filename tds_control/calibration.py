@@ -100,6 +100,7 @@ def _emit_live_measurement(
     measured_voltage,
     measured_current,
     applied_voltage,
+    resistance=None,
 ):
     if emitter is None or not hasattr(emitter, "live_measurement_signal"):
         return
@@ -111,6 +112,7 @@ def _emit_live_measurement(
             "measured_voltage": measured_voltage,
             "measured_current": measured_current,
             "applied_voltage": applied_voltage,
+            "resistance": resistance,
         }
     )
 
@@ -230,6 +232,7 @@ def _find_stable_current_voltage(
                 measured_voltage=measured_voltage,
                 measured_current=measured_current,
                 applied_voltage=voltage,
+                resistance=resistance,
             )
             print(
                 f"{label} sample: T={temperature}, V={measured_voltage}, "
@@ -415,6 +418,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
                 measured_voltage=measured_voltage,
                 measured_current=measured_current,
                 applied_voltage=calibration_voltage,
+                resistance=resistance,
             )
             print(
                 f"Room-temperature calibration sample: T={temperature}, V={measured_voltage}, I={measured_current}"
@@ -672,6 +676,7 @@ def _collect_pid_baseline(
             measured_voltage=measured_voltage,
             measured_current=measured_current,
             applied_voltage=baseline_voltage,
+            resistance=resistance,
         )
         valid_baseline = (
             tds_experiment._is_valid_measurement(measured_voltage, measured_current, temperature, config)
@@ -742,6 +747,7 @@ def _run_pid_tuning_attempt(
             measured_voltage=measured_voltage,
             measured_current=measured_current,
             applied_voltage=response_voltage,
+            resistance=resistance,
         )
 
         if np.isfinite(temperature) and temperature > safe_temperature_limit:
