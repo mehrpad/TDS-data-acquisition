@@ -110,7 +110,7 @@ def _emit_live_measurement(
     temperature,
     measured_voltage,
     measured_current,
-    applied_voltage,
+    applied_current,
     resistance=None,
 ):
     if emitter is None or not hasattr(emitter, "live_measurement_signal"):
@@ -122,7 +122,7 @@ def _emit_live_measurement(
             "temperature": temperature,
             "measured_voltage": measured_voltage,
             "measured_current": measured_current,
-            "applied_voltage": applied_voltage,
+            "applied_current": applied_current,
             "resistance": resistance,
         }
     )
@@ -186,16 +186,16 @@ def _resistance_series_is_stable(resistances, config):
     return float(np.max(np.abs(resistance_array - median_resistance))) <= allowed_deviation
 
 
-def _find_stable_current_voltage(
+def _find_stable_current_setpoint(
     *,
     dmm_v,
     dmm_i,
     power_supply,
     temperature_interp,
     config,
-    start_voltage,
-    max_voltage,
-    step_voltage,
+    start_current,
+    max_current,
+    step_current,
     settle_time_s,
     stable_samples,
     minimum_current,
@@ -208,14 +208,14 @@ def _find_stable_current_voltage(
     stop_on_high_temperature=False,
 ):
     sample_interval_s = _calibration_sample_interval_s(config)
-    voltage = max(start_voltage, config["min_voltage"], 0.005)
-    search_upper_bound = min(max_voltage, config["max_voltage"])
-    voltage_step = max(step_voltage, config["minimum_voltage_change"])
+    setpoint_current = max(start_current, config["min_current"], 0.005)
+    search_upper_bound = min(max_current, config["max_current"])
+    current_step = max(step_current, config["minimum_current_change"])
 
-    while voltage <= search_upper_bound + 1e-12:
+    while setpoint_current <= search_upper_bound + 1e-12:
         _check_stop(emitter)
-        siglent.set_voltage(power_supply, voltage=voltage)
-        print(f"{label}: trying {voltage:.4f} V")
+        siglent.set_current(power_supply, current=setpoint_current)
+        print(f"{label}: trying {setpoint_current:.4f} A")
         _sleep_with_stop(settle_time_s, emitter)
 
         samples = []
@@ -242,7 +242,7 @@ def _find_stable_current_voltage(
                 temperature=temperature,
                 measured_voltage=measured_voltage,
                 measured_current=measured_current,
-                applied_voltage=voltage,
+                applied_current=setpoint_current,
                 resistance=resistance,
             )
             print(
@@ -258,8 +258,8 @@ def _find_stable_current_voltage(
             ):
                 raise tds_experiment.ExperimentSafetyError(
                     f"{label}: inferred temperature {temperature:.2f} C exceeds the allowed "
-                    f"{temperature_upper_bound:.2f} C baseline window at {voltage:.4f} V. "
-                    "Lower tuning_start_voltage before tuning."
+                    f"{temperature_upper_bound:.2f} C baseline window at {setpoint_current:.4f} A. "
+                    "Lower tuning_start_current before tuning."
                 )
 
             if abs(measured_current) > config["max_current"]:
@@ -300,7 +300,7 @@ def _find_stable_current_voltage(
                 consecutive_invalid_samples = 0
                 samples.append(
                     {
-                        "voltage": float(measured_voltage),
+                        "setpoint_current": float(measured_voltage),
                         "current": float(measured_current),
                         "temperature": float(temperature),
                         "resistance": float(resistance),
@@ -309,12 +309,12 @@ def _find_stable_current_voltage(
             else:
                 consecutive_invalid_samples += 1
                 if samples:
-                    print(f"{label}: unstable sample detected, restarting stability check at {voltage:.4f} V.")
+                    print(f"{label}: unstable sample detected, restarting stability check at {setpoint_current:.4f} A.")
                 samples = []
                 if consecutive_invalid_samples >= invalid_advance_count:
                     print(
-                        f"{label}: received {consecutive_invalid_samples} invalid samples at {voltage:.4f} V, "
-                        "increasing search voltage."
+                        f"{label}: received {consecutive_invalid_samples} invalid samples at {setpoint_current:.4f} A, "
+                        "increasing search setpoint_current."
                     )
                     break
 
@@ -327,27 +327,27 @@ def _find_stable_current_voltage(
             and _current_series_is_stable(currents, minimum_current)
             and _resistance_series_is_stable(resistances, config)
         ):
-            print(f"{label}: stable current and resistance found at {voltage:.4f} V")
-            return float(voltage), samples
+            print(f"{label}: stable current and resistance found at {setpoint_current:.4f} A")
+            return float(setpoint_current), samples
         if len(samples) >= int(stable_samples) and _current_series_is_stable(currents, minimum_current):
             print(
-                f"{label}: current was stable at {voltage:.4f} V, but resistance was too noisy; "
-                "increasing by a cautious low-voltage step."
+                f"{label}: current was stable at {setpoint_current:.4f} A, but resistance was too noisy; "
+                "increasing by a cautious low-setpoint_current step."
             )
 
-        next_voltage = tds_experiment._limit_voltage_slew(
-            voltage + voltage_step,
-            voltage,
-            max(float(config["min_voltage"]), 0.005),
+        next_current = tds_experiment._limit_current_slew(
+            setpoint_current + current_step,
+            setpoint_current,
+            max(float(config["min_current"]), 0.005),
             search_upper_bound,
             config,
         )
-        if next_voltage <= voltage + 1e-12:
+        if next_current <= setpoint_current + 1e-12:
             break
-        voltage = next_voltage
+        setpoint_current = next_current
 
     raise ValueError(
-        f"{label}: could not find a stable positive current between {start_voltage:.4f} V "
+        f"{label}: could not find a stable positive current between {start_current:.4f} A "
         f"and {search_upper_bound:.4f} V."
     )
 
@@ -380,15 +380,15 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
         _sleep_with_stop(1.0, emitter)
 
-        calibration_voltage, _ = _find_stable_current_voltage(
+        calibration_current, _ = _find_stable_current_setpoint(
             dmm_v=dmm_v,
             dmm_i=dmm_i,
             power_supply=power_supply,
             temperature_interp=temperature_interp,
             config=config,
-            start_voltage=config["t0_voltage_search_start"],
-            max_voltage=max(config["t0_calibration_voltage"], config["t0_voltage_search_start"]),
-            step_voltage=config["t0_voltage_step"],
+            start_current=config["t0_current_search_start"],
+            max_current=max(config["t0_calibration_current"], config["t0_current_search_start"]),
+            step_current=config["t0_current_step"],
             settle_time_s=config["t0_settle_time_s"],
             stable_samples=config["t0_stable_current_samples"],
             minimum_current=config["t0_stable_current_a"],
@@ -397,7 +397,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
             display_target_temperature=room_temp,
             allow_current_only_fallback=True,
         )
-        print(f"Using T0 calibration voltage: {calibration_voltage:.4f} V")
+        print(f"Using T0 calibration voltage: {calibration_current:.4f} A")
 
         sample_interval_s = _calibration_sample_interval_s(config)
 
@@ -428,7 +428,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
                 temperature=temperature,
                 measured_voltage=measured_voltage,
                 measured_current=measured_current,
-                applied_voltage=calibration_voltage,
+                applied_current=calibration_current,
                 resistance=resistance,
             )
             print(
@@ -583,7 +583,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
         tds_experiment._shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager, config=config)
 
 
-def _estimate_pid_from_step(response, base_temperature, step_voltage, loop_time, min_temp_rise, controller_mode="PI"):
+def _estimate_pid_from_step(response, base_temperature, step_current, loop_time, min_temp_rise, controller_mode="PI"):
     if not response:
         raise ValueError("Controller tuning did not collect any valid samples.")
 
@@ -594,8 +594,8 @@ def _estimate_pid_from_step(response, base_temperature, step_voltage, loop_time,
 
     if peak_rise < min_temp_rise:
         raise ValueError(
-            "Controller tuning did not produce enough temperature change. Increase tuning_search_max_voltage "
-            "or tuning_voltage_step carefully."
+            "Controller tuning did not produce enough temperature change. Increase tuning_search_max_current "
+            "or tuning_current_step carefully."
         )
 
     # Small safe tuning steps can still produce a usable response, so keep the
@@ -612,7 +612,7 @@ def _estimate_pid_from_step(response, base_temperature, step_voltage, loop_time,
     else:
         time_constant_s = max(float(times[-1]) - dead_time_s, loop_time)
 
-    process_gain = peak_rise / max(step_voltage, 1e-6)
+    process_gain = peak_rise / max(step_current, 1e-6)
     lambda_time_s = max(3.0 * dead_time_s, time_constant_s, 30.0)
 
     kp = time_constant_s / (process_gain * (lambda_time_s + dead_time_s))
@@ -636,7 +636,7 @@ def _estimate_pid_from_step(response, base_temperature, step_voltage, loop_time,
         "Ki": float(np.clip(ki, 1e-5, 0.01)),
         "Kd": kd,
         "base_temperature": base_temperature,
-        "step_voltage": step_voltage,
+        "step_current": step_current,
         "peak_rise_c": peak_rise,
         "dead_time_s": dead_time_s,
         "time_constant_s": time_constant_s,
@@ -651,7 +651,7 @@ def _collect_pid_baseline(
     temperature_interp,
     config,
     emitter,
-    baseline_voltage,
+    baseline_current,
     target_temperature,
     temperature_lower_bound,
     temperature_upper_bound,
@@ -686,7 +686,7 @@ def _collect_pid_baseline(
             temperature=temperature,
             measured_voltage=measured_voltage,
             measured_current=measured_current,
-            applied_voltage=baseline_voltage,
+            applied_current=baseline_current,
             resistance=resistance,
         )
         valid_baseline = (
@@ -700,7 +700,7 @@ def _collect_pid_baseline(
         )
         print(
             f"PID baseline sample: T={temperature}, R={resistance}, "
-            f"V={measured_voltage}, I={measured_current}, Vps={baseline_voltage:.4f}"
+            f"V={measured_voltage}, I={measured_current}, Vps={baseline_current:.4f}"
         )
         if valid_baseline:
             baseline_temperatures.append(float(temperature))
@@ -722,8 +722,8 @@ def _run_pid_tuning_attempt(
     temperature_interp,
     config,
     emitter,
-    baseline_voltage,
-    response_voltage,
+    baseline_current,
+    response_current,
     base_temperature,
     desired_rise,
     required_rise,
@@ -732,7 +732,7 @@ def _run_pid_tuning_attempt(
     temperature_lower_bound,
     loop_time,
 ):
-    siglent.set_voltage(power_supply, voltage=response_voltage)
+    siglent.set_current(power_supply, current=response_current)
     response = []
     invalid_measurements = 0
     start_time = time.time()
@@ -757,7 +757,7 @@ def _run_pid_tuning_attempt(
             temperature=temperature,
             measured_voltage=measured_voltage,
             measured_current=measured_current,
-            applied_voltage=response_voltage,
+            applied_current=response_current,
             resistance=resistance,
         )
 
@@ -811,7 +811,7 @@ def _run_pid_tuning_attempt(
         print(
             f"Tuning sample: t={elapsed_s:.1f} s, T={temperature:.2f} C, "
             f"R={resistance:.4f} Ohm, V={measured_voltage:.6f} V, "
-            f"I={measured_current:.4e} A, Vps={response_voltage:.4f} V"
+            f"I={measured_current:.4e} A, Vps={response_current:.4f} A"
         )
 
         if smoothed_rise_so_far > best_smoothed_rise_so_far + config["tuning_plateau_growth_c"]:
@@ -921,15 +921,15 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
             temperature_lower_bound = base_temperature_hint - stable_temperature_window
             temperature_upper_bound = base_temperature_hint + stable_temperature_window
 
-        step_voltage, stable_samples = _find_stable_current_voltage(
+        stable_setpoint_current, stable_samples = _find_stable_current_setpoint(
             dmm_v=dmm_v,
             dmm_i=dmm_i,
             power_supply=power_supply,
             temperature_interp=temperature_interp,
             config=config,
-            start_voltage=config["tuning_start_voltage"],
-            max_voltage=max(config["tuning_start_voltage"], config["tuning_search_max_voltage"]),
-            step_voltage=config["tuning_voltage_step"],
+            start_current=config["tuning_start_current"],
+            max_current=max(config["tuning_start_current"], config["tuning_search_max_current"]),
+            step_current=config["tuning_current_step"],
             settle_time_s=config["tuning_settle_time_s"],
             stable_samples=config["tuning_stable_current_samples"],
             minimum_current=config["tuning_stable_current_a"],
@@ -940,34 +940,34 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
             display_target_temperature=base_temperature_hint,
             stop_on_high_temperature=True,
         )
-        baseline_voltage = step_voltage
-        print(f"Using {controller_mode} baseline voltage: {baseline_voltage:.4f} V")
+        baseline_current = stable_setpoint_current
+        print(f"Using {controller_mode} baseline current: {baseline_current:.4f} A")
 
-        response_step = max(config["tuning_response_voltage_step"], config["minimum_voltage_change"])
-        max_response_voltage = min(config["tuning_search_max_voltage"], config["max_voltage"])
-        candidate_voltage = tds_experiment._limit_voltage_slew(
-            baseline_voltage + response_step,
-            baseline_voltage,
-            baseline_voltage,
+        response_step = max(config["tuning_response_current_step"], config["minimum_current_change"])
+        max_response_voltage = min(config["tuning_search_max_current"], config["max_current"])
+        candidate_current = tds_experiment._limit_current_slew(
+            baseline_current + response_step,
+            baseline_current,
+            baseline_current,
             max_response_voltage,
             config,
         )
-        if candidate_voltage <= baseline_voltage + 1e-12:
+        if candidate_current <= baseline_current + 1e-12:
             raise ValueError(
                 "Controller tuning could not create a voltage step above the stable-current baseline. "
-                "Increase tuning_search_max_voltage carefully."
+                "Increase tuning_search_max_current carefully."
             )
 
         seeded_baseline_samples = stable_samples
         last_failure = None
         attempt_number = 0
-        while candidate_voltage <= max_response_voltage + 1e-12:
+        while candidate_current <= max_response_voltage + 1e-12:
             attempt_number += 1
             print(
-                f"{controller_mode} tuning attempt {attempt_number}: baseline={baseline_voltage:.4f} V, "
-                f"response={candidate_voltage:.4f} V"
+                f"{controller_mode} tuning attempt {attempt_number}: baseline={baseline_current:.4f} A, "
+                f"response={candidate_current:.4f} A"
             )
-            siglent.set_voltage(power_supply, voltage=baseline_voltage)
+            siglent.set_current(power_supply, current=baseline_current)
             _sleep_with_stop(config["tuning_between_attempts_s"], emitter)
 
             base_temperature = _collect_pid_baseline(
@@ -977,7 +977,7 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
                 temperature_interp=temperature_interp,
                 config=config,
                 emitter=emitter,
-                baseline_voltage=baseline_voltage,
+                baseline_current=baseline_current,
                 target_temperature=base_temperature_hint,
                 temperature_lower_bound=temperature_lower_bound,
                 temperature_upper_bound=temperature_upper_bound,
@@ -1011,8 +1011,8 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
                 temperature_interp=temperature_interp,
                 config=config,
                 emitter=emitter,
-                baseline_voltage=baseline_voltage,
-                response_voltage=candidate_voltage,
+                baseline_current=baseline_current,
+                response_current=candidate_current,
                 base_temperature=base_temperature,
                 desired_rise=desired_rise,
                 required_rise=required_rise,
@@ -1022,7 +1022,7 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
                 loop_time=loop_time,
             )
 
-            siglent.set_voltage(power_supply, voltage=baseline_voltage)
+            siglent.set_current(power_supply, current=baseline_current)
             _sleep_with_stop(config["tuning_between_attempts_s"], emitter)
 
             if (
@@ -1033,38 +1033,38 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
                 tuned = _estimate_pid_from_step(
                     response=attempt["response"],
                     base_temperature=base_temperature,
-                    step_voltage=candidate_voltage - baseline_voltage,
+                    step_current=candidate_current - baseline_current,
                     loop_time=loop_time,
                     min_temp_rise=required_rise,
                     controller_mode=controller_mode,
                 )
-                tuned["baseline_voltage"] = baseline_voltage
-                tuned["step_voltage"] = candidate_voltage
-                tuned["step_delta_voltage"] = candidate_voltage - baseline_voltage
+                tuned["baseline_current"] = baseline_current
+                tuned["step_current"] = candidate_current
+                tuned["step_delta_current"] = candidate_current - baseline_current
                 print(
                     f"Tuned {controller_mode} parameters: Kp={tuned['Kp']:.6f}, Ki={tuned['Ki']:.6f}, "
-                    f"Kd={tuned['Kd']:.6f}, baseline={baseline_voltage:.4f} V, "
-                    f"response={candidate_voltage:.4f} V, delta={tuned['step_delta_voltage']:.4f} V, "
+                    f"Kd={tuned['Kd']:.6f}, baseline={baseline_current:.4f} A, "
+                    f"response={candidate_current:.4f} A, delta={tuned['step_delta_current']:.4f} V, "
                     f"peak rise={tuned['peak_rise_c']:.2f} C"
                 )
                 return tuned
 
             last_failure = (
-                f"Attempt at {candidate_voltage:.4f} V ended with status {attempt['status']} and produced "
+                f"Attempt at {candidate_current:.4f} A ended with status {attempt['status']} and produced "
                 f"{attempt['smoothed_rise_c']:.2f} C smoothed rise "
                 f"({attempt['peak_rise_c']:.2f} C peak)."
             )
             print(f"{controller_mode} tuning attempt did not produce enough response. {last_failure}")
-            next_candidate_voltage = tds_experiment._limit_voltage_slew(
-                candidate_voltage + response_step,
-                candidate_voltage,
-                baseline_voltage,
+            next_candidate_current = tds_experiment._limit_current_slew(
+                candidate_current + response_step,
+                candidate_current,
+                baseline_current,
                 max_response_voltage,
                 config,
             )
-            if next_candidate_voltage <= candidate_voltage + 1e-12:
+            if next_candidate_current <= candidate_current + 1e-12:
                 break
-            candidate_voltage = next_candidate_voltage
+            candidate_current = next_candidate_current
 
         failure_message = (
             f"{controller_mode} tuning could not find a usable step response up to {max_response_voltage:.4f} V. "

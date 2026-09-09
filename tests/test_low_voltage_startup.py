@@ -9,16 +9,16 @@ from tds_control.tds_experiment import (
     CONTROL_DEFAULTS,
     ExperimentSafetyError,
     LowSignalTemperatureConfirmation,
-    LowSignalVoltageRecovery,
+    LowSignalCurrentRecovery,
     TemperatureProgram,
-    _advance_low_signal_voltage_recovery,
+    _advance_low_signal_current_recovery,
     _enforce_electrical_safety,
-    _limit_voltage_slew,
-    _measurement_voltage_floor,
+    _limit_current_slew,
+    _measurement_current_floor,
     _screen_low_signal_temperature,
     _sample_power_w,
-    _start_control_at_initial_voltage,
-    _voltage_ramp_command,
+    _start_control_at_initial_current,
+    _current_ramp_command,
     get_experiment_mode,
     measure_resistivity,
 )
@@ -27,12 +27,11 @@ from tds_control.tds_experiment import (
 def _config(**overrides):
     config = dict(CONTROL_DEFAULTS)
     config.update(
-        min_voltage=0.0,
-        max_voltage=1.0,
-        max_current=0.1,
-        startup_voltage=0.01,
-        t0_voltage_search_start=0.01,
-        measurement_voltage_floor=0.01,
+        min_current=0.0,
+        max_current=1.0,
+        startup_current=0.01,
+        t0_current_search_start=0.01,
+        measurement_current_floor=0.01,
     )
     config.update(overrides)
     return config
@@ -51,30 +50,30 @@ class LinearTemperatureModel:
 
 class LowVoltageStartupTests(unittest.TestCase):
     def test_t0_initial_voltage_is_always_part_of_experiment_floor(self):
-        config = _config(startup_voltage=0.01, t0_voltage_search_start=0.02)
-        self.assertAlmostEqual(_measurement_voltage_floor(config), 0.02)
+        config = _config(startup_current=0.01, t0_current_search_start=0.02)
+        self.assertAlmostEqual(_measurement_current_floor(config), 0.02)
 
     def test_low_voltage_slew_uses_one_millivolt_steps(self):
-        config = _config(t0_voltage_search_start=0.01)
-        self.assertAlmostEqual(_limit_voltage_slew(0.03, 0.02, 0.01, 1.0, config), 0.021)
-        self.assertAlmostEqual(_limit_voltage_slew(0.01, 0.02, 0.01, 1.0, config), 0.019)
+        config = _config(t0_current_search_start=0.01)
+        self.assertAlmostEqual(_limit_current_slew(0.03, 0.02, 0.01, 1.0, config), 0.021)
+        self.assertAlmostEqual(_limit_current_slew(0.01, 0.02, 0.01, 1.0, config), 0.019)
 
     @patch("tds_control.tds_experiment.time.sleep")
-    @patch("tds_control.tds_experiment.siglent.set_voltage")
-    def test_experiment_starts_directly_at_initial_voltage_without_search(self, set_voltage, sleep):
+    @patch("tds_control.tds_experiment.siglent.set_current")
+    def test_experiment_starts_directly_at_initial_voltage_without_search(self, set_current, sleep):
         power_supply = Mock()
-        config = _config(t0_voltage_search_start=0.02, startup_settle_time_s=1.0)
+        config = _config(t0_current_search_start=0.02, startup_settle_time_s=1.0)
 
-        voltage, previous_voltage = _start_control_at_initial_voltage(
+        voltage, previous_current = _start_control_at_initial_current(
             power_supply,
             config,
-            previous_voltage=None,
+            previous_current=None,
             loop_time=1.0,
         )
 
         self.assertAlmostEqual(voltage, 0.02)
-        self.assertAlmostEqual(previous_voltage, 0.02)
-        set_voltage.assert_called_once_with(power_supply, voltage=0.02)
+        self.assertAlmostEqual(previous_current, 0.02)
+        set_current.assert_called_once_with(power_supply, current=0.02)
         sleep.assert_called_once_with(1.0)
 
     def test_target_keeps_advancing_by_ramp_speed_even_when_measurement_trails(self):
@@ -97,26 +96,26 @@ class LowVoltageStartupTests(unittest.TestCase):
 
     def test_mode_names_and_legacy_values_are_normalized(self):
         self.assertEqual(get_experiment_mode({"experiment_mode": "TEMPERATURE"}), "TEMPERATURE")
-        self.assertEqual(get_experiment_mode({"experiment_mode": "VOLTAGE"}), "VOLTAGE")
+        self.assertEqual(get_experiment_mode({"experiment_mode": "VOLTAGE"}), "CURRENT")
         self.assertEqual(get_experiment_mode({"experiment_mode": "CONTROLLED"}), "TEMPERATURE")
-        self.assertEqual(get_experiment_mode({"experiment_mode": "CURVE_SWEEP"}), "VOLTAGE")
+        self.assertEqual(get_experiment_mode({"experiment_mode": "CURVE_SWEEP"}), "CURRENT")
 
     def test_voltage_ramp_uses_volts_per_minute_and_normal_slew_limits(self):
         config = _config()
-        command = _voltage_ramp_command(
-            start_voltage=0.01,
+        command = _current_ramp_command(
+            start_current=0.01,
             ramp_speed_min=0.001,
             elapsed_s=60.0,
-            applied_voltage=0.01,
+            applied_current=0.01,
             config=config,
         )
         self.assertAlmostEqual(command, 0.011)
 
-        slew_limited = _voltage_ramp_command(
-            start_voltage=0.01,
+        slew_limited = _current_ramp_command(
+            start_current=0.01,
             ramp_speed_min=60.0,
             elapsed_s=1.0,
-            applied_voltage=0.01,
+            applied_current=0.01,
             config=config,
         )
         self.assertAlmostEqual(slew_limited, 0.011)
@@ -183,50 +182,51 @@ class LowVoltageStartupTests(unittest.TestCase):
         self.assertTrue(results[2][2])
 
     def test_stuck_low_signal_recovery_increases_01_v_five_times(self):
-        recovery = LowSignalVoltageRecovery()
+        recovery = LowSignalCurrentRecovery()
         config = _config(
             low_signal_recovery_trigger_cycles=2,
             low_signal_recovery_observe_cycles=2,
-            low_signal_recovery_voltage_step=0.01,
+            low_signal_recovery_current_step=0.01,
             low_signal_recovery_max_attempts=5,
         )
-        applied_voltage = 0.01
+        applied_current = 0.01
         stepped_voltages = []
 
         for invalid_streak in range(1, 12):
-            requested_voltage, stepped = _advance_low_signal_voltage_recovery(
+            requested_voltage, stepped = _advance_low_signal_current_recovery(
                 recovery=recovery,
                 invalid_reuse_streak=invalid_streak,
-                low_signal_state=applied_voltage <= config["ignore_invalid_below_voltage"],
-                applied_voltage=applied_voltage,
+                low_signal_state=applied_current <= config["ignore_invalid_below_current"],
+                applied_current=applied_current,
                 measured_current=0.001,
                 config=config,
             )
             if requested_voltage is not None:
-                applied_voltage = requested_voltage
+                applied_current = requested_voltage
             if stepped:
-                stepped_voltages.append(applied_voltage)
+                stepped_voltages.append(applied_current)
 
         np.testing.assert_allclose(stepped_voltages, [0.02, 0.03, 0.04, 0.05, 0.06])
         self.assertEqual(recovery.attempts, 5)
 
     def test_low_signal_recovery_does_not_increase_near_current_limit(self):
-        recovery = LowSignalVoltageRecovery()
+        recovery = LowSignalCurrentRecovery()
         config = _config(
             low_signal_recovery_trigger_cycles=1,
             low_signal_recovery_observe_cycles=1,
+            max_current=0.1,
         )
 
-        requested_voltage, stepped = _advance_low_signal_voltage_recovery(
+        requested_current, stepped = _advance_low_signal_current_recovery(
             recovery=recovery,
             invalid_reuse_streak=1,
             low_signal_state=True,
-            applied_voltage=0.01,
+            applied_current=0.01,
             measured_current=0.096,
             config=config,
         )
 
-        self.assertEqual(requested_voltage, 0.01)
+        self.assertEqual(requested_current, 0.01)
         self.assertFalse(stepped)
         self.assertEqual(recovery.attempts, 0)
 
@@ -251,7 +251,6 @@ class LowVoltageStartupTests(unittest.TestCase):
     def test_explicit_fixed_dmm_ranges_override_broad_safety_limits(self):
         dmm = Mock()
         config = _config(
-            max_voltage=30.0,
             max_current=3.0,
             dmm_voltage_range_v=0.2,
             dmm_current_range_a=0.2,
@@ -327,7 +326,7 @@ class LowVoltageStartupTests(unittest.TestCase):
         voltage_dmm = Mock()
         current_dmm = Mock()
         config = _config(
-            max_voltage=30.0,
+            max_current=3.0,
             dmm_voltage_range_v=0.2,
             dmm_current_range_a=0.002,
             dmm_range_recovery_attempts=5,
@@ -363,7 +362,7 @@ class LowVoltageStartupTests(unittest.TestCase):
         voltage_dmm = Mock()
         current_dmm = Mock()
         config = _config(
-            max_voltage=1000.0,
+            max_current=3.0,
             dmm_voltage_range_v=1000.0,
             dmm_current_range_a=0.002,
         )

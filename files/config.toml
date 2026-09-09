@@ -9,16 +9,19 @@
 controller_mode = "PI"
 
 # Choose "TEMPERATURE" for PI/PID control or "VOLTAGE" for an elapsed-time voltage ramp.
-experiment_mode = "VOLTAGE"
+experiment_mode = "CURRENT"
 
 # Control loop frequency in Hz; 0.5 Hz gives one synchronized update every 2 seconds.
 experiment_frequency = 0.5
 
-# Internal absolute software voltage ceiling for the power supply.
-max_voltage = 30
+# CV ceiling the supply may reach while holding the set current; bounds an open circuit.
+compliance_voltage = 30
 
-# Absolute software current limit in amps.
-max_current = 3
+# Highest current the controller may command, and the software abort threshold.
+max_current = 0.5
+
+# Sample voltage that aborts the run; in constant-current mode this is what an open contact looks like.
+max_sample_voltage = 15
 
 # Maximum sample power in watts, calculated as the absolute synchronized Kelvin voltage times current.
 max_power_w = 2.5
@@ -30,10 +33,10 @@ DMM_speed = 10
 dmm_synchronized_reading = true
 
 # Initial fixed voltage-DMM range in volts.
-dmm_voltage_range_v = 0.2
+dmm_voltage_range_v = 2
 
 # Initial fixed current-DMM range in amps; 0.002 A selects the 2 mA range.
-dmm_current_range_a = 0.002
+dmm_current_range_a = 0.02
 
 # Increase fixed DMM ranges only when a reading approaches full scale; this is not instrument auto-ranging.
 dmm_staged_ranging_enabled = true
@@ -76,10 +79,10 @@ PS = "USB0::0xF4EC::0x1410::SPD13DCC4R0058::INSTR"
 
 # Controller gains and output shaping
 # Proportional gain used by the live controller.
-pid_kp = 0.00340893242345198
+pid_kp = 0.0004
 
 # Integral gain used by the live controller.
-pid_ki = 0.00219501812004466
+pid_ki = 2e-05
 
 # Derivative gain used only when controller_mode = "PID".
 pid_kd = 0
@@ -90,35 +93,35 @@ pid_integral_limit = 400
 # Low-pass filter factor for derivative smoothing.
 pid_derivative_filter = 0.6
 
-# Initial PSU voltage at the start of an experiment.
-startup_voltage = 0.01
+# Initial PSU current at the start of an experiment.
+startup_current = 0.01
 
-# Lowest voltage the controller may request.
-min_voltage = 0
+# Lowest current the controller may request.
+min_current = 0
 
-# Small non-zero PSU voltage that keeps CH1 enabled between operations.
-psu_keepalive_voltage = 0.001
+# Small non-zero PSU current that keeps CH1 enabled between operations.
+psu_keepalive_current = 0.001
 
 # Optional verified external series resistance to subtract from V/I. Keep this at 0 for a Kelvin sample measurement.
 fixed_series_resistance_ohm = 0
 
-# Largest normal upward voltage step per loop.
-max_voltage_step_up = 0.01
+# Largest normal upward current step per loop.
+max_current_step_up = 0.01
 
-# Largest downward voltage step per loop.
-max_voltage_step_down = 0.01
+# Largest downward current step per loop.
+max_current_step_down = 0.01
 
 # PSU voltage at or below which the finer low-voltage slew limits apply.
-low_voltage_step_threshold = 0.05
+low_current_step_threshold = 0.05
 
 # Largest upward PSU action at or below the low-voltage threshold.
-low_voltage_max_step_up = 0.001
+low_current_max_step_up = 0.001
 
 # Largest downward PSU action at or below the low-voltage threshold.
-low_voltage_max_step_down = 0.001
+low_current_max_step_down = 0.001
 
 # Larger upward step allowed when the sample is far below the setpoint.
-max_voltage_step_up_far = 0.01
+max_current_step_up_far = 0.01
 
 # Temperature gap below the setpoint that enables aggressive catch-up.
 aggressive_step_band_c = 4
@@ -151,11 +154,11 @@ measurement_fail_limit = 20
 # Smallest current treated as a valid reading; the 2 mA DMM range supports a lower threshold.
 minimum_current_a = 0.0001
 
-# Smallest PSU change worth sending to the instrument.
-minimum_voltage_change = 0.0001
+# Smallest PSU change worth sending; the SPD1000X programs current in 1 mA steps.
+minimum_current_change = 0.001
 
-# Minimum allowed PSU voltage during active control.
-measurement_voltage_floor = 0.01
+# Minimum allowed PSU current during active control.
+measurement_current_floor = 0.01
 
 # Median filter window for accepted temperature readings.
 measurement_filter_samples = 3
@@ -248,7 +251,7 @@ measurement_temp_jump_down_c = 8
 measurement_jump_confirm_min_current_a = 0.02
 
 # Minimum PSU voltage required to accept a confirmed jump.
-measurement_jump_confirm_min_voltage = 0.1
+measurement_jump_confirm_min_current = 0.1
 
 # Largest upward jump that may still be accepted as physically plausible.
 measurement_temp_jump_accept_up_c = 35
@@ -272,7 +275,7 @@ low_signal_recovery_trigger_cycles = 5
 low_signal_recovery_observe_cycles = 5
 
 # Upward PSU step used by low-signal invalid-reading recovery.
-low_signal_recovery_voltage_step = 0.01
+low_signal_recovery_current_step = 0.01
 
 # Maximum upward recovery probes in one invalid low-signal episode.
 low_signal_recovery_max_attempts = 5
@@ -283,11 +286,11 @@ measurement_cooldown_confirm_samples = 2
 # How many upward jump confirmations are required before accepting heatup jumps.
 measurement_heatup_confirm_samples = 2
 
-# Temperature jump size that requires a directed micro-voltage probe.
+# Temperature jump size that requires a directed micro-current probe.
 measurement_jump_probe_threshold_c = 35
 
 # Small PSU change used to test whether a large resistance/temperature jump persists.
-measurement_jump_probe_voltage_step = 0.002
+measurement_jump_probe_current_step = 0.002
 
 # Fixed +/- temperature window around the first jump-probe candidate.
 measurement_jump_probe_temperature_tolerance_c = 50
@@ -299,16 +302,16 @@ measurement_jump_probe_resistance_ratio = 0.02
 measurement_jump_probe_max_samples = 20
 
 # Below this PSU voltage, invalid readings are treated more leniently.
-ignore_invalid_below_voltage = 0.05
+ignore_invalid_below_current = 0.05
 
 # Backoff step used when an invalid reading appears too hot.
-invalid_voltage_step_down = 0.01
+invalid_current_step_down = 0.01
 
 # After this many reused invalid cycles, normal recovery holds/backs off; staged low-signal probes may override it.
 invalid_reuse_hold_after = 8
 
 # During one invalid-reading recovery episode, never back off more than this much below the recent touched PSU voltage.
-invalid_max_drop_from_recent_peak_v = 0.1
+invalid_max_drop_from_recent_peak_a = 0.1
 
 # Stop the experiment if the controller has to reuse the last trusted temperature this many times in a row.
 invalid_reuse_stop_after = 100
@@ -322,19 +325,19 @@ autosave_batch_size = 10
 
 # Controller tuning
 # Voltage increment while searching for the safe tuning baseline.
-tuning_voltage_step = 0.01
+tuning_current_step = 0.001
 
 # Starting PSU voltage for controller tuning.
-tuning_start_voltage = 0.01
+tuning_start_current = 0.01
 
-# Maximum PSU voltage allowed during controller tuning.
-tuning_search_max_voltage = 0.5
+# Maximum PSU current allowed during controller tuning.
+tuning_search_max_current = 0.1
 
 # Settling delay before a tuning search sample is judged.
 tuning_settle_time_s = 0.3
 
 # Step added above the baseline during each tuning attempt.
-tuning_response_voltage_step = 0.01
+tuning_response_current_step = 0.01
 
 # Pause between tuning attempts.
 tuning_between_attempts_s = 0.5
@@ -377,13 +380,13 @@ tuning_plateau_growth_c = 0.08
 
 # T0 calibration
 # Highest voltage allowed during T0 calibration.
-t0_calibration_voltage = 0.1
+t0_calibration_current = 0.05
 
 # Starting PSU voltage for the T0 stable-current search.
-t0_voltage_search_start = 0.01
+t0_current_search_start = 0.01
 
 # Voltage increment used during the T0 stable-current search.
-t0_voltage_step = 0.01
+t0_current_step = 0.001
 
 # How long the sample is allowed to settle before T0 sampling.
 t0_settle_time_s = 3

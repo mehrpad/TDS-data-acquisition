@@ -16,10 +16,9 @@ from tds_control.tds_experiment import (
 def _config(**overrides):
     config = dict(CONTROL_DEFAULTS)
     config.update(
-        max_current=0.1,
-        max_voltage=1.0,
-        min_voltage=0.0,
-        measurement_voltage_floor=0.01,
+        max_current=1.0,
+        min_current=0.0,
+        measurement_current_floor=0.01,
     )
     config.update(overrides)
     return config
@@ -35,7 +34,7 @@ class TemperatureJumpProbeTests(unittest.TestCase):
             measured_resistance=20.0,
             previous_resistance=None,
             measured_current=0.001,
-            applied_voltage=0.01,
+            applied_current=0.01,
             resistance_confirmed=True,
             setpoint=40.0,
             config=config,
@@ -46,7 +45,7 @@ class TemperatureJumpProbeTests(unittest.TestCase):
             measured_resistance=19.0,
             previous_resistance=None,
             measured_current=0.001,
-            applied_voltage=0.01,
+            applied_current=0.01,
             resistance_confirmed=True,
             setpoint=40.0,
             config=config,
@@ -135,13 +134,15 @@ class TemperatureJumpProbeTests(unittest.TestCase):
         self.assertEqual(attempts, 4)
 
     def test_downward_probe_holds_when_current_is_near_limit(self):
-        config = _config()
+        # max_current is both the setpoint ceiling and the safety limit, so the
+        # probe must hold once the measurement reaches 95% of it.
+        config = _config(max_current=0.1)
         probe = TemperatureJumpProbe()
-        accepted, requested_voltage, _ = _advance_temperature_jump_probe(
-            probe, "down", 220.0, 8.0, 0.3, 0.099, config
+        accepted, requested_current, _ = _advance_temperature_jump_probe(
+            probe, "down", 220.0, 8.0, 0.09, 0.099, config
         )
         self.assertFalse(accepted)
-        self.assertAlmostEqual(requested_voltage, 0.3)
+        self.assertAlmostEqual(requested_current, 0.09)
 
     def test_unstable_probe_stops_with_specific_safety_error(self):
         config = _config(measurement_jump_probe_max_samples=3)
@@ -152,17 +153,17 @@ class TemperatureJumpProbeTests(unittest.TestCase):
         with self.assertRaisesRegex(ExperimentSafetyError, "did not stabilize"):
             _advance_temperature_jump_probe(probe, "down", 180.0, 6.0, 0.304, 0.03, config)
 
-    def test_voltage_updates_do_not_reassert_output(self):
+    def test_current_updates_do_not_reassert_output(self):
         ps = Mock()
         ps.query.return_value = "0x0010"
         with patch.object(siglent.time, "sleep", return_value=None):
-            siglent.set_voltage(ps, 0.2)
-            self.assertEqual(ps.write.call_args_list, [call("VOLT 0.2")])
+            siglent.set_current(ps, 0.2)
+            self.assertEqual(ps.write.call_args_list, [call("CURR 0.2")])
 
             siglent.set_output(ps, "ON")
             self.assertEqual(
                 ps.write.call_args_list,
-                [call("VOLT 0.2"), call("OUTP CH1,ON")],
+                [call("CURR 0.2"), call("OUTP CH1,ON")],
             )
 
     def test_set_output_retries_with_unlock_when_the_key_lock_blocks_it(self):
