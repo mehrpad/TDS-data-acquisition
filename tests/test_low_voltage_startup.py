@@ -289,7 +289,7 @@ class LowVoltageStartupTests(unittest.TestCase):
         siglent.configure_dc_range_from_config(voltage_dmm, "VOLT", config)
         siglent.configure_dc_range_from_config(current_dmm, "CURR", config)
 
-        measured_voltage, measured_current, temperature = measure_resistivity(
+        measured_voltage, measured_current, temperature, _ = measure_resistivity(
             voltage_dmm,
             current_dmm,
             siglent,
@@ -335,7 +335,7 @@ class LowVoltageStartupTests(unittest.TestCase):
         siglent.configure_dc_range_from_config(voltage_dmm, "VOLT", config)
         siglent.configure_dc_range_from_config(current_dmm, "CURR", config)
 
-        measured_voltage, measured_current, temperature = measure_resistivity(
+        measured_voltage, measured_current, temperature, _ = measure_resistivity(
             voltage_dmm,
             current_dmm,
             siglent,
@@ -370,7 +370,7 @@ class LowVoltageStartupTests(unittest.TestCase):
         siglent.configure_dc_range_from_config(voltage_dmm, "VOLT", config)
         siglent.configure_dc_range_from_config(current_dmm, "CURR", config)
 
-        measured_voltage, measured_current, temperature = measure_resistivity(
+        measured_voltage, measured_current, temperature, _ = measure_resistivity(
             voltage_dmm,
             current_dmm,
             siglent,
@@ -406,7 +406,7 @@ class LowVoltageStartupTests(unittest.TestCase):
         siglent_module = Mock()
         siglent_module.read_DMM_pair.return_value = (0.0195, 0.0010)
 
-        measured_voltage, measured_current, temperature = measure_resistivity(
+        measured_voltage, measured_current, temperature, _ = measure_resistivity(
             Mock(),
             Mock(),
             siglent_module,

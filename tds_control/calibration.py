@@ -33,19 +33,6 @@ def _prepare_curve_interpolators(r_vs_t, config=None):
     return curve, resistivity_interp, temperature_interp
 
 
-def _calculate_resistance(measured_voltage, measured_current, config=None):
-    if not np.isfinite(measured_voltage) or not np.isfinite(measured_current):
-        return np.nan
-    if abs(measured_current) < 1e-12:
-        return np.nan
-    resistance = measured_voltage / measured_current
-    if config is not None:
-        resistance -= float(config.get("fixed_series_resistance_ohm", 0.0))
-    if not np.isfinite(resistance) or resistance <= 0:
-        return np.nan
-    return float(resistance)
-
-
 def _calibrated_temperature_spread(resistances, scale, reference_temperature_interp):
     """Return T spread after applying R_cal(T) = scale * R_ref(T)."""
     numeric_scale = float(scale)
@@ -227,15 +214,15 @@ def _find_stable_current_voltage(
         while len(samples) < int(stable_samples) and attempts < max_attempts:
             _check_stop(emitter)
             attempts += 1
-            measured_voltage, measured_current, temperature = tds_experiment.measure_resistivity(
+            measured_voltage, measured_current, temperature, resistance = tds_experiment.measure_resistivity(
                 dmm_v,
                 dmm_i,
                 siglent,
                 temperature_interp,
                 calibration=True,
                 config=config,
+                power_supply=power_supply,
             )
-            resistance = _calculate_resistance(measured_voltage, measured_current, config=config)
             _emit_live_measurement(
                 emitter,
                 target_temperature=display_target_temperature,
@@ -412,13 +399,14 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
         while len(accepted_samples) < target_samples and attempts < max_attempts:
             _check_stop(emitter)
             attempts += 1
-            measured_voltage, measured_current, temperature = tds_experiment.measure_resistivity(
+            measured_voltage, measured_current, temperature, resistance = tds_experiment.measure_resistivity(
                 dmm_v,
                 dmm_i,
                 siglent,
                 temperature_interp,
                 calibration=True,
                 config=config,
+                power_supply=power_supply,
             )
             _emit_live_measurement(
                 emitter,
@@ -441,7 +429,6 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
                 _sleep_with_stop(sample_interval_s, emitter)
                 continue
 
-            resistance = _calculate_resistance(measured_voltage, measured_current, config=config)
             if not np.isfinite(resistance):
                 print("Rejected room-temperature calibration sample: invalid resistance.")
                 _sleep_with_stop(sample_interval_s, emitter)
@@ -645,6 +632,7 @@ def _collect_pid_baseline(
     *,
     dmm_v,
     dmm_i,
+    power_supply,
     temperature_interp,
     config,
     emitter,
@@ -668,15 +656,15 @@ def _collect_pid_baseline(
     invalid_measurements = 0
     while len(baseline_temperatures) < int(config["tuning_baseline_samples"]):
         _check_stop(emitter)
-        measured_voltage, measured_current, temperature = tds_experiment.measure_resistivity(
+        measured_voltage, measured_current, temperature, resistance = tds_experiment.measure_resistivity(
             dmm_v,
             dmm_i,
             siglent,
             temperature_interp,
             calibration=True,
             config=config,
+            power_supply=power_supply,
         )
-        resistance = _calculate_resistance(measured_voltage, measured_current, config=config)
         _emit_live_measurement(
             emitter,
             target_temperature=target_temperature,
@@ -738,15 +726,15 @@ def _run_pid_tuning_attempt(
     while time.time() - start_time < config["tuning_max_duration_s"]:
         _check_stop(emitter)
         loop_started = time.time()
-        measured_voltage, measured_current, temperature = tds_experiment.measure_resistivity(
+        measured_voltage, measured_current, temperature, resistance = tds_experiment.measure_resistivity(
             dmm_v,
             dmm_i,
             siglent,
             temperature_interp,
             calibration=True,
             config=config,
+            power_supply=power_supply,
         )
-        resistance = _calculate_resistance(measured_voltage, measured_current, config=config)
         _emit_live_measurement(
             emitter,
             target_temperature=base_temperature + desired_rise,
@@ -968,6 +956,7 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
             base_temperature = _collect_pid_baseline(
                 dmm_v=dmm_v,
                 dmm_i=dmm_i,
+                power_supply=power_supply,
                 temperature_interp=temperature_interp,
                 config=config,
                 emitter=emitter,

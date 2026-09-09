@@ -8,6 +8,7 @@ _SDM3055_DC_RANGES = {
     "VOLT": (0.2, 2.0, 20.0, 200.0, 1000.0),
     "CURR": (0.0002, 0.002, 0.02, 0.2, 2.0, 10.0),
 }
+_SDM3055_FRES_RANGES = (200.0, 2000.0, 20000.0, 200000.0, 1000000.0, 10000000.0, 100000000.0)
 _SDM3055_OVERLOAD_SENTINEL = 9.9e37
 
 
@@ -45,21 +46,80 @@ def set_voltage(ps, voltage):
     ps.write(f"VOLT {numeric_voltage}")
 
 
-def set_output(ps, state):
-    """Set the Siglent SPD CH1 output state using the documented SCPI command."""
+_SPD_STATUS_OUTPUT_ON_BIT = 4
+_SPD_STATUS_4W_MODE_BIT = 5
+
+
+def query_system_status(ps):
+    """Return the SPD1000X SYSTem:STATus? register as an integer.
+
+    The instrument answers in hexadecimal text such as "0x0224".
+    """
+    raw_status = str(ps.query("SYSTem:STATus?", delay=0.05)).strip()
+    if not raw_status:
+        raise RuntimeError("Power supply returned an empty SYSTem:STATus? response.")
+    return int(raw_status, 16)
+
+
+def output_is_on(ps):
+    """Report the CH1 output state from status bit 4 (0: OFF, 1: ON)."""
+    return bool(query_system_status(ps) >> _SPD_STATUS_OUTPUT_ON_BIT & 1)
+
+
+def unlock_panel(ps):
+    """Clear the SPD1000X key lock.
+
+    While the key lock is engaged the instrument rejects local *and* remote
+    setting commands, so OUTP is accepted over USB but silently does nothing.
+    """
+    ps.write("*UNLOCK")
+    time.sleep(0.05)
+
+
+def read_error_queue(ps):
+    try:
+        return str(ps.query("SYSTem:ERRor?", delay=0.05)).strip()
+    except Exception as exc:
+        return f"unavailable ({exc})"
+
+
+def set_output(ps, state, attempts=3, settle_s=0.15):
+    """Set the Siglent SPD CH1 output state and verify it from the status register.
+
+    A bare OUTP write is not proof that the output changed: the instrument
+    accepts the command and ignores it whenever the key lock is on. Each retry
+    clears the lock before re-sending.
+    """
     normalized_state = str(state).strip().upper()
     if normalized_state not in {"ON", "OFF"}:
         raise ValueError(f"Unsupported power-supply output state: {state!r}")
+    expected_on = normalized_state == "ON"
 
-    command = f"OUTP CH1,{normalized_state}"
-    try:
-        ps.write(command)
-    except Exception as exc:
-        raise RuntimeError(f"Could not set power-supply CH1 output {normalized_state}.") from exc
+    readback_error = None
+    for attempt in range(1, int(attempts) + 1):
+        if attempt > 1:
+            unlock_panel(ps)
+        try:
+            ps.write(f"OUTP CH1,{normalized_state}")
+        except Exception as exc:
+            raise RuntimeError(
+                f"Could not send the power-supply CH1 output {normalized_state} command."
+            ) from exc
+        time.sleep(settle_s)
+        try:
+            if output_is_on(ps) == expected_on:
+                return True
+            readback_error = None
+        except Exception as exc:
+            readback_error = exc
 
-    # Siglent recommends allowing a short delay after single write commands.
-    time.sleep(0.05)
-    print(f"Power supply CH1 output command sent: {normalized_state}")
+    detail = f"status readback failed: {readback_error}" if readback_error else "status still disagreed"
+    raise RuntimeError(
+        f"Power supply CH1 output did not switch {normalized_state} after {attempts} attempts "
+        f"({detail}). Instrument error queue: {read_error_queue(ps)}. "
+        "Check that the front-panel key lock is off: hold Ver/Lock until the lock icon "
+        "disappears from the top of the screen."
+    )
 
 def read_current(ps):
     # SCPI command to read current
@@ -198,6 +258,36 @@ def increase_dc_range_if_needed(DMM, mode, measured_value, config, force_next=Fa
         f"{selected_range:g} {unit} {reason}."
     )
     return active_range, selected_range
+
+
+def configure_fres_range(DMM, range_value):
+    """Put an SDM3055 into fixed-range four-wire resistance mode."""
+    if isinstance(range_value, str) and range_value.strip().upper() == "AUTO":
+        raise ValueError(
+            "DMM auto-ranging is disabled for resistivity measurements. "
+            "Use a supported fixed four-wire resistance range."
+        )
+    try:
+        numeric_range = float(range_value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid DMM four-wire resistance range: {range_value!r}") from exc
+
+    if not math.isfinite(numeric_range) or numeric_range not in _SDM3055_FRES_RANGES:
+        allowed_text = ", ".join(str(value) for value in _SDM3055_FRES_RANGES)
+        raise ValueError(
+            f"Unsupported fixed four-wire resistance range {range_value!r}. "
+            f"Supported ranges are: {allowed_text}."
+        )
+
+    DMM.write(f"CONF:FRES {numeric_range}")
+    return numeric_range
+
+
+def read_DMM_resistance(DMM):
+    """Take one four-wire resistance reading from an already configured SDM3055."""
+    DMM.write("TRIG:SOUR IMM")
+    DMM.write("INIT")
+    return DMM.query("FETCh?")
 
 
 def read_DMM(DMM):

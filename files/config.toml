@@ -9,9 +9,9 @@
 controller_mode = "PI"
 
 # Choose "TEMPERATURE" for PI/PID control or "VOLTAGE" for an elapsed-time voltage ramp.
-experiment_mode = "TEMPERATURE"
+experiment_mode = "VOLTAGE"
 
-# Control loop frequency in Hz. 0.5 Hz gives one synchronized update every 2 seconds.
+# Control loop frequency in Hz; 0.5 Hz gives one synchronized update every 2 seconds.
 experiment_frequency = 0.5
 
 # Internal absolute software voltage ceiling for the power supply.
@@ -32,7 +32,7 @@ dmm_synchronized_reading = true
 # Initial fixed voltage-DMM range in volts.
 dmm_voltage_range_v = 0.2
 
-# Initial fixed current-DMM range in amps. 0.002 A selects the 2 mA range.
+# Initial fixed current-DMM range in amps; 0.002 A selects the 2 mA range.
 dmm_current_range_a = 0.002
 
 # Increase fixed DMM ranges only when a reading approaches full scale; this is not instrument auto-ranging.
@@ -49,6 +49,21 @@ dmm_range_discard_readings = 2
 
 # Maximum fixed-range increases attempted inside one measurement after overload or near-full-scale readings.
 dmm_range_recovery_attempts = 5
+
+# How resistance is measured: V_OVER_I, OFFSET_CORRECTED, or FOUR_WIRE.
+resistivity_mode = "V_OVER_I"
+
+# Seconds the supply heats the sample per cycle in the duty-cycled resistivity modes.
+resistivity_heat_time_s = 3
+
+# Seconds the supply output stays off per cycle while resistance is measured.
+resistivity_measure_time_s = 2
+
+# Delay after the output switches off before the quiet-window reading is taken.
+resistivity_output_settle_s = 0.3
+
+# Fixed four-wire resistance range used by FOUR_WIRE mode.
+dmm_resistance_range_ohm = 200
 
 # VISA address of the voltage DMM.
 DMM_v = "USB0::0xF4EC::0xEE38::SDM35FAC4R0253::INSTR"
@@ -133,7 +148,7 @@ hard_temp_rate_margin_c_min = 4
 # How many consecutive invalid measurements are tolerated before stopping.
 measurement_fail_limit = 20
 
-# Smallest current treated as a valid reading; the 2 mA DMM range supports this lower threshold.
+# Smallest current treated as a valid reading; the 2 mA DMM range supports a lower threshold.
 minimum_current_a = 0.0001
 
 # Smallest PSU change worth sending to the instrument.
@@ -184,10 +199,10 @@ curve_extrapolation_min_fit_span_c = 5
 # Largest small resistance reversal corrected before R-vs-T inversion, as a fraction of the curve span.
 curve_monotonic_correction_ratio = 0.02
 
-# Legacy name kept for older configuration files.
+# Legacy name for curve_monotonic_correction_ratio, kept for older configuration files.
 curve_extrapolation_max_monotonic_correction_ratio = 0.02
 
-# Allow robust smoothing of dense, noisy curves before R-vs-T inversion, even when extrapolation is disabled.
+# Allow robust smoothing of dense, noisy curves before R-vs-T inversion, even without extrapolation.
 curve_smoothing_enabled = true
 
 # Minimum source rows required before automatic robust smoothing is allowed.

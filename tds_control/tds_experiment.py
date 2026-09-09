@@ -23,6 +23,11 @@ CONTROL_DEFAULTS = {
     "dmm_range_settle_time_s": 0.3,
     "dmm_range_discard_readings": 2,
     "dmm_range_recovery_attempts": 5,
+    "resistivity_mode": "V_OVER_I",
+    "resistivity_heat_time_s": 3.0,
+    "resistivity_measure_time_s": 2.0,
+    "resistivity_output_settle_s": 0.3,
+    "dmm_resistance_range_ohm": 200.0,
     "pid_kp": 0.008,
     "pid_ki": 0.0004,
     "pid_kd": 0.0,
@@ -299,12 +304,55 @@ def get_experiment_mode(config):
     return mode if mode in {"TEMPERATURE", "VOLTAGE"} else CONTROL_DEFAULTS["experiment_mode"]
 
 
+RESISTIVITY_MODES = ("V_OVER_I", "OFFSET_CORRECTED", "FOUR_WIRE")
+
+
+def get_resistivity_mode(config):
+    """Resolve how sample resistance is measured.
+
+    V_OVER_I         continuous R = V / I while the heating current flows.
+    OFFSET_CORRECTED duty-cycled; the reading taken with the output off is the
+                     contact thermal EMF, which is subtracted from the live
+                     sense voltage before dividing by the current.
+    FOUR_WIRE        duty-cycled; the voltage DMM sources its own test current
+                     and reports resistance directly while the output is off.
+    """
+    mode = str(config.get("resistivity_mode", CONTROL_DEFAULTS["resistivity_mode"])).strip().upper()
+    return mode if mode in RESISTIVITY_MODES else CONTROL_DEFAULTS["resistivity_mode"]
+
+
+def resistivity_mode_needs_power_supply(config):
+    """Report whether the active mode has to switch the PSU output during a sample."""
+    return get_resistivity_mode(config) != "V_OVER_I"
+
+
+def resistivity_loop_time(config):
+    """Seconds per control cycle.
+
+    The duty-cycled modes set their own period from the heat and measure
+    windows, because the sample is only heating for part of each cycle.
+    """
+    if not resistivity_mode_needs_power_supply(config):
+        return 1.0 / float(config["experiment_frequency"])
+
+    heat_time_s = float(config.get("resistivity_heat_time_s", CONTROL_DEFAULTS["resistivity_heat_time_s"]))
+    measure_time_s = float(
+        config.get("resistivity_measure_time_s", CONTROL_DEFAULTS["resistivity_measure_time_s"])
+    )
+    if not np.isfinite(heat_time_s) or heat_time_s <= 0:
+        raise ValueError("resistivity_heat_time_s must be a positive finite number of seconds.")
+    if not np.isfinite(measure_time_s) or measure_time_s <= 0:
+        raise ValueError("resistivity_measure_time_s must be a positive finite number of seconds.")
+    return heat_time_s + measure_time_s
+
+
 def build_control_config(config):
     merged = dict(config)
     for key, value in CONTROL_DEFAULTS.items():
         merged.setdefault(key, value)
     merged["controller_mode"] = get_controller_mode(merged)
     merged["experiment_mode"] = get_experiment_mode(merged)
+    merged["resistivity_mode"] = get_resistivity_mode(merged)
     return merged
 
 
@@ -1038,15 +1086,16 @@ def _measure_with_retry(
     *,
     config,
     previous_resistance=None,
+    power_supply=None,
 ):
-    measured_voltage, measured_current, temperature = measure_resistivity(
+    measured_voltage, measured_current, temperature, resistance = measure_resistivity(
         dmm_v,
         dmm_i,
         siglent_module,
         temperature_interp,
         config=config,
+        power_supply=power_supply,
     )
-    resistance = _calculate_resistance(measured_voltage, measured_current, config=config)
     jump_limit = _resistance_jump_limit(previous_resistance, config)
     consensus_limit = max(
         float(config.get("measurement_retry_consensus_ohm", 0.015)),
@@ -1071,14 +1120,14 @@ def _measure_with_retry(
 
     for _ in range(int(config.get("measurement_retry_attempts", 2))):
         time.sleep(float(config.get("measurement_retry_delay_s", 0.15)))
-        retry_voltage, retry_current, retry_temperature = measure_resistivity(
+        retry_voltage, retry_current, retry_temperature, retry_resistance = measure_resistivity(
             dmm_v,
             dmm_i,
             siglent_module,
             temperature_interp,
             config=config,
+            power_supply=power_supply,
         )
-        retry_resistance = _calculate_resistance(retry_voltage, retry_current, config=config)
         candidates.append((retry_voltage, retry_current, retry_temperature, retry_resistance))
         if np.isfinite(retry_resistance):
             retry_distance = abs(retry_resistance - previous_resistance)
@@ -1580,7 +1629,9 @@ def _psu_keepalive_voltage(config):
 def prepare_power_supply_output(power_supply, config):
     """Keep CH1 enabled at a negligible voltage while a run is prepared."""
     keepalive_voltage = _psu_keepalive_voltage(config)
+    siglent.unlock_panel(power_supply)
     siglent.set_voltage(power_supply, voltage=keepalive_voltage)
+    time.sleep(0.05)
     siglent.set_output(power_supply, state="ON")
     print(f"Power supply output enabled at keep-alive voltage {keepalive_voltage:.6f} V.")
 
@@ -1621,7 +1672,7 @@ def curve_sweep(emitter, sweep_params, r_vs_t, config, data_saver=None):
 
     config = build_control_config(config)
     temperature_interp = build_temperature_interpolator(r_vs_t, config=config)
-    loop_time = 1.0 / config["experiment_frequency"]
+    loop_time = resistivity_loop_time(config)
     max_voltage = min(float(config["max_voltage"]), float(sweep_params.get("max_voltage", config["max_voltage"])))
     start_voltage = max(
         float(config.get("curve_sweep_start_voltage", 0.01)),
@@ -1681,6 +1732,7 @@ def curve_sweep(emitter, sweep_params, r_vs_t, config, data_saver=None):
                 temperature_interp,
                 config=config,
                 previous_resistance=previous_resistance,
+                power_supply=power_supply,
             )
             if abs(measured_current) > config["max_current"]:
                 raise ExperimentSafetyError(
@@ -1736,7 +1788,7 @@ def voltage_ramp(emitter, ramp_params, r_vs_t, config, data_saver=None):
 
     config = build_control_config(config)
     temperature_interp = build_temperature_interpolator(r_vs_t, config=config)
-    loop_time = 1.0 / float(config["experiment_frequency"])
+    loop_time = resistivity_loop_time(config)
     ramp_speed_v_min = float(ramp_params["ramp_speed_min"])
     if not np.isfinite(ramp_speed_v_min) or ramp_speed_v_min <= 0:
         raise ValueError("Voltage-mode ramp_speed_min must be positive and finite.")
@@ -1791,6 +1843,7 @@ def voltage_ramp(emitter, ramp_params, r_vs_t, config, data_saver=None):
                 temperature_interp,
                 config=config,
                 previous_resistance=previous_resistance,
+                power_supply=power_supply,
             )
             _enforce_electrical_safety(measured_voltage, measured_current, config)
             measured_power_w = _sample_power_w(measured_voltage, measured_current)
@@ -1864,7 +1917,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
     config = build_control_config(config)
     temperature_interp = build_temperature_interpolator(r_vs_t, config=config)
     _validate_temperature_program_bounds(experiment_params, temperature_interp)
-    loop_time = 1.0 / config["experiment_frequency"]
+    loop_time = resistivity_loop_time(config)
 
     resource_manager = None
     dmm_v = None
@@ -1962,6 +2015,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     temperature_interp,
                     config=config,
                     previous_resistance=measurement_resistance_reference,
+                    power_supply=power_supply,
                 )
                 raw_temperature = temperature
                 low_signal_state = _is_low_signal_state(applied_voltage, config)
@@ -2581,7 +2635,21 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
         print("TDS experiment thread finished.")
 
 
-def measure_resistivity(dmm_v, dmm_i, siglent_module, temperature_interp, calibration=False, config=None):
+def measure_resistivity(
+    dmm_v,
+    dmm_i,
+    siglent_module,
+    temperature_interp,
+    calibration=False,
+    config=None,
+    power_supply=None,
+):
+    """Measure the sample and convert it to a temperature.
+
+    Returns (measured_voltage, measured_current, temperature, resistance). The
+    resistance is authoritative: in the duty-cycled modes it is not simply the
+    returned voltage over the returned current.
+    """
     overload_checker = (
         getattr(siglent_module, "is_overload_reading", None)
         if "is_overload_reading" in dir(siglent_module)
@@ -2634,6 +2702,64 @@ def measure_resistivity(dmm_v, dmm_i, siglent_module, temperature_interp, calibr
                 print(f"An error occurred reading current DMM: {exc}")
                 current = np.nan
         return voltage, current, voltage_overload, current_overload
+
+    def read_with_output_off(mode):
+        """Open the heater circuit, take the quiet-window reading, restore the output.
+
+        Returns (thermal_offset_v, four_wire_resistance_ohm); whichever the
+        active mode does not produce comes back as NaN.
+        """
+        settle_s = float(config.get("resistivity_output_settle_s", 0.3))
+        measure_s = float(config.get("resistivity_measure_time_s", 2.0))
+        if not np.isfinite(settle_s) or settle_s < 0:
+            raise ValueError("resistivity_output_settle_s must be finite and non-negative.")
+        if not np.isfinite(measure_s) or measure_s <= 0:
+            raise ValueError("resistivity_measure_time_s must be a positive finite number of seconds.")
+
+        thermal_offset_v = np.nan
+        four_wire_resistance = np.nan
+        restore_volt_range = config.get("_active_dmm_volt_range", config.get("dmm_voltage_range_v"))
+
+        siglent_module.set_output(power_supply, state="OFF")
+        try:
+            time.sleep(settle_s)
+            if mode == "FOUR_WIRE":
+                siglent_module.configure_fres_range(dmm_v, config["dmm_resistance_range_ohm"])
+                time.sleep(max(measure_s - settle_s, 0.0))
+                resistance_value, resistance_overload = parse_reading(
+                    siglent_module.read_DMM_resistance(dmm_v)
+                )
+                if resistance_overload:
+                    print(
+                        "Four-wire resistance reading overloaded; increase "
+                        "dmm_resistance_range_ohm for this sample."
+                    )
+                else:
+                    four_wire_resistance = resistance_value
+            else:
+                time.sleep(max(measure_s - settle_s, 0.0))
+                offset_voltage, _, offset_overload, _ = read_pair_once()
+                if not offset_overload:
+                    thermal_offset_v = offset_voltage
+        finally:
+            if mode == "FOUR_WIRE" and restore_volt_range is not None:
+                siglent_module.configure_dc_range(dmm_v, "VOLT", restore_volt_range)
+            siglent_module.set_output(power_supply, state="ON")
+        return thermal_offset_v, four_wire_resistance
+
+    resistivity_mode = get_resistivity_mode(config) if config is not None else "V_OVER_I"
+    if resistivity_mode != "V_OVER_I":
+        if power_supply is None:
+            raise ValueError(
+                f"Resistivity mode {resistivity_mode} has to switch the power-supply output "
+                "off for every sample, so it needs the power-supply session."
+            )
+        # Heat at the commanded voltage first, so the live reading reflects a
+        # settled sample; the quiet measurement window follows immediately.
+        heat_time_s = float(config.get("resistivity_heat_time_s", 3.0))
+        if not np.isfinite(heat_time_s) or heat_time_s < 0:
+            raise ValueError("resistivity_heat_time_s must be finite and non-negative.")
+        time.sleep(heat_time_s)
 
     measured_voltage, measured_current, voltage_overload, current_overload = read_pair_once()
 
@@ -2695,16 +2821,33 @@ def measure_resistivity(dmm_v, dmm_i, siglent_module, temperature_interp, calibr
                 "treating this sample as invalid."
             )
 
-    if not np.isfinite(measured_voltage) or not np.isfinite(measured_current) or abs(measured_current) < 1e-12:
-        return measured_voltage, measured_current, np.nan
+    four_wire_resistance = np.nan
+    if resistivity_mode != "V_OVER_I":
+        thermal_offset_v, four_wire_resistance = read_with_output_off(resistivity_mode)
+        if resistivity_mode == "OFFSET_CORRECTED":
+            if not np.isfinite(thermal_offset_v):
+                print("Thermal-offset reading was invalid; treating this sample as invalid.")
+                return measured_voltage, measured_current, np.nan, np.nan
+            # The quiet-window reading is the contact thermal EMF, not sample drop.
+            measured_voltage = measured_voltage - thermal_offset_v
 
-    if config is not None:
+    if config is not None and np.isfinite(measured_voltage) and np.isfinite(measured_current):
         _enforce_electrical_safety(measured_voltage, measured_current, config)
 
-    resistance = _calculate_resistance(measured_voltage, measured_current, config=config)
+    if resistivity_mode == "FOUR_WIRE":
+        resistance = four_wire_resistance
+    else:
+        if (
+            not np.isfinite(measured_voltage)
+            or not np.isfinite(measured_current)
+            or abs(measured_current) < 1e-12
+        ):
+            return measured_voltage, measured_current, np.nan, np.nan
+        resistance = _calculate_resistance(measured_voltage, measured_current, config=config)
+
     if not np.isfinite(resistance) or resistance <= 0:
         print(f"Invalid resistance calculated from V={measured_voltage}, I={measured_current}")
-        return measured_voltage, measured_current, np.nan
+        return measured_voltage, measured_current, np.nan, np.nan
     try:
         temperature = float(temperature_interp(resistance))
     except Exception as exc:
@@ -2716,7 +2859,7 @@ def measure_resistivity(dmm_v, dmm_i, siglent_module, temperature_interp, calibr
             f"Measured resistance {resistance:.6f} Ohm is outside the configured R vs. T range; "
             "treating it as invalid."
         )
-        return measured_voltage, measured_current, np.nan
+        return measured_voltage, measured_current, np.nan, np.nan
 
     temperature_bounds = getattr(temperature_interp, "temperature_bounds", None)
     if np.isfinite(temperature) and temperature_bounds is not None:
@@ -2732,4 +2875,4 @@ def measure_resistivity(dmm_v, dmm_i, siglent_module, temperature_interp, calibr
         print(f"Calculated temperature is {temperature}; treating it as invalid.")
         temperature = np.nan
 
-    return measured_voltage, measured_current, temperature
+    return measured_voltage, measured_current, temperature, resistance

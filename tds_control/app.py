@@ -15,6 +15,14 @@ from .curve_io import load_resistance_temperature_file
 from .data_saver import ExperimentDataSaver
 from .paths import DATA_DIR, EXPERIMENT_COUNTER_PATH, ensure_runtime_dirs
 
+RESISTIVITY_MODE_TOOLTIP = """How sample resistance is measured.
+
+V_OVER_I: continuous R = V / I while the heating current flows.
+OFFSET_CORRECTED: switches the supply off each cycle, reads the contact thermal EMF with no current flowing, and subtracts it from the sense voltage before dividing by the current.
+FOUR_WIRE: switches the supply off each cycle and lets the voltage DMM source its own test current for a direct four-wire resistance reading. Requires the meter's source leads to be wired to the sample.
+
+The two duty-cycled modes set the loop period from resistivity_heat_time_s + resistivity_measure_time_s, so the sample only heats for part of each cycle."""
+
 
 class Ui_TDS(object):
     def __init__(self, data):
@@ -230,6 +238,21 @@ class Ui_TDS(object):
         self.measurement_conversion_mode.addItem("")
         self.measurement_conversion_mode.addItem("")
         self.gridLayout.addWidget(self.measurement_conversion_mode, 6, 1, 1, 1)
+        self.label_resistivity_mode = QtWidgets.QLabel(parent=self.centralwidget)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Minimum)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.label_resistivity_mode.sizePolicy().hasHeightForWidth())
+        self.label_resistivity_mode.setSizePolicy(sizePolicy)
+        self.label_resistivity_mode.setObjectName("label_resistivity_mode")
+        self.gridLayout.addWidget(self.label_resistivity_mode, 7, 0, 1, 1)
+        self.resistivity_measurement_mode = QtWidgets.QComboBox(parent=self.centralwidget)
+        self.resistivity_measurement_mode.setMinimumSize(QtCore.QSize(100, 20))
+        self.resistivity_measurement_mode.setStyleSheet("QComboBox{ background: rgb(223,223,233) }")
+        self.resistivity_measurement_mode.setObjectName("resistivity_measurement_mode")
+        for _ in tds_experiment.RESISTIVITY_MODES:
+            self.resistivity_measurement_mode.addItem("")
+        self.gridLayout.addWidget(self.resistivity_measurement_mode, 7, 1, 1, 1)
         self.gridLayout_5.addLayout(self.gridLayout, 0, 0, 1, 1)
         self.gridLayout_4 = QtWidgets.QGridLayout()
         self.gridLayout_4.setObjectName("gridLayout_4")
@@ -576,6 +599,7 @@ class Ui_TDS(object):
         self.max_current.editingFinished.connect(self.update_max_current)
         self.calibration_start_voltage.editingFinished.connect(self.update_calibration_start_voltage)
         self.measurement_conversion_mode.currentIndexChanged.connect(self.update_experiment_mode)
+        self.resistivity_measurement_mode.currentIndexChanged.connect(self.update_resistivity_mode)
         self.calib_temperature.textEdited.connect(self.invalidate_t_zero_calibration)
 
         # Populate inputs from configuration.
@@ -584,6 +608,9 @@ class Ui_TDS(object):
         self.calibration_start_voltage.setText(str(self.config['t0_voltage_search_start']))
         self.measurement_conversion_mode.setCurrentText(
             tds_experiment.get_experiment_mode(self.config)
+        )
+        self.resistivity_measurement_mode.setCurrentText(
+            tds_experiment.get_resistivity_mode(self.config)
         )
         self.apply_experiment_mode_ui()
         self._update_file_tooltips()
@@ -613,6 +640,10 @@ class Ui_TDS(object):
         self.label_179.setText(_translate("TDS", "Mode"))
         self.measurement_conversion_mode.setItemText(0, _translate("TDS", "TEMPERATURE"))
         self.measurement_conversion_mode.setItemText(1, _translate("TDS", "VOLTAGE"))
+        self.label_resistivity_mode.setText(_translate("TDS", "Resistivity Mode"))
+        for index, mode in enumerate(tds_experiment.RESISTIVITY_MODES):
+            self.resistivity_measurement_mode.setItemText(index, _translate("TDS", mode))
+        self.resistivity_measurement_mode.setToolTip(_translate("TDS", RESISTIVITY_MODE_TOOLTIP))
         self.label_4.setText(_translate("TDS", "Target Temp. (°C)    "))
         self.label_1.setText(_translate("TDS", "Measured Temp (°C)"))
         self.label_2.setText(_translate("TDS", "Voltage (V)              "))
@@ -691,6 +722,11 @@ class Ui_TDS(object):
             self._program_text_by_mode[self._active_experiment_mode] = self.parameters_text.toPlainText()
         self.config['experiment_mode'] = self.measurement_conversion_mode.currentText()
         self.apply_experiment_mode_ui()
+        self.save_config()
+
+    def update_resistivity_mode(self):
+        """Update how sample resistance is measured."""
+        self.config['resistivity_mode'] = self.resistivity_measurement_mode.currentText()
         self.save_config()
 
     def apply_experiment_mode_ui(self):
