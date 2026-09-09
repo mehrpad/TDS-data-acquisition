@@ -2,6 +2,37 @@
 
 This software calculates sample resistance as `R = V / I`. That result is only the sample resistance when the voltage reading is taken with a true four-wire (Kelvin) connection.
 
+## Constant-current operation
+
+The supply is driven in constant current. At the start of every operation the software
+sets `compliance_voltage` (default 30 V) as the CV ceiling, then commands current only.
+The controlled variable everywhere - the linear ramp, the slew limits, the T0 and tuning
+searches, the recovery probes - is current in amps.
+
+Resistivity measurement wants a known, held current rather than a known voltage, which is
+why the control variable is the current and the sample voltage is a reading.
+
+Two consequences worth knowing:
+
+- **A failing contact becomes a voltage runaway.** In constant voltage a bad joint simply
+  passes less current. In constant current the supply raises its terminal voltage to hold
+  the setpoint, up to the compliance limit. `max_sample_voltage` (default 15 V) aborts the
+  run when the measured sample voltage passes it, which is the signature of an open or
+  degrading contact well before `max_power_w` would react.
+- **The SPD1000X programs current in 1 mA steps.** `minimum_current_change` is 0.001 A for
+  that reason, and nothing finer reaches the instrument. At the 0.01 A starting point that
+  is 10 % resolution, so the first few steps of a ramp are coarse.
+
+`max_current` is both the highest current the controller may command and the software abort
+threshold; the GUI `Max Current (A)` field sets it. With `max_power_w = 2.5 W` on a ~20 ohm
+sample the power limit binds first, at about 0.35 A.
+
+Configuration files from the constant-voltage version are migrated on load: `startup_voltage`
+becomes `startup_current`, `max_voltage` becomes `compliance_voltage`, and so on. The numbers
+are carried over unchanged, because volts do not convert to amps - check them before a run.
+
+Controller gains are now amps per degree. **Re-run Tune PI/PID before any real experiment.**
+
 ## Required wiring
 
 ```text

@@ -13,11 +13,12 @@ from . import siglent
 CONTROL_DEFAULTS = {
     "controller_mode": "PI",
     "experiment_mode": "TEMPERATURE",
-    "max_voltage": 30.0,
-    "max_current": 3.0,
+    "compliance_voltage": 30.0,
+    "max_current": 0.5,
+    "max_sample_voltage": 15.0,
     "max_power_w": 2.5,
-    "dmm_voltage_range_v": 0.2,
-    "dmm_current_range_a": 0.002,
+    "dmm_voltage_range_v": 2.0,
+    "dmm_current_range_a": 0.02,
     "dmm_staged_ranging_enabled": True,
     "dmm_range_switch_fraction": 0.8,
     "dmm_range_settle_time_s": 0.3,
@@ -28,20 +29,20 @@ CONTROL_DEFAULTS = {
     "resistivity_measure_time_s": 1.0,
     "resistivity_output_settle_s": 0.3,
     "dmm_resistance_range_ohm": 200.0,
-    "pid_kp": 0.008,
-    "pid_ki": 0.0004,
+    "pid_kp": 0.0004,
+    "pid_ki": 0.00002,
     "pid_kd": 0.0,
     "pid_integral_limit": 400.0,
     "pid_derivative_filter": 0.6,
-    "startup_voltage": 0.01,
-    "min_voltage": 0.0,
-    "psu_keepalive_voltage": 0.001,
+    "startup_current": 0.01,
+    "min_current": 0.0,
+    "psu_keepalive_current": 0.001,
     "fixed_series_resistance_ohm": 0.0,
-    "max_voltage_step_up": 0.01,
-    "max_voltage_step_down": 0.01,
-    "low_voltage_step_threshold": 0.05,
-    "low_voltage_max_step_up": 0.001,
-    "low_voltage_max_step_down": 0.001,
+    "max_current_step_up": 0.01,
+    "max_current_step_down": 0.01,
+    "low_current_step_threshold": 0.05,
+    "low_current_max_step_up": 0.001,
+    "low_current_max_step_down": 0.001,
     "temperature_tolerance_c": 2.0,
     "hold_entry_tolerance_c": 3.0,
     "safety_temp_margin_c": 15.0,
@@ -49,8 +50,8 @@ CONTROL_DEFAULTS = {
     "hard_temp_rate_margin_c_min": 4.0,
     "measurement_fail_limit": 20,
     "minimum_current_a": 1e-4,
-    "minimum_voltage_change": 1e-4,
-    "measurement_voltage_floor": 0.01,
+    "minimum_current_change": 0.001,
+    "measurement_current_floor": 0.01,
     "measurement_filter_samples": 3,
     "dmm_synchronized_reading": True,
     "resistance_outlier_mad_multiplier": 4.0,
@@ -82,7 +83,7 @@ CONTROL_DEFAULTS = {
     "measurement_temp_jump_up_c": 20.0,
     "measurement_temp_jump_down_c": 8.0,
     "measurement_jump_confirm_min_current_a": 0.02,
-    "measurement_jump_confirm_min_voltage": 0.1,
+    "measurement_jump_confirm_min_current": 0.1,
     "measurement_temp_jump_accept_up_c": 35.0,
     "measurement_temp_jump_accept_setpoint_margin_c": 15.0,
     "low_signal_jump_confirm_samples": 3,
@@ -90,29 +91,29 @@ CONTROL_DEFAULTS = {
     "low_signal_jump_resistance_tolerance_ohm": 0.015,
     "low_signal_recovery_trigger_cycles": 5,
     "low_signal_recovery_observe_cycles": 5,
-    "low_signal_recovery_voltage_step": 0.01,
+    "low_signal_recovery_current_step": 0.01,
     "low_signal_recovery_max_attempts": 5,
     "measurement_cooldown_confirm_samples": 2,
     "measurement_heatup_confirm_samples": 2,
     "measurement_jump_probe_threshold_c": 35.0,
-    "measurement_jump_probe_voltage_step": 0.002,
+    "measurement_jump_probe_current_step": 0.002,
     "measurement_jump_probe_temperature_tolerance_c": 50.0,
     "measurement_jump_probe_resistance_ratio": 0.02,
     "measurement_jump_probe_max_samples": 20,
-    "ignore_invalid_below_voltage": 0.05,
-    "invalid_voltage_step_down": 0.01,
+    "ignore_invalid_below_current": 0.05,
+    "invalid_current_step_down": 0.01,
     "invalid_reuse_hold_after": 8,
-    "invalid_max_drop_from_recent_peak_v": 0.1,
+    "invalid_max_drop_from_recent_peak_a": 0.1,
     "invalid_reuse_stop_after": 30,
     "rate_limit_activation_band_c": 2.0,
     "under_target_no_decrease_band_c": 1.5,
     "autosave_flush_interval_s": 5.0,
     "autosave_batch_size": 10,
-    "tuning_voltage_step": 0.01,
-    "tuning_start_voltage": 0.01,
-    "tuning_search_max_voltage": 0.5,
+    "tuning_current_step": 0.001,
+    "tuning_start_current": 0.01,
+    "tuning_search_max_current": 0.1,
     "tuning_settle_time_s": 0.3,
-    "tuning_response_voltage_step": 0.01,
+    "tuning_response_current_step": 0.01,
     "tuning_between_attempts_s": 0.5,
     "tuning_max_duration_s": 180.0,
     "tuning_baseline_samples": 2,
@@ -125,12 +126,12 @@ CONTROL_DEFAULTS = {
     "tuning_min_observable_rise_c": 0.25,
     "tuning_plateau_timeout_s": 15.0,
     "tuning_plateau_idle_timeout_s": 6.0,
-    "max_voltage_step_up_far": 0.01,
+    "max_current_step_up_far": 0.01,
     "aggressive_step_band_c": 4.0,
     "tuning_plateau_growth_c": 0.08,
-    "t0_calibration_voltage": 0.1,
-    "t0_voltage_search_start": 0.01,
-    "t0_voltage_step": 0.01,
+    "t0_calibration_current": 0.05,
+    "t0_current_search_start": 0.01,
+    "t0_current_step": 0.001,
     "t0_settle_time_s": 3.0,
     "t0_calibration_samples": 5,
     "t0_warmup_samples": 1,
@@ -150,7 +151,7 @@ class TemperatureJumpProbe:
     direction: Optional[str] = None
     candidate_temperature: float = np.nan
     candidate_resistance: float = np.nan
-    origin_voltage: float = np.nan
+    origin_current: float = np.nan
     confirmations: int = 0
     attempts: int = 0
 
@@ -162,7 +163,7 @@ class TemperatureJumpProbe:
         self.direction = None
         self.candidate_temperature = np.nan
         self.candidate_resistance = np.nan
-        self.origin_voltage = np.nan
+        self.origin_current = np.nan
         self.confirmations = 0
         self.attempts = 0
 
@@ -186,7 +187,7 @@ class LowSignalTemperatureConfirmation:
 
 
 @dataclass
-class LowSignalVoltageRecovery:
+class LowSignalCurrentRecovery:
     active: bool = False
     attempts: int = 0
     invalid_samples_since_step: int = 0
@@ -223,6 +224,17 @@ def _enforce_electrical_safety(measured_voltage, measured_current, config):
             f"Measured current {measured_current:.4e} A exceeded max_current "
             f"{float(config['max_current']):.4e} A."
         )
+    max_sample_voltage = float(config.get("max_sample_voltage", CONTROL_DEFAULTS["max_sample_voltage"]))
+    if not np.isfinite(max_sample_voltage) or max_sample_voltage <= 0:
+        raise ValueError("max_sample_voltage must be positive and finite.")
+    if abs(float(measured_voltage)) > max_sample_voltage:
+        # In constant-current mode the supply raises its terminal voltage to hold
+        # the set current, so a failing contact shows up here before anywhere else.
+        raise ExperimentSafetyError(
+            f"Sample voltage {measured_voltage:.4f} V exceeded max_sample_voltage "
+            f"{max_sample_voltage:.4f} V at {measured_current:.4e} A. In constant-current "
+            "mode this is what an open or degrading contact looks like."
+        )
     max_power_w = float(config.get("max_power_w", CONTROL_DEFAULTS["max_power_w"]))
     if not np.isfinite(max_power_w) or max_power_w <= 0:
         raise ValueError("max_power_w must be positive and finite.")
@@ -235,21 +247,21 @@ def _enforce_electrical_safety(measured_voltage, measured_current, config):
         )
 
 
-def _measurement_voltage_floor(config):
-    minimum = float(config["min_voltage"])
-    maximum = float(config["max_voltage"])
+def _measurement_current_floor(config):
+    minimum = float(config["min_current"])
+    maximum = float(config["max_current"])
     candidates = (
         minimum,
-        float(config.get("measurement_voltage_floor", minimum)),
-        float(config.get("startup_voltage", minimum)),
-        float(config.get("t0_voltage_search_start", minimum)),
+        float(config.get("measurement_current_floor", minimum)),
+        float(config.get("startup_current", minimum)),
+        float(config.get("t0_current_search_start", minimum)),
     )
     if not all(np.isfinite(value) for value in candidates) or not np.isfinite(maximum):
         raise ValueError("Initial and minimum voltage settings must be finite.")
     return _clamp(max(candidates), minimum, maximum)
 
 
-def voltage_step_scale(config):
+def current_step_scale(config):
     """Scale per-loop voltage limits to the loop period actually in use.
 
     The step limits are expressed per control cycle but were chosen for the
@@ -270,43 +282,43 @@ def voltage_step_scale(config):
     return max(actual_period_s / reference_period_s, 1.0)
 
 
-def _limit_voltage_slew(target_voltage, current_voltage, min_voltage, max_voltage, config):
-    if not np.isfinite(target_voltage) or not np.isfinite(current_voltage):
-        return _clamp(current_voltage, min_voltage, max_voltage)
-    step_scale = voltage_step_scale(config)
-    max_step_up = float(config.get("max_voltage_step_up", 0.01)) * step_scale
-    max_step_down = float(config.get("max_voltage_step_down", 0.01)) * step_scale
-    low_voltage_threshold = float(config.get("low_voltage_step_threshold", 0.05))
-    if current_voltage <= low_voltage_threshold + 1e-12:
-        max_step_up = min(max_step_up, float(config.get("low_voltage_max_step_up", 0.001)) * step_scale)
-        max_step_down = min(max_step_down, float(config.get("low_voltage_max_step_down", 0.001)) * step_scale)
+def _limit_current_slew(target_current, present_current, min_current, max_current, config):
+    if not np.isfinite(target_current) or not np.isfinite(present_current):
+        return _clamp(present_current, min_current, max_current)
+    step_scale = current_step_scale(config)
+    max_step_up = float(config.get("max_current_step_up", 0.01)) * step_scale
+    max_step_down = float(config.get("max_current_step_down", 0.01)) * step_scale
+    low_current_threshold = float(config.get("low_current_step_threshold", 0.05))
+    if present_current <= low_current_threshold + 1e-12:
+        max_step_up = min(max_step_up, float(config.get("low_current_max_step_up", 0.001)) * step_scale)
+        max_step_down = min(max_step_down, float(config.get("low_current_max_step_down", 0.001)) * step_scale)
     if max_step_up <= 0 or max_step_down <= 0:
         raise ValueError("Voltage slew limits must be positive.")
-    delta = target_voltage - current_voltage
+    delta = target_current - present_current
     if delta > max_step_up:
-        target_voltage = current_voltage + max_step_up
+        target_current = present_current + max_step_up
     elif delta < -max_step_down:
-        target_voltage = current_voltage - max_step_down
-    return _clamp(target_voltage, min_voltage, max_voltage)
+        target_current = present_current - max_step_down
+    return _clamp(target_current, min_current, max_current)
 
 
-def _voltage_ramp_command(start_voltage, ramp_speed_min, elapsed_s, applied_voltage, config):
+def _current_ramp_command(start_current, ramp_speed_min, elapsed_s, applied_current, config):
     """Return the elapsed-time voltage-ramp command after applying the normal slew limit."""
-    values = (start_voltage, ramp_speed_min, elapsed_s, applied_voltage)
+    values = (start_current, ramp_speed_min, elapsed_s, applied_current)
     if not all(np.isfinite(value) for value in values):
         raise ValueError("Voltage-ramp inputs must be finite.")
     if ramp_speed_min <= 0 or elapsed_s < 0:
         raise ValueError("Voltage-ramp speed must be positive and elapsed time cannot be negative.")
 
-    minimum_voltage = _measurement_voltage_floor(config)
-    maximum_voltage = float(config["max_voltage"])
-    requested_voltage = float(start_voltage) + float(ramp_speed_min) * float(elapsed_s) / 60.0
-    requested_voltage = _clamp(requested_voltage, minimum_voltage, maximum_voltage)
-    return _limit_voltage_slew(
-        requested_voltage,
-        float(applied_voltage),
-        minimum_voltage,
-        maximum_voltage,
+    minimum_current = _measurement_current_floor(config)
+    maximum_current = float(config["max_current"])
+    requested_current = float(start_current) + float(ramp_speed_min) * float(elapsed_s) / 60.0
+    requested_current = _clamp(requested_current, minimum_current, maximum_current)
+    return _limit_current_slew(
+        requested_current,
+        float(applied_current),
+        minimum_current,
+        maximum_current,
         config,
     )
 
@@ -321,9 +333,9 @@ def get_experiment_mode(config):
     mode = str(raw_mode).strip().upper()
     if mode in {"CONTROLLED", "INTERPOLATE"}:
         return "TEMPERATURE"
-    if mode in {"CURVE_SWEEP", "LINEAR_TEMP"}:
-        return "VOLTAGE"
-    return mode if mode in {"TEMPERATURE", "VOLTAGE"} else CONTROL_DEFAULTS["experiment_mode"]
+    if mode in {"CURVE_SWEEP", "LINEAR_TEMP", "VOLTAGE"}:
+        return "CURRENT"
+    return mode if mode in {"TEMPERATURE", "CURRENT"} else CONTROL_DEFAULTS["experiment_mode"]
 
 
 RESISTIVITY_MODES = ("V_OVER_I", "OFFSET_CORRECTED", "FOUR_WIRE")
@@ -368,8 +380,66 @@ def resistivity_loop_time(config):
     return heat_time_s + measure_time_s
 
 
+# Keys from the constant-voltage era, mapped to their constant-current
+# equivalents so an existing config.toml keeps loading.
+LEGACY_CONFIG_KEYS = {
+    "startup_voltage": "startup_current",
+    "min_voltage": "min_current",
+    "psu_keepalive_voltage": "psu_keepalive_current",
+    "max_voltage_step_up": "max_current_step_up",
+    "max_voltage_step_down": "max_current_step_down",
+    "max_voltage_step_up_far": "max_current_step_up_far",
+    "low_voltage_step_threshold": "low_current_step_threshold",
+    "low_voltage_max_step_up": "low_current_max_step_up",
+    "low_voltage_max_step_down": "low_current_max_step_down",
+    "minimum_voltage_change": "minimum_current_change",
+    "measurement_voltage_floor": "measurement_current_floor",
+    "invalid_voltage_step_down": "invalid_current_step_down",
+    "ignore_invalid_below_voltage": "ignore_invalid_below_current",
+    "low_signal_recovery_voltage_step": "low_signal_recovery_current_step",
+    "measurement_jump_probe_voltage_step": "measurement_jump_probe_current_step",
+    "measurement_jump_confirm_min_voltage": "measurement_jump_confirm_min_current",
+    "invalid_max_drop_from_recent_peak_v": "invalid_max_drop_from_recent_peak_a",
+    "t0_calibration_voltage": "t0_calibration_current",
+    "t0_voltage_search_start": "t0_current_search_start",
+    "t0_voltage_step": "t0_current_step",
+    "tuning_voltage_step": "tuning_current_step",
+    "tuning_start_voltage": "tuning_start_current",
+    "tuning_search_max_voltage": "tuning_search_max_current",
+    "tuning_response_voltage_step": "tuning_response_current_step",
+    # max_voltage was the actuator ceiling; as a supply setting it is now the
+    # CV compliance limit, and the ceiling is max_current.
+    "max_voltage": "compliance_voltage",
+}
+
+
+def migrate_legacy_config(config):
+    """Move constant-voltage keys onto their constant-current names.
+
+    The numbers themselves are not converted: volts and amps are not
+    interchangeable, so a migrated file keeps whatever the operator set and the
+    defaults fill in anything the old file never had.
+    """
+    migrated = dict(config)
+    renamed = []
+    for legacy_key, current_key in LEGACY_CONFIG_KEYS.items():
+        if legacy_key in migrated:
+            value = migrated.pop(legacy_key)
+            if current_key not in migrated:
+                migrated[current_key] = value
+                renamed.append(f"{legacy_key} -> {current_key}")
+    if renamed:
+        print(
+            "Migrated constant-voltage configuration keys to constant-current names: "
+            + ", ".join(renamed)
+            + ". Review the values: they were carried over unchanged, and volts do not "
+            "convert to amps."
+        )
+    return migrated
+
+
 def build_control_config(config):
-    merged = dict(config)
+    merged = migrate_legacy_config(config)
     for key, value in CONTROL_DEFAULTS.items():
         merged.setdefault(key, value)
     merged["controller_mode"] = get_controller_mode(merged)
@@ -892,7 +962,7 @@ def _emit_measurement(
     temperature,
     measured_voltage,
     measured_current,
-    pid_voltage,
+    pid_current,
     measured_resistance,
 ):
     measured_power = _sample_power_w(measured_voltage, measured_current)
@@ -904,7 +974,7 @@ def _emit_measurement(
             0,
             measured_voltage,
             measured_current,
-            pid_voltage,
+            pid_current,
             measured_power,
             measured_resistance,
         ]
@@ -917,7 +987,7 @@ def _persist_measurement(
     temperature,
     measured_voltage,
     measured_current,
-    pid_voltage,
+    pid_current,
     measured_resistance,
 ):
     if data_saver is None:
@@ -931,7 +1001,7 @@ def _persist_measurement(
             0,
             measured_voltage,
             measured_current,
-            pid_voltage,
+            pid_current,
             measured_power,
             measured_resistance,
         ]
@@ -952,13 +1022,13 @@ def _temperature_rate_c_min(current_temperature, previous_temperature, dt):
     return (current_temperature - previous_temperature) * 60.0 / dt
 
 
-def _is_low_signal_state(applied_voltage, config):
-    if not np.isfinite(applied_voltage):
+def _is_low_signal_state(applied_current, config):
+    if not np.isfinite(applied_current):
         return False
-    return applied_voltage <= float(
+    return applied_current <= float(
         config.get(
-            "ignore_invalid_below_voltage",
-            max(config.get("measurement_voltage_floor", 0.01) * 5.0, 0.05),
+            "ignore_invalid_below_current",
+            max(config.get("measurement_current_floor", 0.01) * 5.0, 0.05),
         )
     )
 
@@ -1038,11 +1108,11 @@ def _robust_resistance_inlier_mask(resistances, config):
     return np.abs(resistance_array - median_resistance) <= allowed_deviation
 
 
-def _advance_low_signal_voltage_recovery(
+def _advance_low_signal_current_recovery(
     recovery,
     invalid_reuse_streak,
     low_signal_state,
-    applied_voltage,
+    applied_current,
     measured_current,
     config,
 ):
@@ -1061,43 +1131,43 @@ def _advance_low_signal_voltage_recovery(
         recovery.invalid_samples_since_step += 1
 
     if recovery.attempts >= maximum_attempts:
-        return float(applied_voltage), False
+        return float(applied_current), False
     if recovery.invalid_samples_since_step < observe_cycles:
-        return float(applied_voltage), False
+        return float(applied_current), False
 
     if not np.isfinite(measured_current) or abs(measured_current) >= 0.95 * float(config["max_current"]):
-        return float(applied_voltage), False
+        return float(applied_current), False
 
-    voltage_step = max(float(config.get("low_signal_recovery_voltage_step", 0.01)), 0.0)
-    requested_voltage = _clamp(
-        float(applied_voltage) + voltage_step,
-        _measurement_voltage_floor(config),
-        float(config["max_voltage"]),
+    current_step = max(float(config.get("low_signal_recovery_current_step", 0.01)), 0.0)
+    requested_current = _clamp(
+        float(applied_current) + current_step,
+        _measurement_current_floor(config),
+        float(config["max_current"]),
     )
-    minimum_change = max(float(config.get("minimum_voltage_change", 1e-4)), 0.0)
-    if requested_voltage < float(applied_voltage) + minimum_change:
-        return float(applied_voltage), False
+    minimum_change = max(float(config.get("minimum_current_change", 1e-4)), 0.0)
+    if requested_current < float(applied_current) + minimum_change:
+        return float(applied_current), False
 
     recovery.attempts += 1
     recovery.invalid_samples_since_step = 0
-    return requested_voltage, True
+    return requested_current, True
 
 
-def _start_control_at_initial_voltage(
+def _start_control_at_initial_current(
     power_supply,
     config,
-    previous_voltage,
+    previous_current,
     loop_time,
 ):
-    initial_voltage = _measurement_voltage_floor(config)
-    previous_voltage = _set_voltage_if_needed(power_supply, initial_voltage, previous_voltage, config)
+    initial_current = _measurement_current_floor(config)
+    previous_current = _set_current_if_needed(power_supply, initial_current, previous_current, config)
     settle_time = max(float(config.get("startup_settle_time_s", 1.0)), 0.0)
     print(
-        f"Starting controller directly at Initial Voltage {initial_voltage:.4f} V; "
-        "this value remains the experiment voltage floor."
+        f"Starting controller directly at Initial Current {initial_current:.4f} A; "
+        "this value remains the experiment current floor."
     )
     time.sleep(max(settle_time, loop_time))
-    return initial_voltage, previous_voltage
+    return initial_current, previous_current
 
 
 def _measure_with_retry(
@@ -1190,11 +1260,11 @@ def _measure_with_retry(
     return best[0], best[1], np.nan, best[3], False
 
 
-def _set_voltage_if_needed(power_supply, voltage, previous_voltage, config):
-    if previous_voltage is None or abs(voltage - previous_voltage) >= config["minimum_voltage_change"]:
-        siglent.set_voltage(power_supply, voltage=voltage)
-        return voltage
-    return previous_voltage
+def _set_current_if_needed(power_supply, current, previous_current, config):
+    if previous_current is None or abs(current - previous_current) >= config["minimum_current_change"]:
+        siglent.set_current(power_supply, current=current)
+        return current
+    return previous_current
 
 
 def _curve_ordered_temperature_profile(r_vs_t):
@@ -1206,7 +1276,7 @@ def _curve_ordered_temperature_profile(r_vs_t):
     return ordered[0, :], ordered[1, :]
 
 
-def build_curve_shaped_voltage_schedule(r_vs_t, start_voltage, end_voltage, steps):
+def build_curve_shaped_current_schedule(r_vs_t, start_current, end_current, steps):
     if steps < 2:
         raise ValueError("Curve sweep requires at least two voltage points.")
 
@@ -1219,27 +1289,27 @@ def build_curve_shaped_voltage_schedule(r_vs_t, start_voltage, end_voltage, step
 
     resistance_span = float(np.max(target_resistances) - np.min(target_resistances))
     if resistance_span <= 1e-12:
-        voltage_fractions = np.linspace(0.0, 1.0, steps)
+        current_fractions = np.linspace(0.0, 1.0, steps)
     else:
         if target_resistances[-1] >= target_resistances[0]:
-            voltage_fractions = (target_resistances - float(np.min(target_resistances))) / resistance_span
+            current_fractions = (target_resistances - float(np.min(target_resistances))) / resistance_span
         else:
-            voltage_fractions = (float(np.max(target_resistances)) - target_resistances) / resistance_span
-        voltage_fractions = np.maximum.accumulate(np.clip(voltage_fractions, 0.0, 1.0))
-        voltage_fractions[0] = 0.0
-        voltage_fractions[-1] = 1.0
+            current_fractions = (float(np.max(target_resistances)) - target_resistances) / resistance_span
+        current_fractions = np.maximum.accumulate(np.clip(current_fractions, 0.0, 1.0))
+        current_fractions[0] = 0.0
+        current_fractions[-1] = 1.0
 
-    voltages = start_voltage + voltage_fractions * (end_voltage - start_voltage)
+    voltages = start_current + current_fractions * (end_current - start_current)
     voltages = np.maximum.accumulate(np.asarray(voltages, dtype=float))
-    voltages[-1] = end_voltage
+    voltages[-1] = end_current
     return voltages, target_temperatures
 
 
-def _compute_next_voltage(
+def _compute_next_current(
     pid_controller,
     temperature,
     setpoint,
-    current_voltage,
+    present_current,
     measured_current,
     target_temperature,
     temp_rate_c_min,
@@ -1247,7 +1317,7 @@ def _compute_next_voltage(
     config,
     loop_time,
 ):
-    control_min_voltage = _measurement_voltage_floor(config)
+    control_min_current = _measurement_current_floor(config)
     if abs(measured_current) > config["max_current"]:
         raise ExperimentSafetyError(
             f"Measured current {measured_current:.4e} A exceeded max_current {config['max_current']:.4e} A."
@@ -1258,8 +1328,8 @@ def _compute_next_voltage(
             f"Measured temperature {temperature:.2f} C exceeded the safety limit near target {target_temperature:.2f} C."
         )
 
-    delta_voltage = pid_controller.compute(temperature, dt=loop_time, setpoint=setpoint)
-    if not np.isfinite(delta_voltage):
+    delta_current = pid_controller.compute(temperature, dt=loop_time, setpoint=setpoint)
+    if not np.isfinite(delta_current):
         raise ExperimentSafetyError("PID requested a non-finite voltage change.")
 
     under_target_band = float(
@@ -1274,27 +1344,27 @@ def _compute_next_voltage(
     )
     current_limited = abs(measured_current) >= 0.95 * config["max_current"]
 
-    if temperature <= setpoint - under_target_band and delta_voltage < 0.0:
-        delta_voltage = 0.0
+    if temperature <= setpoint - under_target_band and delta_current < 0.0:
+        delta_current = 0.0
 
-    step_scale = voltage_step_scale(config)
+    step_scale = current_step_scale(config)
     aggressive_step = (
-        float(config.get("max_voltage_step_up_far", config["max_voltage_step_up"])) * step_scale
+        float(config.get("max_current_step_up_far", config["max_current_step_up"])) * step_scale
     )
-    catchup_step = float(config["max_voltage_step_up"]) * step_scale
+    catchup_step = float(config["max_current_step_up"]) * step_scale
     far_below_setpoint = temperature <= setpoint - config.get("aggressive_step_band_c", 4.0)
     significantly_below_setpoint = temperature <= setpoint - rate_limit_band
     catchup_rate_c_min = max(ramp_speed_min * 0.6, ramp_speed_min - 3.0, 1.0)
     if far_below_setpoint and not current_limited:
         if temp_rate_c_min is None or not np.isfinite(temp_rate_c_min) or temp_rate_c_min < catchup_rate_c_min:
-            delta_voltage = max(delta_voltage, aggressive_step)
+            delta_current = max(delta_current, aggressive_step)
         else:
-            delta_voltage = max(delta_voltage, catchup_step)
+            delta_current = max(delta_current, catchup_step)
     elif significantly_below_setpoint and not current_limited:
-        delta_voltage = max(delta_voltage, catchup_step)
+        delta_current = max(delta_current, catchup_step)
 
     if temperature >= setpoint + config["temperature_tolerance_c"]:
-        delta_voltage = min(delta_voltage, 0.0)
+        delta_current = min(delta_current, 0.0)
 
     near_setpoint = temperature >= setpoint - rate_limit_band
     soft_rate_limit = max(
@@ -1307,30 +1377,30 @@ def _compute_next_voltage(
     )
 
     if temp_rate_c_min is not None and np.isfinite(temp_rate_c_min):
-        if near_setpoint and temp_rate_c_min > soft_rate_limit and delta_voltage > 0.0:
-            delta_voltage = 0.0
+        if near_setpoint and temp_rate_c_min > soft_rate_limit and delta_current > 0.0:
+            delta_current = 0.0
         if (
             near_setpoint
             and temp_rate_c_min > soft_rate_limit
             and temperature >= setpoint - config["temperature_tolerance_c"]
         ):
-            delta_voltage = min(delta_voltage, -config["max_voltage_step_down"] / 2.0)
+            delta_current = min(delta_current, -config["max_current_step_down"] / 2.0)
         if near_setpoint and temp_rate_c_min > hard_rate_limit:
             pid_controller.reset(measurement=temperature)
-            delta_voltage = -config["max_voltage_step_down"]
+            delta_current = -config["max_current_step_down"]
 
-    if current_limited and delta_voltage > 0.0:
-        delta_voltage = 0.0
+    if current_limited and delta_current > 0.0:
+        delta_current = 0.0
 
     if temperature >= target_temperature and setpoint >= target_temperature:
-        delta_voltage = min(delta_voltage, 0.0)
+        delta_current = min(delta_current, 0.0)
 
-    requested_voltage = _clamp(current_voltage + delta_voltage, control_min_voltage, config["max_voltage"])
-    new_voltage = _limit_voltage_slew(
-        requested_voltage,
-        current_voltage,
-        control_min_voltage,
-        config["max_voltage"],
+    requested_current = _clamp(present_current + delta_current, control_min_current, config["max_current"])
+    new_voltage = _limit_current_slew(
+        requested_current,
+        present_current,
+        control_min_current,
+        config["max_current"],
         config,
     )
     return new_voltage
@@ -1342,7 +1412,7 @@ def _confirmed_upward_temperature_jump(
     measured_resistance,
     previous_resistance,
     measured_current,
-    applied_voltage,
+    applied_current,
     resistance_confirmed,
     setpoint,
     config,
@@ -1357,7 +1427,7 @@ def _confirmed_upward_temperature_jump(
             measured_resistance,
             previous_resistance,
             measured_current,
-            applied_voltage,
+            applied_current,
             setpoint,
         )
     ):
@@ -1370,10 +1440,10 @@ def _confirmed_upward_temperature_jump(
         float(config.get("measurement_jump_confirm_min_current_a", 0.02)),
     )
     minimum_confirm_voltage = max(
-        config.get("ignore_invalid_below_voltage", 0.05) * 2.0,
-        float(config.get("measurement_jump_confirm_min_voltage", 0.1)),
+        config.get("ignore_invalid_below_current", 0.05) * 2.0,
+        float(config.get("measurement_jump_confirm_min_current", 0.1)),
     )
-    if abs(measured_current) < minimum_confirm_current or applied_voltage < minimum_confirm_voltage:
+    if abs(measured_current) < minimum_confirm_current or applied_current < minimum_confirm_voltage:
         return False
 
     if temperature - previous_temperature > float(config.get("measurement_temp_jump_accept_up_c", 35.0)):
@@ -1391,7 +1461,7 @@ def _confirmed_downward_temperature_jump(
     measured_resistance,
     previous_resistance,
     measured_current,
-    applied_voltage,
+    applied_current,
     resistance_confirmed,
     setpoint,
     config,
@@ -1404,7 +1474,7 @@ def _confirmed_downward_temperature_jump(
             measured_resistance,
             previous_resistance,
             measured_current,
-            applied_voltage,
+            applied_current,
             setpoint,
         )
     ):
@@ -1422,10 +1492,10 @@ def _confirmed_downward_temperature_jump(
         float(config.get("measurement_jump_confirm_min_current_a", 0.02)),
     )
     minimum_confirm_voltage = max(
-        config.get("ignore_invalid_below_voltage", 0.05) * 2.0,
-        float(config.get("measurement_jump_confirm_min_voltage", 0.1)),
+        config.get("ignore_invalid_below_current", 0.05) * 2.0,
+        float(config.get("measurement_jump_confirm_min_current", 0.1)),
     )
-    return abs(measured_current) >= minimum_confirm_current and applied_voltage >= minimum_confirm_voltage
+    return abs(measured_current) >= minimum_confirm_current and applied_current >= minimum_confirm_voltage
 
 
 def _screen_low_signal_temperature(
@@ -1499,7 +1569,7 @@ def _temperature_jump_probe_eligible(
     measured_resistance,
     previous_resistance,
     measured_current,
-    applied_voltage,
+    applied_current,
     resistance_confirmed,
     config,
 ):
@@ -1513,7 +1583,7 @@ def _temperature_jump_probe_eligible(
             measured_resistance,
             previous_resistance,
             measured_current,
-            applied_voltage,
+            applied_current,
         )
     ):
         return False
@@ -1529,27 +1599,27 @@ def _temperature_jump_probe_eligible(
         float(config.get("measurement_jump_confirm_min_current_a", 0.02)),
     )
     minimum_confirm_voltage = max(
-        config.get("ignore_invalid_below_voltage", 0.05) * 2.0,
-        float(config.get("measurement_jump_confirm_min_voltage", 0.1)),
+        config.get("ignore_invalid_below_current", 0.05) * 2.0,
+        float(config.get("measurement_jump_confirm_min_current", 0.1)),
     )
-    return abs(measured_current) >= minimum_confirm_current and applied_voltage >= minimum_confirm_voltage
+    return abs(measured_current) >= minimum_confirm_current and applied_current >= minimum_confirm_voltage
 
 
-def _temperature_jump_probe_voltage(direction, applied_voltage, measured_current, config):
+def _temperature_jump_probe_voltage(direction, applied_current, measured_current, config):
     step = max(
-        float(config.get("measurement_jump_probe_voltage_step", 0.002)),
-        float(config.get("minimum_voltage_change", 1e-4)),
+        float(config.get("measurement_jump_probe_current_step", 0.002)),
+        float(config.get("minimum_current_change", 1e-4)),
     )
     lower_bound = max(
-        float(config["min_voltage"]),
-        float(config.get("measurement_voltage_floor", config["min_voltage"])),
+        float(config["min_current"]),
+        float(config.get("measurement_current_floor", config["min_current"])),
     )
     if direction == "up":
-        return _clamp(applied_voltage - step, lower_bound, float(config["max_voltage"]))
+        return _clamp(applied_current - step, lower_bound, float(config["max_current"]))
 
     if not np.isfinite(measured_current) or abs(measured_current) >= 0.95 * float(config["max_current"]):
-        return float(applied_voltage)
-    return _clamp(applied_voltage + step, lower_bound, float(config["max_voltage"]))
+        return float(applied_current)
+    return _clamp(applied_current + step, lower_bound, float(config["max_current"]))
 
 
 def _advance_temperature_jump_probe(
@@ -1557,7 +1627,7 @@ def _advance_temperature_jump_probe(
     direction,
     temperature,
     resistance,
-    applied_voltage,
+    applied_current,
     measured_current,
     config,
 ):
@@ -1579,7 +1649,7 @@ def _advance_temperature_jump_probe(
         probe.direction = direction
         probe.candidate_temperature = float(temperature)
         probe.candidate_resistance = float(resistance)
-        probe.origin_voltage = float(applied_voltage)
+        probe.origin_current = float(applied_current)
         probe.confirmations = 1
         probe.attempts = 1
     else:
@@ -1593,18 +1663,18 @@ def _advance_temperature_jump_probe(
             abs(probe.candidate_resistance)
             * float(config.get("measurement_jump_probe_resistance_ratio", 0.02)),
         )
-        voltage_step = max(
-            float(config.get("measurement_jump_probe_voltage_step", 0.002)),
-            float(config.get("minimum_voltage_change", 1e-4)),
+        current_step = max(
+            float(config.get("measurement_jump_probe_current_step", 0.002)),
+            float(config.get("minimum_current_change", 1e-4)),
         )
         minimum_probe_change = max(
-            float(config.get("minimum_voltage_change", 1e-4)),
-            voltage_step * 0.25,
+            float(config.get("minimum_current_change", 1e-4)),
+            current_step * 0.25,
         )
         voltage_was_probed = (
-            applied_voltage <= probe.origin_voltage - minimum_probe_change
+            applied_current <= probe.origin_current - minimum_probe_change
             if direction == "up"
-            else applied_voltage >= probe.origin_voltage + minimum_probe_change
+            else applied_current >= probe.origin_current + minimum_probe_change
         )
         candidate_is_consistent = (
             abs(temperature - probe.candidate_temperature) <= temperature_tolerance
@@ -1625,55 +1695,65 @@ def _advance_temperature_jump_probe(
 
     if probe.attempts >= maximum_attempts:
         raise ExperimentSafetyError(
-            "Large temperature/resistance jump did not stabilize during the controlled voltage probe "
+            "Large temperature/resistance jump did not stabilize during the controlled current probe "
             f"after {probe.attempts} samples. Stopping instead of controlling from an uncertain temperature."
         )
 
-    requested_voltage = _temperature_jump_probe_voltage(
+    requested_current = _temperature_jump_probe_voltage(
         direction,
-        float(applied_voltage),
+        float(applied_current),
         float(measured_current),
         config,
     )
-    return False, requested_voltage, probe.attempts
+    return False, requested_current, probe.attempts
 
 
-def _psu_keepalive_voltage(config):
+def _psu_keepalive_current(config):
     try:
-        keepalive_voltage = float(config.get("psu_keepalive_voltage", 0.001))
+        keepalive_current = float(config.get("psu_keepalive_current", 0.001))
     except (TypeError, ValueError) as exc:
-        raise ValueError("psu_keepalive_voltage must be a positive finite voltage.") from exc
+        raise ValueError("psu_keepalive_current must be a positive finite voltage.") from exc
 
-    max_voltage = float(config["max_voltage"])
-    if not np.isfinite(keepalive_voltage) or keepalive_voltage <= 0 or keepalive_voltage > max_voltage:
+    max_current = float(config["max_current"])
+    if not np.isfinite(keepalive_current) or keepalive_current <= 0 or keepalive_current > max_current:
         raise ValueError(
-            "psu_keepalive_voltage must be positive, finite, and no greater than max_voltage."
+            "psu_keepalive_current must be positive, finite, and no greater than max_current."
         )
-    return keepalive_voltage
+    return keepalive_current
 
 
 def prepare_power_supply_output(power_supply, config):
     """Keep CH1 enabled at a negligible voltage while a run is prepared."""
-    keepalive_voltage = _psu_keepalive_voltage(config)
+    keepalive_current = _psu_keepalive_current(config)
+    compliance_voltage = float(config["compliance_voltage"])
+    if not np.isfinite(compliance_voltage) or compliance_voltage <= 0:
+        raise ValueError("compliance_voltage must be a positive finite voltage.")
     siglent.unlock_panel(power_supply)
-    siglent.set_voltage(power_supply, voltage=keepalive_voltage)
+    # Constant-current operation: the supply holds the set current and the
+    # compliance voltage only bounds what an open circuit can be driven to.
+    siglent.set_compliance_voltage(power_supply, voltage=compliance_voltage)
+    time.sleep(0.05)
+    siglent.set_current(power_supply, current=keepalive_current)
     time.sleep(0.05)
     siglent.set_output(power_supply, state="ON")
-    print(f"Power supply output enabled at keep-alive voltage {keepalive_voltage:.6f} V.")
+    print(
+        f"Power supply output enabled in constant-current mode at keep-alive current "
+        f"{keepalive_current:.6f} A with {compliance_voltage:.3f} V compliance."
+    )
 
 
 def _shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager, config=None):
     if power_supply is not None:
         config = config or CONTROL_DEFAULTS
-        keepalive_voltage = None
+        keepalive_current = None
         try:
-            keepalive_voltage = _psu_keepalive_voltage(config)
-            siglent.set_voltage(power_supply, voltage=keepalive_voltage)
+            keepalive_current = _psu_keepalive_current(config)
+            siglent.set_current(power_supply, current=keepalive_current)
         except Exception as exc:
-            print(f"An error occurred in setting the PSU keep-alive voltage: {exc}")
-        if keepalive_voltage is not None:
+            print(f"An error occurred in setting the PSU keep-alive current: {exc}")
+        if keepalive_current is not None:
             time.sleep(0.1)
-            print(f"Power supply output left ON at {keepalive_voltage:.6f} V.")
+            print(f"Power supply output left ON at {keepalive_current:.6f} A.")
         else:
             try:
                 siglent.set_output(power_supply, state="OFF")
@@ -1699,15 +1779,15 @@ def curve_sweep(emitter, sweep_params, r_vs_t, config, data_saver=None):
     config = build_control_config(config)
     temperature_interp = build_temperature_interpolator(r_vs_t, config=config)
     loop_time = resistivity_loop_time(config)
-    max_voltage = min(float(config["max_voltage"]), float(sweep_params.get("max_voltage", config["max_voltage"])))
-    start_voltage = max(
+    max_current = min(float(config["max_current"]), float(sweep_params.get("max_current", config["max_current"])))
+    start_current = max(
         float(config.get("curve_sweep_start_voltage", 0.01)),
-        float(config.get("measurement_voltage_floor", 0.01)),
+        float(config.get("measurement_current_floor", 0.01)),
         0.01,
     )
-    start_voltage = _clamp(start_voltage, float(config["min_voltage"]), max_voltage)
-    voltage_step = max(float(config.get("curve_sweep_voltage_step", 0.005)), 1e-6)
-    requested_steps = max(2, int(np.ceil(max_voltage / voltage_step)))
+    start_current = _clamp(start_current, float(config["min_current"]), max_current)
+    current_step = max(float(config.get("curve_sweep_voltage_step", 0.005)), 1e-6)
+    requested_steps = max(2, int(np.ceil(max_current / current_step)))
 
     resource_manager = None
     dmm_v = None
@@ -1729,26 +1809,26 @@ def curve_sweep(emitter, sweep_params, r_vs_t, config, data_saver=None):
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
         time.sleep(1.0)
 
-        schedule_voltages, schedule_temperatures = build_curve_shaped_voltage_schedule(
+        schedule_voltages, schedule_temperatures = build_curve_shaped_current_schedule(
             r_vs_t,
-            start_voltage=start_voltage,
-            end_voltage=max_voltage,
+            start_current=start_current,
+            end_current=max_current,
             steps=requested_steps,
         )
         print(
-            f"Curve sweep: start={start_voltage:.4f} V, end={max_voltage:.4f} V, "
-            f"steps={requested_steps}, step_basis={voltage_step:.4f} V"
+            f"Curve sweep: start={start_current:.4f} A, end={max_current:.4f} A, "
+            f"steps={requested_steps}, step_basis={current_step:.4f} A"
         )
 
-        previous_voltage = None
+        previous_current = None
         previous_resistance = None
-        for target_temperature, target_voltage in zip(schedule_temperatures, schedule_voltages):
+        for target_temperature, target_current in zip(schedule_temperatures, schedule_voltages):
             if emitter.stopped:
                 print("Stop signal received.")
                 break
 
             loop_started = time.time()
-            previous_voltage = _set_voltage_if_needed(power_supply, float(target_voltage), previous_voltage, config)
+            previous_current = _set_current_if_needed(power_supply, float(target_current), previous_current, config)
             time.sleep(max(loop_time, 0.2))
 
             measured_voltage, measured_current, temperature, measured_resistance, _ = _measure_with_retry(
@@ -1775,7 +1855,7 @@ def curve_sweep(emitter, sweep_params, r_vs_t, config, data_saver=None):
             print(
                 f"Curve sweep, T: {temperature:.2f} C, Target curve T: {target_temperature:.2f} C, "
                 f"Vsample: {measured_voltage:.6f} V, Current: {measured_current:.4e} A, "
-                f"PSU command: {previous_voltage:.4f} V"
+                f"PSU command: {previous_current:.4f} A"
             )
             _persist_measurement(
                 data_saver,
@@ -1783,7 +1863,7 @@ def curve_sweep(emitter, sweep_params, r_vs_t, config, data_saver=None):
                 temperature,
                 measured_voltage,
                 measured_current,
-                float(previous_voltage),
+                float(previous_current),
                 measured_resistance,
             )
             _emit_measurement(
@@ -1792,7 +1872,7 @@ def curve_sweep(emitter, sweep_params, r_vs_t, config, data_saver=None):
                 temperature,
                 measured_voltage,
                 measured_current,
-                float(previous_voltage),
+                float(previous_current),
                 measured_resistance,
             )
 
@@ -1807,7 +1887,7 @@ def curve_sweep(emitter, sweep_params, r_vs_t, config, data_saver=None):
         print("Curve sweep thread finished.")
 
 
-def voltage_ramp(emitter, ramp_params, r_vs_t, config, data_saver=None):
+def current_ramp(emitter, ramp_params, r_vs_t, config, data_saver=None):
     """Ramp the PSU command by elapsed time while retaining current, power, and voltage safety limits."""
     if r_vs_t is None:
         raise ValueError("An R-vs-T table must be loaded before starting a voltage ramp.")
@@ -1815,12 +1895,12 @@ def voltage_ramp(emitter, ramp_params, r_vs_t, config, data_saver=None):
     config = build_control_config(config)
     temperature_interp = build_temperature_interpolator(r_vs_t, config=config)
     loop_time = resistivity_loop_time(config)
-    ramp_speed_v_min = float(ramp_params["ramp_speed_min"])
-    if not np.isfinite(ramp_speed_v_min) or ramp_speed_v_min <= 0:
+    ramp_speed_a_min = float(ramp_params["ramp_speed_min"])
+    if not np.isfinite(ramp_speed_a_min) or ramp_speed_a_min <= 0:
         raise ValueError("Voltage-mode ramp_speed_min must be positive and finite.")
 
-    measurement_voltage_floor = _measurement_voltage_floor(config)
-    maximum_voltage = float(config["max_voltage"])
+    measurement_current_floor = _measurement_current_floor(config)
+    maximum_current = float(config["max_current"])
     max_power_w = float(config["max_power_w"])
     if not np.isfinite(max_power_w) or max_power_w <= 0:
         raise ValueError("max_power_w must be positive and finite.")
@@ -1845,23 +1925,23 @@ def voltage_ramp(emitter, ramp_params, r_vs_t, config, data_saver=None):
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
         time.sleep(1.0)
 
-        commanded_voltage, previous_voltage = _start_control_at_initial_voltage(
+        commanded_current, previous_current = _start_control_at_initial_current(
             power_supply,
             config,
-            previous_voltage=None,
+            previous_current=None,
             loop_time=loop_time,
         )
         ramp_started = time.monotonic()
         previous_resistance = None
         print(
-            f"Voltage mode: start={commanded_voltage:.6f} V, "
-            f"ramp_speed={ramp_speed_v_min:.6f} V/min, max_power={max_power_w:.6f} W, "
-            f"absolute_voltage_ceiling={maximum_voltage:.6f} V."
+            f"Current mode: start={commanded_current:.6f} A, "
+            f"ramp_speed={ramp_speed_a_min:.6f} A/min, max_power={max_power_w:.6f} W, "
+            f"absolute_current_ceiling={maximum_current:.6f} A."
         )
 
         while not emitter.stopped:
             loop_started = time.monotonic()
-            applied_voltage = float(commanded_voltage)
+            applied_current = float(commanded_current)
             measured_voltage, measured_current, temperature, measured_resistance, _ = _measure_with_retry(
                 dmm_v,
                 dmm_i,
@@ -1877,9 +1957,9 @@ def voltage_ramp(emitter, ramp_params, r_vs_t, config, data_saver=None):
                 previous_resistance = measured_resistance
 
             print(
-                f"Voltage mode: T={temperature if np.isfinite(temperature) else float('nan'):.2f} C, "
+                f"Current mode: T={temperature if np.isfinite(temperature) else float('nan'):.2f} C, "
                 f"Vsample={measured_voltage:.6f} V, Current={measured_current:.6e} A, "
-                f"Power={measured_power_w:.6f} W, PSU command={applied_voltage:.6f} V."
+                f"Power={measured_power_w:.6f} W, PSU command={applied_current:.6f} A."
             )
             _persist_measurement(
                 data_saver,
@@ -1887,7 +1967,7 @@ def voltage_ramp(emitter, ramp_params, r_vs_t, config, data_saver=None):
                 temperature,
                 measured_voltage,
                 measured_current,
-                applied_voltage,
+                applied_current,
                 measured_resistance,
             )
             _emit_measurement(
@@ -1896,30 +1976,30 @@ def voltage_ramp(emitter, ramp_params, r_vs_t, config, data_saver=None):
                 temperature,
                 measured_voltage,
                 measured_current,
-                applied_voltage,
+                applied_current,
                 measured_resistance,
             )
 
             elapsed_ramp_s = time.monotonic() - ramp_started
-            commanded_voltage = _voltage_ramp_command(
-                measurement_voltage_floor,
-                ramp_speed_v_min,
+            commanded_current = _current_ramp_command(
+                measurement_current_floor,
+                ramp_speed_a_min,
                 elapsed_ramp_s,
-                applied_voltage,
+                applied_current,
                 config,
             )
             if (
-                applied_voltage >= maximum_voltage - float(config.get("minimum_voltage_change", 1e-4))
-                and commanded_voltage <= applied_voltage + 1e-12
+                applied_current >= maximum_current - float(config.get("minimum_current_change", 1e-4))
+                and commanded_current <= applied_current + 1e-12
             ):
                 raise ExperimentSafetyError(
-                    f"Voltage mode reached the absolute software voltage ceiling {maximum_voltage:.6f} V "
+                    f"Current mode reached the absolute software current ceiling {maximum_current:.6f} A "
                     f"before reaching max_power_w {max_power_w:.6f} W."
                 )
-            previous_voltage = _set_voltage_if_needed(
+            previous_current = _set_current_if_needed(
                 power_supply,
-                commanded_voltage,
-                previous_voltage,
+                commanded_current,
+                previous_current,
                 config,
             )
 
@@ -1965,7 +2045,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
         time.sleep(1.0)
 
-        previous_voltage = None
+        previous_current = None
         for ex_param in experiment_params:
             print("Experiment parameters:", ex_param)
             program = TemperatureProgram(
@@ -1985,23 +2065,23 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                 kd=config["pid_kd"] if controller_mode == "PID" else 0.0,
                 setpoint=t_zero,
                 output_limits=(
-                    -config["max_voltage_step_down"] * voltage_step_scale(config),
-                    config["max_voltage_step_up"] * voltage_step_scale(config),
+                    -config["max_current_step_down"] * current_step_scale(config),
+                    config["max_current_step_up"] * current_step_scale(config),
                 ),
                 integral_limits=(-config["pid_integral_limit"], config["pid_integral_limit"]),
                 derivative_filter=config["pid_derivative_filter"],
             )
 
-            measurement_voltage_floor = _measurement_voltage_floor(config)
-            pid_voltage, previous_voltage = _start_control_at_initial_voltage(
+            measurement_current_floor = _measurement_current_floor(config)
+            pid_current, previous_current = _start_control_at_initial_current(
                 power_supply=power_supply,
                 config=config,
-                previous_voltage=previous_voltage,
+                previous_current=previous_current,
                 loop_time=loop_time,
             )
             print(
                 f"Using calibrated T0 {float(t_zero):.2f} C as the initial trusted temperature; "
-                f"the first live reading will control the next voltage from {pid_voltage:.4f} V."
+                f"the first live reading will control the next current from {pid_current:.4f} A."
             )
 
             program.initialize(float(t_zero))
@@ -2022,7 +2102,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
             pending_heatup_jump_count = 0
             temperature_jump_probe = TemperatureJumpProbe()
             low_signal_confirmation = LowSignalTemperatureConfirmation()
-            low_signal_voltage_recovery = LowSignalVoltageRecovery()
+            low_signal_voltage_recovery = LowSignalCurrentRecovery()
             last_program_update_time = time.monotonic()
 
             while not emitter.stopped:
@@ -2030,7 +2110,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                 program_update_time = time.monotonic()
                 program_dt = max(program_update_time - last_program_update_time, 0.0)
                 last_program_update_time = program_update_time
-                applied_voltage = pid_voltage
+                applied_current = pid_current
                 measurement_resistance_reference = (
                     temperature_jump_probe.candidate_resistance
                     if temperature_jump_probe.active
@@ -2047,7 +2127,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     power_supply=power_supply,
                 )
                 raw_temperature = temperature
-                low_signal_state = _is_low_signal_state(applied_voltage, config)
+                low_signal_state = _is_low_signal_state(applied_current, config)
                 low_signal_jump_pending = False
                 low_signal_jump_confirmed = False
                 if low_signal_state:
@@ -2082,7 +2162,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     measured_resistance=measured_resistance,
                     previous_resistance=previous_resistance,
                     measured_current=measured_current,
-                    applied_voltage=applied_voltage,
+                    applied_current=applied_current,
                     resistance_confirmed=resistance_confirmed,
                     setpoint=float(program.scheduled_target),
                     config=config,
@@ -2093,13 +2173,13 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     measured_resistance=measured_resistance,
                     previous_resistance=previous_resistance,
                     measured_current=measured_current,
-                    applied_voltage=applied_voltage,
+                    applied_current=applied_current,
                     resistance_confirmed=resistance_confirmed,
                     setpoint=float(program.scheduled_target),
                     config=config,
                 )
                 reset_temperature_reference = low_signal_jump_confirmed
-                jump_probe_voltage_request = None
+                jump_probe_current_request = None
 
                 if (
                     np.isfinite(temperature)
@@ -2134,7 +2214,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             measured_resistance,
                             previous_resistance,
                             measured_current,
-                            applied_voltage,
+                            applied_current,
                             resistance_confirmed,
                             config,
                         )
@@ -2142,13 +2222,13 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             pending_cooldown_jump_count = 0
                             pending_heatup_jump_count = 0
                             if probe_eligible:
-                                probe_confirmed, jump_probe_voltage_request, probe_attempt = (
+                                probe_confirmed, jump_probe_current_request, probe_attempt = (
                                     _advance_temperature_jump_probe(
                                         temperature_jump_probe,
                                         "down",
                                         temperature,
                                         measured_resistance,
-                                        applied_voltage,
+                                        applied_current,
                                         measured_current,
                                         config,
                                     )
@@ -2165,14 +2245,14 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                                 else:
                                     probe_action = (
                                         "increasing"
-                                        if jump_probe_voltage_request > applied_voltage + 1e-9
+                                        if jump_probe_current_request > applied_current + 1e-9
                                         else "holding"
                                     )
                                     print(
                                         f"Large downward temperature jump detected: previous={previous_temperature:.2f} C, "
                                         f"candidate={temperature:.2f} C, R={measured_resistance:.4f} Ohm. "
                                         f"Probe sample {probe_attempt}: {probe_action} PSU slightly from "
-                                        f"{applied_voltage:.4f} to {jump_probe_voltage_request:.4f} V before deciding."
+                                        f"{applied_current:.4f} to {jump_probe_current_request:.4f} A before deciding."
                                     )
                                     temperature = np.nan
                             else:
@@ -2224,7 +2304,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             measured_resistance,
                             previous_resistance,
                             measured_current,
-                            applied_voltage,
+                            applied_current,
                             resistance_confirmed,
                             config,
                         )
@@ -2232,13 +2312,13 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             pending_cooldown_jump_count = 0
                             pending_heatup_jump_count = 0
                             if probe_eligible:
-                                probe_confirmed, jump_probe_voltage_request, probe_attempt = (
+                                probe_confirmed, jump_probe_current_request, probe_attempt = (
                                     _advance_temperature_jump_probe(
                                         temperature_jump_probe,
                                         "up",
                                         temperature,
                                         measured_resistance,
-                                        applied_voltage,
+                                        applied_current,
                                         measured_current,
                                         config,
                                     )
@@ -2255,14 +2335,14 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                                 else:
                                     probe_action = (
                                         "decreasing"
-                                        if jump_probe_voltage_request < applied_voltage - 1e-9
+                                        if jump_probe_current_request < applied_current - 1e-9
                                         else "holding"
                                     )
                                     print(
                                         f"Large upward temperature jump detected: previous={previous_temperature:.2f} C, "
                                         f"candidate={temperature:.2f} C, R={measured_resistance:.4f} Ohm. "
                                         f"Probe sample {probe_attempt}: {probe_action} PSU slightly from "
-                                        f"{applied_voltage:.4f} to {jump_probe_voltage_request:.4f} V before deciding."
+                                        f"{applied_current:.4f} to {jump_probe_current_request:.4f} A before deciding."
                                     )
                                     temperature = np.nan
                             else:
@@ -2326,15 +2406,15 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                                 f"{temperature_jump_probe.attempts} samples. Stopping instead of controlling "
                                 "from an uncertain temperature."
                             )
-                        jump_probe_voltage_request = _temperature_jump_probe_voltage(
+                        jump_probe_current_request = _temperature_jump_probe_voltage(
                             temperature_jump_probe.direction,
-                            applied_voltage,
+                            applied_current,
                             measured_current,
                             config,
                         )
                         print(
                             "Temperature-jump probe received an unusable measurement; repeating the small "
-                            f"voltage probe at {jump_probe_voltage_request:.4f} V."
+                            f"current probe at {jump_probe_current_request:.4f} A."
                         )
                 if not _is_valid_measurement(measured_voltage, measured_current, temperature, config):
                     target_reference_temperature = (
@@ -2360,9 +2440,9 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                                 "Stopping to avoid blind control on corrupted data."
                             )
                         if invalid_recovery_peak_voltage is None or not np.isfinite(invalid_recovery_peak_voltage):
-                            invalid_recovery_peak_voltage = float(applied_voltage)
+                            invalid_recovery_peak_voltage = float(applied_current)
                         else:
-                            invalid_recovery_peak_voltage = max(float(invalid_recovery_peak_voltage), float(applied_voltage))
+                            invalid_recovery_peak_voltage = max(float(invalid_recovery_peak_voltage), float(applied_current))
                         recovery_temperature = previous_temperature
 
                         if phase != previous_phase:
@@ -2371,11 +2451,11 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                         else:
                             pid_controller.reset(measurement=recovery_temperature)
 
-                        pid_voltage = _compute_next_voltage(
+                        pid_current = _compute_next_current(
                             pid_controller=pid_controller,
                             temperature=recovery_temperature,
                             setpoint=setpoint,
-                            current_voltage=pid_voltage,
+                            present_current=pid_current,
                             measured_current=measured_current,
                             target_temperature=program.target_T,
                             temp_rate_c_min=0.0,
@@ -2384,12 +2464,12 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             loop_time=loop_time,
                         )
                         if low_signal_jump_pending:
-                            pid_voltage = min(pid_voltage, applied_voltage)
+                            pid_current = min(pid_current, applied_current)
                         if invalid_reuse_streak >= max(int(config.get("invalid_reuse_hold_after", 8)), 1):
                             # Prevent runaway voltage escalation when we are reusing stale temperature for too long.
-                            pid_voltage = min(
-                                pid_voltage,
-                                applied_voltage - 0.5 * config.get("invalid_voltage_step_down", config["max_voltage_step_up"]),
+                            pid_current = min(
+                                pid_current,
+                                applied_current - 0.5 * config.get("invalid_current_step_down", config["max_current_step_up"]),
                             )
                         recovery_under_target_band = float(
                             config.get("under_target_no_decrease_band_c", config.get("temperature_tolerance_c", 2.0))
@@ -2419,66 +2499,66 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             and abs(measured_current) >= 0.95 * config["max_current"]
                         )
                         if invalid_hot_hint:
-                            pid_voltage = min(
-                                pid_voltage,
-                                applied_voltage
+                            pid_current = min(
+                                pid_current,
+                                applied_current
                                 - max(
-                                    float(config.get("invalid_voltage_step_down", config["max_voltage_step_up"])),
-                                    config["max_voltage_step_up"],
+                                    float(config.get("invalid_current_step_down", config["max_current_step_up"])),
+                                    config["max_current_step_up"],
                                 ),
                             )
                         elif (
                             not low_signal_state
-                            and pid_voltage >= applied_voltage
+                            and pid_current >= applied_current
                             and invalid_reuse_streak < max(int(config.get("invalid_reuse_hold_after", 8)), 1)
                             and (
                                 recovery_current_limited
                                 or recovery_temperature >= setpoint - recovery_under_target_band
                             )
                         ):
-                            pid_voltage = applied_voltage - config["max_voltage_step_up"]
-                        pid_voltage = _limit_voltage_slew(
-                            pid_voltage,
-                            applied_voltage,
-                            measurement_voltage_floor,
-                            config["max_voltage"],
+                            pid_current = applied_current - config["max_current_step_up"]
+                        pid_current = _limit_current_slew(
+                            pid_current,
+                            applied_current,
+                            measurement_current_floor,
+                            config["max_current"],
                             config,
                         )
-                        max_invalid_drop = max(float(config.get("invalid_max_drop_from_recent_peak_v", 0.1)), 0.0)
+                        max_invalid_drop = max(float(config.get("invalid_max_drop_from_recent_peak_a", 0.1)), 0.0)
                         invalid_recovery_floor = max(
-                            measurement_voltage_floor,
+                            measurement_current_floor,
                             float(invalid_recovery_peak_voltage) - max_invalid_drop,
                         )
-                        pid_voltage = max(pid_voltage, invalid_recovery_floor)
-                        if jump_probe_voltage_request is not None:
-                            pid_voltage = _limit_voltage_slew(
-                                jump_probe_voltage_request,
-                                applied_voltage,
-                                measurement_voltage_floor,
-                                config["max_voltage"],
+                        pid_current = max(pid_current, invalid_recovery_floor)
+                        if jump_probe_current_request is not None:
+                            pid_current = _limit_current_slew(
+                                jump_probe_current_request,
+                                applied_current,
+                                measurement_current_floor,
+                                config["max_current"],
                                 config,
                             )
                         low_signal_recovery_voltage, low_signal_recovery_stepped = (
-                            _advance_low_signal_voltage_recovery(
+                            _advance_low_signal_current_recovery(
                                 recovery=low_signal_voltage_recovery,
                                 invalid_reuse_streak=invalid_reuse_streak,
                                 low_signal_state=low_signal_state,
-                                applied_voltage=applied_voltage,
+                                applied_current=applied_current,
                                 measured_current=measured_current,
                                 config=config,
                             )
                         )
                         if low_signal_recovery_voltage is not None:
-                            pid_voltage = low_signal_recovery_voltage
+                            pid_current = low_signal_recovery_voltage
                         if low_signal_recovery_stepped:
                             print(
                                 "Low-signal recovery probe "
                                 f"{low_signal_voltage_recovery.attempts}/"
                                 f"{max(int(config.get('low_signal_recovery_max_attempts', 5)), 1)}: "
-                                f"increasing commanded PSU from {applied_voltage:.4f} to {pid_voltage:.4f} V "
+                                f"increasing commanded PSU from {applied_current:.4f} to {pid_current:.4f} A "
                                 "and observing the next measurements."
                             )
-                        previous_voltage = _set_voltage_if_needed(power_supply, pid_voltage, previous_voltage, config)
+                        previous_current = _set_current_if_needed(power_supply, pid_current, previous_current, config)
                         invalid_measurements = 0
                         if (
                             resistance_confirmed
@@ -2486,17 +2566,17 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             and not temperature_jump_probe.active
                         ):
                             previous_resistance = measured_resistance
-                        if pid_voltage > applied_voltage + 1e-9:
+                        if pid_current > applied_current + 1e-9:
                             recovery_action = "continuing upward"
-                        elif pid_voltage < applied_voltage - 1e-9:
+                        elif pid_current < applied_current - 1e-9:
                             recovery_action = "gently backing off"
                         else:
                             recovery_action = "holding"
                         print(
                             f"Ignoring {'low-signal' if low_signal_state else 'transient'} invalid measurement. "
-                            f"Measured Vsample={measured_voltage}, I={measured_current} while commanded PSU was {applied_voltage:.4f} V. "
+                            f"Measured Vsample={measured_voltage}, I={measured_current} while commanded PSU was {applied_current:.4f} A. "
                             f"Reusing last trusted temperature {recovery_temperature:.2f} C and "
-                            f"{recovery_action} to {pid_voltage:.4f} V."
+                            f"{recovery_action} to {pid_current:.4f} A."
                         )
                         _persist_measurement(
                             data_saver,
@@ -2504,7 +2584,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             recovery_temperature,
                             measured_voltage,
                             measured_current,
-                            applied_voltage,
+                            applied_current,
                             measured_resistance,
                         )
                         _emit_measurement(
@@ -2513,7 +2593,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             recovery_temperature,
                             measured_voltage,
                             measured_current,
-                            applied_voltage,
+                            applied_current,
                             measured_resistance,
                         )
                         if finished:
@@ -2529,33 +2609,33 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     invalid_measurements += 1
                     invalid_reuse_streak = 0
                     if invalid_recovery_peak_voltage is None or not np.isfinite(invalid_recovery_peak_voltage):
-                        invalid_recovery_peak_voltage = float(applied_voltage)
+                        invalid_recovery_peak_voltage = float(applied_current)
                     else:
-                        invalid_recovery_peak_voltage = max(float(invalid_recovery_peak_voltage), float(applied_voltage))
+                        invalid_recovery_peak_voltage = max(float(invalid_recovery_peak_voltage), float(applied_current))
                     pid_controller.reset(measurement=previous_temperature)
-                    pid_voltage = _clamp(
-                        applied_voltage - config.get("invalid_voltage_step_down", config["max_voltage_step_down"]),
-                        measurement_voltage_floor,
-                        config["max_voltage"],
+                    pid_current = _clamp(
+                        applied_current - config.get("invalid_current_step_down", config["max_current_step_down"]),
+                        measurement_current_floor,
+                        config["max_current"],
                     )
-                    pid_voltage = _limit_voltage_slew(
-                        pid_voltage,
-                        applied_voltage,
-                        measurement_voltage_floor,
-                        config["max_voltage"],
+                    pid_current = _limit_current_slew(
+                        pid_current,
+                        applied_current,
+                        measurement_current_floor,
+                        config["max_current"],
                         config,
                     )
-                    max_invalid_drop = max(float(config.get("invalid_max_drop_from_recent_peak_v", 0.1)), 0.0)
+                    max_invalid_drop = max(float(config.get("invalid_max_drop_from_recent_peak_a", 0.1)), 0.0)
                     invalid_recovery_floor = max(
-                        measurement_voltage_floor,
+                        measurement_current_floor,
                         float(invalid_recovery_peak_voltage) - max_invalid_drop,
                     )
-                    pid_voltage = max(pid_voltage, invalid_recovery_floor)
-                    previous_voltage = _set_voltage_if_needed(power_supply, pid_voltage, previous_voltage, config)
+                    pid_current = max(pid_current, invalid_recovery_floor)
+                    previous_current = _set_current_if_needed(power_supply, pid_current, previous_current, config)
                     print(
                         "Invalid measurement received. "
-                        f"Measured Vsample={measured_voltage}, I={measured_current} while commanded PSU was {applied_voltage:.4f} V. "
-                        f"Reducing PSU to {pid_voltage:.4f} V (attempt {invalid_measurements})."
+                        f"Measured Vsample={measured_voltage}, I={measured_current} while commanded PSU was {applied_current:.4f} A. "
+                        f"Reducing PSU to {pid_current:.4f} A (attempt {invalid_measurements})."
                     )
                     if invalid_measurements >= config["measurement_fail_limit"]:
                         raise ExperimentSafetyError("Too many invalid measurements in a row.")
@@ -2565,7 +2645,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                         np.nan,
                         measured_voltage,
                         measured_current,
-                        applied_voltage,
+                        applied_current,
                         measured_resistance,
                     )
                     _emit_measurement(
@@ -2574,7 +2654,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                         np.nan,
                         measured_voltage,
                         measured_current,
-                        applied_voltage,
+                        applied_current,
                         measured_resistance,
                     )
                     elapsed = time.time() - loop_started
@@ -2601,11 +2681,11 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     pid_controller.reset(measurement=filtered_temperature)
                     previous_phase = phase
 
-                pid_voltage = _compute_next_voltage(
+                pid_current = _compute_next_current(
                     pid_controller=pid_controller,
                     temperature=filtered_temperature,
                     setpoint=setpoint,
-                    current_voltage=pid_voltage,
+                    present_current=pid_current,
                     measured_current=measured_current,
                     target_temperature=program.target_T,
                     temp_rate_c_min=temp_rate_c_min,
@@ -2613,12 +2693,12 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     config=config,
                     loop_time=loop_time,
                 )
-                previous_voltage = _set_voltage_if_needed(power_supply, pid_voltage, previous_voltage, config)
+                previous_current = _set_current_if_needed(power_supply, pid_current, previous_current, config)
 
                 print(
                     f"Phase: {phase}, T: {filtered_temperature:.2f} C, Setpoint: {setpoint:.2f} C, "
                     f"Vsample: {measured_voltage:.6f} V, Current: {measured_current:.4e} A, "
-                    f"PSU command: {applied_voltage:.4f} -> {pid_voltage:.4f} V, "
+                    f"PSU command: {applied_current:.4f} -> {pid_current:.4f} A, "
                     f"Rate: {temp_rate_c_min if temp_rate_c_min is not None else 0.0:.2f} C/min"
                 )
                 _persist_measurement(
@@ -2627,7 +2707,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     filtered_temperature,
                     measured_voltage,
                     measured_current,
-                    applied_voltage,
+                    applied_current,
                     measured_resistance,
                 )
                 _emit_measurement(
@@ -2636,7 +2716,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     filtered_temperature,
                     measured_voltage,
                     measured_current,
-                    applied_voltage,
+                    applied_current,
                     measured_resistance,
                 )
                 previous_temperature = filtered_temperature

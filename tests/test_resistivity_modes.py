@@ -4,19 +4,20 @@ from unittest.mock import Mock
 import numpy as np
 
 from tds_control.tds_experiment import (
-    _limit_voltage_slew,
+    ExperimentSafetyError,
+    _limit_current_slew,
     build_control_config,
     get_resistivity_mode,
     measure_resistivity,
     resistivity_loop_time,
-    voltage_step_scale,
+    current_step_scale,
 )
 
 
 def _config(**overrides):
     config = build_control_config(
         {
-            "max_voltage": 30.0,
+            "max_current": 30.0,
             "max_current": 3.0,
             "max_power_w": 2.5,
             "experiment_frequency": 0.5,
@@ -169,22 +170,56 @@ class ResistivityModeTests(unittest.TestCase):
         1/experiment_frequency period, so a 5 s cycle has to be allowed 2.5x
         the step a 2 s cycle gets or the controller cannot follow the setpoint.
         """
-        continuous = _config(low_voltage_max_step_up=0.001, low_voltage_step_threshold=0.05)
+        continuous = _config(low_current_max_step_up=0.001, low_current_step_threshold=0.05)
         duty_cycled = _config(
             resistivity_mode="FOUR_WIRE",
             resistivity_heat_time_s=4.0,
             resistivity_measure_time_s=1.0,
-            low_voltage_max_step_up=0.001,
-            low_voltage_step_threshold=0.05,
+            low_current_max_step_up=0.001,
+            low_current_step_threshold=0.05,
         )
-        self.assertAlmostEqual(voltage_step_scale(continuous), 1.0)
-        self.assertAlmostEqual(voltage_step_scale(duty_cycled), 2.5)
+        self.assertAlmostEqual(current_step_scale(continuous), 1.0)
+        self.assertAlmostEqual(current_step_scale(duty_cycled), 2.5)
 
         def ramp_rate_v_per_min(config):
-            reached = _limit_voltage_slew(1.0, 0.01, 0.0, 30.0, config)
+            reached = _limit_current_slew(1.0, 0.01, 0.0, 30.0, config)
             return (reached - 0.01) * 60.0 / resistivity_loop_time(config)
 
         self.assertAlmostEqual(ramp_rate_v_per_min(continuous), ramp_rate_v_per_min(duty_cycled))
+
+    def test_an_open_contact_is_caught_by_the_sample_voltage_ceiling(self):
+        """Constant current turns a bad contact into a voltage runaway.
+
+        The supply raises its terminal voltage to hold the set current, so the
+        sample voltage climbs toward compliance rather than the current falling.
+        """
+        siglent = _siglent_double([("12.5000", "0.0100")])
+        with self.assertRaisesRegex(ExperimentSafetyError, "max_sample_voltage"):
+            measure_resistivity(
+                Mock(),
+                Mock(),
+                siglent,
+                IdentityTemperatureModel(),
+                config=_config(max_sample_voltage=10.0, max_power_w=1000.0),
+            )
+
+    def test_legacy_voltage_config_keys_are_migrated(self):
+        migrated = build_control_config(
+            {
+                "startup_voltage": 0.02,
+                "t0_voltage_search_start": 0.03,
+                "max_voltage": 30.0,
+                "low_voltage_max_step_up": 0.002,
+            }
+        )
+        self.assertEqual(migrated["startup_current"], 0.02)
+        self.assertEqual(migrated["t0_current_search_start"], 0.03)
+        self.assertEqual(migrated["compliance_voltage"], 30.0)
+        self.assertEqual(migrated["low_current_max_step_up"], 0.002)
+        self.assertNotIn("startup_voltage", migrated)
+        self.assertNotIn("max_voltage", migrated)
+        # The ceiling is a current now, and comes from the defaults.
+        self.assertEqual(migrated["max_current"], 0.5)
 
     def test_an_unknown_mode_falls_back_to_the_continuous_measurement(self):
         self.assertEqual(get_resistivity_mode({"resistivity_mode": "nonsense"}), "V_OVER_I")

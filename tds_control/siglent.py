@@ -39,9 +39,23 @@ def _pick_sdm3055_dc_range(expected_max, allowed_ranges):
             return candidate
     return None
 
-# Function to set voltage on the power supply
-def set_voltage(ps, voltage):
-    """Set the PSU voltage without changing or reasserting the output state."""
+def set_current(ps, current):
+    """Set the PSU current without changing or reasserting the output state.
+
+    The SPD1000X programs current with 1 mA resolution, so anything finer than
+    0.001 A is rounded away by the instrument.
+    """
+    numeric_current = float(current)
+    ps.write(f"CURR {numeric_current}")
+
+
+def set_compliance_voltage(ps, voltage):
+    """Set the CV ceiling the supply may reach while holding the set current.
+
+    In constant-current mode this is the voltage a failing contact or an open
+    circuit will be driven to, so it bounds the worst case rather than the
+    operating point.
+    """
     numeric_voltage = float(voltage)
     ps.write(f"VOLT {numeric_voltage}")
 
@@ -321,26 +335,26 @@ if __name__ == "__main__":
     PS.read_termination = '\n'
     # Set the voltage
     time.sleep(0.04)
+    set_compliance_voltage(PS, voltage=30.0)
     set_output(PS, state='ON')
-    set_voltage(PS, voltage=0.5)
+    set_current(PS, current=0.01)
     time.sleep(1)
     # On the front panel,0.3|1|10 corresponds to the Speed menu under Fast|Middle|Slow respectively
     set_mode_speed(DMM_i, 'CURR', 1)
     set_mode_speed(DMM_v, 'VOLT',1)
     start_time = time.time()
     for i in range(10):
-        # set_voltage(PS, voltage=0.5+0.1*i)
-        set_voltage(PS, voltage=0.01)
+        set_current(PS, current=0.01)
         time.sleep(0.3)
         measured_voltage = float(read_DMM(DMM_v))
         measured_current = float(read_DMM(DMM_i))
         print(measured_voltage/measured_current)
-        print(f"Voltage: {measured_voltage} V, Current: {measured_current} A, Applied Voltage: {0.5+0.1*i} V")
+        print(f"Voltage: {measured_voltage} V, Current: {measured_current} A")
         time.sleep(2)
     print(f"Time taken: {time.time() - start_time}")
 
     # print(float(read_current(PS)))
-    set_voltage(PS, voltage=0.0)
+    set_current(PS, current=0.0)
     set_output(PS, state='OFF')
     time.sleep(1)
     PS.close()
