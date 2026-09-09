@@ -66,13 +66,21 @@ The other two modes remove it by measuring while no heating current flows.
 ### Duty cycle
 
 The two duty-cycled modes set the control-loop period themselves from
-`resistivity_heat_time_s + resistivity_measure_time_s` (default 10 s + 2 s = 12 s);
+`resistivity_heat_time_s + resistivity_measure_time_s` (default 4 s + 1 s = 5 s);
 `experiment_frequency` does not apply to them. Within each cycle the supply heats for
 `resistivity_heat_time_s`, then CH1 switches off, `resistivity_output_settle_s` elapses,
 the quiet reading is taken, and CH1 switches back on.
 
 Because the sample only heats for part of each cycle, controller gains tuned under
 `V_OVER_I` will be too weak. Re-run **Tune PI/PID** after changing the mode.
+
+The per-loop voltage slew limits (`max_voltage_step_up`, `low_voltage_max_step_up`, and
+the catch-up steps) are scaled by the ratio of the active cycle to the
+`1 / experiment_frequency` period they were chosen for, so the achievable volts-per-minute
+is the same whatever cycle you configure. Lengthening the cycle therefore costs control
+bandwidth - corrections arrive less often, and the setpoint moves further between them -
+but not ramp rate. At 30 C/min a 5 s cycle lets the setpoint advance 2.5 C per correction;
+a 12 s cycle lets it advance 6.4 C, which will not hold a 2 C tolerance.
 
 In `OFFSET_CORRECTED` and `FOUR_WIRE` the reported resistance is the one measured
 with the heating current off. `V` and `I` remain on their own displays for monitoring,

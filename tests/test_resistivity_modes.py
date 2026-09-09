@@ -4,10 +4,12 @@ from unittest.mock import Mock
 import numpy as np
 
 from tds_control.tds_experiment import (
+    _limit_voltage_slew,
     build_control_config,
     get_resistivity_mode,
     measure_resistivity,
     resistivity_loop_time,
+    voltage_step_scale,
 )
 
 
@@ -159,6 +161,30 @@ class ResistivityModeTests(unittest.TestCase):
         )
         self.assertTrue(np.isnan(temperature))
         self.assertAlmostEqual(resistance, 20.584)
+
+    def test_slew_limits_hold_the_same_ramp_rate_across_loop_periods(self):
+        """A longer duty-cycled loop must not shrink the volts-per-minute.
+
+        The step limits are per loop but were chosen for the
+        1/experiment_frequency period, so a 5 s cycle has to be allowed 2.5x
+        the step a 2 s cycle gets or the controller cannot follow the setpoint.
+        """
+        continuous = _config(low_voltage_max_step_up=0.001, low_voltage_step_threshold=0.05)
+        duty_cycled = _config(
+            resistivity_mode="FOUR_WIRE",
+            resistivity_heat_time_s=4.0,
+            resistivity_measure_time_s=1.0,
+            low_voltage_max_step_up=0.001,
+            low_voltage_step_threshold=0.05,
+        )
+        self.assertAlmostEqual(voltage_step_scale(continuous), 1.0)
+        self.assertAlmostEqual(voltage_step_scale(duty_cycled), 2.5)
+
+        def ramp_rate_v_per_min(config):
+            reached = _limit_voltage_slew(1.0, 0.01, 0.0, 30.0, config)
+            return (reached - 0.01) * 60.0 / resistivity_loop_time(config)
+
+        self.assertAlmostEqual(ramp_rate_v_per_min(continuous), ramp_rate_v_per_min(duty_cycled))
 
     def test_an_unknown_mode_falls_back_to_the_continuous_measurement(self):
         self.assertEqual(get_resistivity_mode({"resistivity_mode": "nonsense"}), "V_OVER_I")
