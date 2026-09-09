@@ -389,7 +389,7 @@ t0_voltage_step = 0.01
 t0_settle_time_s = 3
 
 # How many T0 samples are used for the final calibration point.
-t0_calibration_samples = 9
+t0_calibration_samples = 5
 
 # How many initial T0 samples are discarded as warmup.
 t0_warmup_samples = 1

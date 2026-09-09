@@ -92,6 +92,17 @@ def _check_stop(emitter):
         raise CalibrationCancelled("Stopped by user.")
 
 
+def _calibration_sample_interval_s(config):
+    """Pause between calibration samples.
+
+    The duty-cycled resistivity modes already spend a whole heat-and-measure
+    cycle inside each reading, so an extra pause only slows calibration down.
+    """
+    if tds_experiment.resistivity_mode_needs_power_supply(config):
+        return 0.0
+    return max(0.5, 1.0 / config["experiment_frequency"])
+
+
 def _emit_live_measurement(
     emitter,
     *,
@@ -196,7 +207,7 @@ def _find_stable_current_voltage(
     allow_current_only_fallback=False,
     stop_on_high_temperature=False,
 ):
-    sample_interval_s = max(0.5, 1.0 / config["experiment_frequency"])
+    sample_interval_s = _calibration_sample_interval_s(config)
     voltage = max(start_voltage, config["min_voltage"], 0.005)
     search_upper_bound = min(max_voltage, config["max_voltage"])
     voltage_step = max(step_voltage, config["minimum_voltage_change"])
@@ -388,7 +399,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
         )
         print(f"Using T0 calibration voltage: {calibration_voltage:.4f} V")
 
-        sample_interval_s = max(0.5, 1.0 / config["experiment_frequency"])
+        sample_interval_s = _calibration_sample_interval_s(config)
 
         accepted_samples = []
         warmup_remaining = max(int(config["t0_warmup_samples"]), 0)
@@ -656,7 +667,7 @@ def _collect_pid_baseline(
         ):
             baseline_temperatures.append(float(sample["temperature"]))
 
-    sample_interval_s = max(loop_time, 0.5)
+    sample_interval_s = _calibration_sample_interval_s(config)
     invalid_measurements = 0
     while len(baseline_temperatures) < int(config["tuning_baseline_samples"]):
         _check_stop(emitter)
@@ -880,7 +891,7 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
     """
     config = tds_experiment.build_control_config(config)
     controller_mode = tds_experiment.get_controller_mode(config)
-    loop_time = 1.0 / config["experiment_frequency"]
+    loop_time = tds_experiment.resistivity_loop_time(config)
     curve, _, temperature_interp = _prepare_curve_interpolators(r_vs_t, config=config)
 
     resource_manager = None
