@@ -18,13 +18,13 @@ experiment_frequency = 0.5
 compliance_voltage = 30
 
 # Highest current the controller may command, and the software abort threshold.
-max_current = 0.5
+max_current = 1
 
 # Sample voltage that aborts the run; in constant-current mode this is what an open contact looks like.
 max_sample_voltage = 15
 
 # Maximum sample power in watts, calculated as the absolute synchronized Kelvin voltage times current.
-max_power_w = 2.5
+max_power_w = 10
 
 # Measurement speed setting sent to both DMMs. Explicit fixed DC ranges are used; instrument auto-ranging is disabled.
 DMM_speed = 10

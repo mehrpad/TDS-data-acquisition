@@ -4,6 +4,7 @@ from unittest.mock import Mock
 import numpy as np
 
 from tds_control.tds_experiment import (
+    CONTROL_DEFAULTS,
     ExperimentSafetyError,
     _limit_current_slew,
     build_control_config,
@@ -219,7 +220,7 @@ class ResistivityModeTests(unittest.TestCase):
         self.assertNotIn("startup_voltage", migrated)
         self.assertNotIn("max_voltage", migrated)
         # The ceiling is a current now, and comes from the defaults.
-        self.assertEqual(migrated["max_current"], 0.5)
+        self.assertEqual(migrated["max_current"], CONTROL_DEFAULTS["max_current"])
 
     def test_an_unknown_mode_falls_back_to_the_continuous_measurement(self):
         self.assertEqual(get_resistivity_mode({"resistivity_mode": "nonsense"}), "V_OVER_I")
