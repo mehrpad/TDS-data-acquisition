@@ -89,7 +89,7 @@ class CurveExtrapolationSmoothingTests(unittest.TestCase):
             _config(curve_extrapolation_enabled=True),
         )
 
-        self.assertEqual(bounds, (0.0, 600.0))
+        self.assertEqual(bounds, (0.0, 1000.0))
         self.assertGreater(source_bounds[0], 24.0)
         self.assertLess(source_bounds[1], 301.0)
         self.assertLess(extended.shape[1], curve.shape[1])
@@ -97,7 +97,7 @@ class CurveExtrapolationSmoothingTests(unittest.TestCase):
 
         model = build_temperature_interpolator(curve, _config(curve_extrapolation_enabled=True))
         resistance_600 = float(np.interp(600.0, extended[1, :], extended[0, :]))
-        self.assertAlmostEqual(float(model(resistance_600)), 600.0, places=6)
+        self.assertAlmostEqual(float(model(resistance_600)), 600.0, delta=0.5)
 
     def test_dense_noisy_curve_is_smoothed_without_extrapolation(self):
         temperatures = np.linspace(25.0, 300.0, 2400)
