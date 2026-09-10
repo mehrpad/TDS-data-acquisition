@@ -1,4 +1,5 @@
 import csv
+import json
 import os
 import queue
 import threading
@@ -35,10 +36,12 @@ class ExperimentDataSaver:
         flush_interval_s=5.0,
         batch_size=10,
         calibration_note=None,
+        run_metadata=None,
     ):
         self.experiment_dir = experiment_dir
         self.r_vs_t = np.array(r_vs_t, dtype=float)
         self.calibration_note = str(calibration_note).strip() if calibration_note else None
+        self.run_metadata = dict(run_metadata) if run_metadata else None
         self.columns = list(columns or DEFAULT_COLUMNS)
         self.flush_interval_s = max(float(flush_interval_s), 0.5)
         self.batch_size = max(int(batch_size), 1)
@@ -49,6 +52,7 @@ class ExperimentDataSaver:
         self.r_vs_t_path = os.path.join(self.experiment_dir, "r_vs_t.csv")
         self.r_vs_t_pdf_path = os.path.join(self.experiment_dir, "corrected_r_vs_t_curve.pdf")
         self.calibration_info_path = os.path.join(self.experiment_dir, "calibration_info.txt")
+        self.metadata_path = os.path.join(self.experiment_dir, "run_metadata.json")
 
         self._queue = queue.Queue()
         self._stop_token = object()
@@ -67,6 +71,7 @@ class ExperimentDataSaver:
         self._write_r_vs_t_snapshot()
         self._write_r_vs_t_pdf()
         self._write_calibration_info()
+        self._write_run_metadata()
         self._thread.start()
         self._ready.wait(timeout=10.0)
         self.raise_if_error()
@@ -350,6 +355,19 @@ class ExperimentDataSaver:
             info_file.write("T0 calibration warning\n")
             info_file.write(self.calibration_note)
             info_file.write("\n")
+
+    def _write_run_metadata(self):
+        """Record the controller and measurement settings used for this run.
+
+        Written once at start, alongside the data files, so a run's PID/PI
+        gains and control settings stay attached to its own results rather
+        than only living in the current (mutable) config.
+        """
+        if not self.run_metadata:
+            return
+        with open(self.metadata_path, "w", encoding="utf-8") as metadata_file:
+            json.dump(self.run_metadata, metadata_file, indent=2, sort_keys=True, default=str)
+            metadata_file.write("\n")
 
     def _create_h5_datasets(self, h5_file):
         datasets = {}

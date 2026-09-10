@@ -1,4 +1,5 @@
 import csv
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -86,6 +87,50 @@ class ExperimentDataSaverOutputTests(unittest.TestCase):
             self.assertGreater(pdf_path.stat().st_size, 1_000)
             with pdf_path.open("rb") as pdf_file:
                 self.assertEqual(pdf_file.read(4), b"%PDF")
+
+    def test_writes_run_metadata_including_pid_gains(self):
+        corrected_curve = np.array([[10.0, 14.0], [23.0, 250.0]], dtype=float)
+        metadata = {
+            "controller_mode": "PI",
+            "pid_kp": 0.0004,
+            "pid_ki": 0.00002,
+            "pid_kd": 0.0,
+            "resistivity_mode": "V_OVER_I",
+            "_active_dmm_volt_range": 20.0,
+        }
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            result_directory = Path(temporary_directory)
+            saver = ExperimentDataSaver(
+                result_directory,
+                corrected_curve,
+                flush_interval_s=0.5,
+                batch_size=1,
+                run_metadata=metadata,
+            ).start()
+            saver.finalize()
+
+            metadata_path = result_directory / "run_metadata.json"
+            self.assertTrue(metadata_path.exists())
+            with metadata_path.open("r", encoding="utf-8") as metadata_file:
+                saved_metadata = json.load(metadata_file)
+            self.assertEqual(saved_metadata["pid_kp"], 0.0004)
+            self.assertEqual(saved_metadata["pid_ki"], 0.00002)
+            self.assertEqual(saved_metadata["controller_mode"], "PI")
+
+    def test_no_metadata_file_is_written_when_run_metadata_is_omitted(self):
+        corrected_curve = np.array([[10.0, 14.0], [23.0, 250.0]], dtype=float)
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            result_directory = Path(temporary_directory)
+            saver = ExperimentDataSaver(
+                result_directory,
+                corrected_curve,
+                flush_interval_s=0.5,
+                batch_size=1,
+            ).start()
+            saver.finalize()
+
+            self.assertFalse((result_directory / "run_metadata.json").exists())
 
 
 if __name__ == "__main__":

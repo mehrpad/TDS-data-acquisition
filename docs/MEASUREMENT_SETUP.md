@@ -142,22 +142,22 @@ Auto Range is not permitted for either DMM. It can insert range-change delays an
 
 At the start of T0 calibration, controller tuning, or an experiment, the software:
 
-1. sends the small `psu_keepalive_voltage` setpoint and enables CH1 once,
+1. sends the small `psu_keepalive_current` setpoint and enables CH1 once,
 2. selects the explicit fixed `dmm_voltage_range_v` and `dmm_current_range_a`,
 3. configures the DMM integration speed, and
 4. requires a stable startup resistance median before enabling control.
 
-The defaults are `0.2 V DC` and `0.2 A DC`, the smallest supported SDM3055 DC ranges in this application. They are appropriate for the millivolt/milliamp signals in the current setup and give much better resolution than the former `200 V`/`10 A` ranges selected from `max_voltage = 30` and `max_current = 3`. If an expected sample signal can exceed a default range, increase that explicit DMM range before running. `max_voltage` and `max_current` remain separate software safety limits.
+The defaults are `20 V DC` and `2 A DC`, fixed starting ranges rather than the smallest ones. Staged ranging (`dmm_staged_ranging_enabled`) still applies: a range steps up only if a reading nears its full scale, it never autoranges, and it never steps down mid-run. Starting at 20 V/2 A avoids range-change churn while `max_current` (default `0.5 A`) ramps upward over a run, at the cost of resolution on the small readings seen right after startup - if a run stays at very low current throughout, lower `dmm_current_range_a` before starting for better resolution. `max_current` and `max_sample_voltage` remain separate software safety limits, independent of the DMM range.
 
-`DMM_speed = 10` uses the slow 10-NPLC integration setting. The two meters are read sequentially, so the control-loop period must be long enough for both readings and instrument communication. The default `experiment_frequency = 1` Hz normally provides that margin. A lower frequency can provide more settling time after a voltage change, but it also slows controller response and does not make Auto Range safe.
+`DMM_speed = 10` uses the slow 10-NPLC integration setting. The two meters are read sequentially, so the control-loop period must be long enough for both readings and instrument communication. The default `experiment_frequency = 1` Hz normally provides that margin. A lower frequency can provide more settling time after a current change, but it also slows controller response and does not make Auto Range safe.
 
-The GUI `Initial Voltage` is an enforced controlled-experiment floor as well as the starting value for T0, tuning, and curve sweep. Startup requires five consistent resistance readings by default. If necessary, it searches upward in `0.001 V` steps, and the stable voltage it finds becomes the active floor. A stable inferred temperature more than `startup_temperature_margin_c` above `max(T0, start_T)` stops startup rather than beginning control from an implausibly hot reading.
+The GUI `Initial Current (A)` is an enforced controlled-experiment floor as well as the starting value for T0, tuning, and curve sweep (default `0.005 A`; if that does not produce a stable reading, T0's own search steps upward from there). Startup requires five consistent resistance readings by default. If necessary, it searches upward in `0.001 A` steps, and the stable current it finds becomes the active floor. A stable inferred temperature more than `startup_temperature_margin_c` above `max(T0, start_T)` stops startup rather than beginning control from an implausibly hot reading.
 
 At PSU voltages up to `low_voltage_step_threshold` (default `0.05 V`), normal control, invalid-reading recovery, T0 search, and tuning search are restricted to `0.001 V` changes. This avoids alternating directly between `0.01 V` and `0.02 V` on a sensitive wire.
 
 T0 and tuning baseline searches require resistance stability as well as current stability. T0 also checks the final calibration samples before accepting the scale, so noisy readings cannot silently become a misleading low-TCR calibration.
 
-Ordinary voltage updates do not resend the PSU `ON` command. At the end, the software returns to `psu_keepalive_voltage` and intentionally leaves CH1 enabled.
+Ordinary current updates do not resend the PSU `ON` command. At the end, the software returns to `psu_keepalive_current` and intentionally leaves CH1 enabled.
 
 ## Pre-run checklist
 
@@ -165,6 +165,6 @@ Ordinary voltage updates do not resend the PSU `ON` command. At the end, the sof
 - `V+` and `V-` land on the sample itself, not cable ends or supply terminals.
 - Both DMMs show fixed DC ranges, not Auto Range.
 - The configured `dmm_voltage_range_v` and `dmm_current_range_a` cover the expected sample signals.
-- `Initial Voltage` is low enough that the equilibrated sample begins near T0/start temperature.
-- `max_voltage` and `max_current` are positive, conservative, and within the DMM's supported fixed ranges.
+- `Initial Current (A)` is low enough that the equilibrated sample begins near T0/start temperature.
+- `compliance_voltage`, `max_current`, and `max_sample_voltage` are positive, conservative, and within the DMM's supported fixed ranges.
 - The power supply has its own independent current limit/OCP configured. The application's `max_current` is a software shutdown threshold, not a hardware current clamp.

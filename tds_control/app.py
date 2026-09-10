@@ -275,6 +275,23 @@ class Ui_TDS(object):
         self.temperature_vis.setObjectName("temperature_vis")
         self.gridLayout_4.addWidget(self.temperature_vis, 0, 0, 1, 1)
         ###
+        self.resistivity_vis = pg.PlotWidget(parent=self.centralwidget)
+        self.resistivity_vis.setBackground('w')
+        ###
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,
+                                           QtWidgets.QSizePolicy.Policy.Expanding)
+        sizePolicy.setHorizontalStretch(1)
+        sizePolicy.setVerticalStretch(1)
+        sizePolicy.setHeightForWidth(self.resistivity_vis.sizePolicy().hasHeightForWidth())
+        self.resistivity_vis.setSizePolicy(sizePolicy)
+        self.resistivity_vis.setMinimumSize(QtCore.QSize(260, 190))
+        self.resistivity_vis.setStyleSheet("QWidget{\n"
+                                           "                                            border: 0.5px solid gray;\n"
+                                           "                                            }\n"
+                                           "                                        ")
+        self.resistivity_vis.setObjectName("resistivity_vis")
+        self.gridLayout_4.addWidget(self.resistivity_vis, 1, 0, 1, 1)
+        ###
         # self.h_flux_vis = QtWidgets.QGraphicsView(parent=self.centralwidget)
         self.h_flux_vis = pg.PlotWidget(parent=self.centralwidget)
         self.h_flux_vis.setBackground('w')
@@ -291,7 +308,7 @@ class Ui_TDS(object):
                                       "                                            }\n"
                                       "                                        ")
         self.h_flux_vis.setObjectName("h_flux_vis")
-        self.gridLayout_4.addWidget(self.h_flux_vis, 1, 0, 1, 1)
+        self.gridLayout_4.addWidget(self.h_flux_vis, 2, 0, 1, 1)
         self.plot_window_layout = QtWidgets.QHBoxLayout()
         self.plot_window_layout.setObjectName("plot_window_layout")
         self.plot_window_button = QtWidgets.QPushButton(parent=self.centralwidget)
@@ -426,6 +443,28 @@ class Ui_TDS(object):
                                            "                                        ")
         self.resistivity_lcd.setObjectName("resistivity_lcd")
         self.gridLayout_3.addWidget(self.resistivity_lcd, 1, 4, 1, 1)
+        self.label_power = QtWidgets.QLabel(parent=self.centralwidget)
+        font = QtGui.QFont()
+        font.setBold(True)
+        self.label_power.setFont(font)
+        self.label_power.setObjectName("label_power")
+        self.gridLayout_3.addWidget(self.label_power, 0, 5, 1, 1)
+        self.power_lcd = QtWidgets.QLCDNumber(parent=self.centralwidget)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred,
+                                           QtWidgets.QSizePolicy.Policy.Preferred)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.power_lcd.sizePolicy().hasHeightForWidth())
+        self.power_lcd.setSizePolicy(sizePolicy)
+        self.power_lcd.setMinimumSize(QtCore.QSize(110, 50))
+        self.power_lcd.setStyleSheet("QLCDNumber{\n"
+                                     "                                            border: 2px solid purple;\n"
+                                     "                                            border-radius: 10px;\n"
+                                     "                                            padding: 0 8px;\n"
+                                     "                                            }\n"
+                                     "                                        ")
+        self.power_lcd.setObjectName("power_lcd")
+        self.gridLayout_3.addWidget(self.power_lcd, 1, 5, 1, 1)
         self.parameters_text = QtWidgets.QTextEdit(parent=self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred,
                                            QtWidgets.QSizePolicy.Policy.Preferred)
@@ -438,7 +477,15 @@ class Ui_TDS(object):
             "QWidget{border: 2px solid gray; border-radius: 10px;padding: 0 8px; background: rgb(223,223,233)}\n"
             "                                    ")
         self.parameters_text.setObjectName("parameters_text")
-        self.gridLayout_3.addWidget(self.parameters_text, 2, 0, 1, 5)
+        self.gridLayout_3.addWidget(self.parameters_text, 2, 0, 1, 6)
+        self.pid_status_label = QtWidgets.QLabel(parent=self.centralwidget)
+        self.pid_status_label.setMinimumSize(QtCore.QSize(0, 24))
+        self.pid_status_label.setStyleSheet(
+            "QLabel{border: 1px solid gray; border-radius: 6px; padding: 2px 8px; "
+            "background: rgb(240,240,246); font-family: 'Consolas','Courier New',monospace;}"
+        )
+        self.pid_status_label.setObjectName("pid_status_label")
+        self.gridLayout_3.addWidget(self.pid_status_label, 3, 0, 1, 6)
         self.gridLayout_2 = QtWidgets.QGridLayout()
         self.gridLayout_2.setObjectName("gridLayout_2")
         self.start_botton = QtWidgets.QPushButton(parent=self.centralwidget)
@@ -478,7 +525,7 @@ class Ui_TDS(object):
         self.calibrate_botton_pid.setStyleSheet("QPushButton{background: rgb(193, 193, 193)}")
         self.calibrate_botton_pid.setObjectName("calibrate_botton_pid")
         self.gridLayout_2.addWidget(self.calibrate_botton_pid, 1, 2, 1, 1)
-        self.gridLayout_3.addLayout(self.gridLayout_2, 3, 0, 1, 5)
+        self.gridLayout_3.addLayout(self.gridLayout_2, 4, 0, 1, 6)
         self.gridLayout_5.addLayout(self.gridLayout_3, 1, 0, 1, 1)
         self.Error = QtWidgets.QLabel(parent=self.centralwidget)
         self.Error.setMinimumSize(QtCore.QSize(1000, 30))
@@ -531,7 +578,8 @@ class Ui_TDS(object):
         TDS.setTabOrder(self.load_csv_botton, self.calibrate_botton_base_t)
         TDS.setTabOrder(self.calibrate_botton_base_t, self.calibrate_botton_pid)
         TDS.setTabOrder(self.calibrate_botton_pid, self.temperature_vis)
-        TDS.setTabOrder(self.temperature_vis, self.h_flux_vis)
+        TDS.setTabOrder(self.temperature_vis, self.resistivity_vis)
+        TDS.setTabOrder(self.resistivity_vis, self.h_flux_vis)
 
         #####
         self.timer_error = QtCore.QTimer()
@@ -555,6 +603,11 @@ class Ui_TDS(object):
         self.h_flux_y = [np.nan] * len(self.h_flux_x)
         pen_h_flux = pg.mkPen(color=(0, 0, 225), width=4)
         self.h_flux_vis_line = self.h_flux_vis.plot(self.h_flux_x, self.h_flux_y, pen=pen_h_flux)
+
+        self.resistivity_x = [i * 0.5 for i in range(200)]
+        self.resistivity_y = [np.nan] * len(self.resistivity_x)
+        pen_resistivity = pg.mkPen(color=(0, 150, 0), width=4)
+        self.resistivity_vis_line = self.resistivity_vis.plot(self.resistivity_x, self.resistivity_y, pen=pen_resistivity)
 
         self.temperature_x = [i * 0.5 for i in range(200)]
         self.temperature_y = [0.0] * 200
@@ -581,10 +634,13 @@ class Ui_TDS(object):
         self.styles = {"color": "#f00", "font-size": "12px"}
         self.temperature_vis.setLabel("left", "Temperature", units="C", **self.styles)
         self.temperature_vis.setLabel("bottom", "Time (s)", **self.styles)
+        self.resistivity_vis.setLabel("left", "Resistivity", units="Ohm", **self.styles)
+        self.resistivity_vis.setLabel("bottom", "Time (s)", **self.styles)
         self.h_flux_vis.setLabel("left", "Flux", units='mol/s', **self.styles)
         self.h_flux_vis.setLabel("bottom", "Time (s)", **self.styles)
 
         self.temperature_vis.showGrid(x=True, y=True)
+        self.resistivity_vis.showGrid(x=True, y=True)
         self.h_flux_vis.showGrid(x=True, y=True)
         self.refresh_plot_ranges()
 
@@ -615,10 +671,12 @@ class Ui_TDS(object):
         self.apply_experiment_mode_ui()
         self._update_file_tooltips()
         self._set_operation_running(False)
+        self.refresh_pid_status_label()
 
         self.voltage_lcd.setDigitCount(8)
         self.current_lcd.setDigitCount(8)
         self.resistivity_lcd.setDigitCount(8)
+        self.power_lcd.setDigitCount(8)
         self.temperature_lcd.setDigitCount(6)
         self.temperature_target_lcd.setDigitCount(6)
 
@@ -649,6 +707,7 @@ class Ui_TDS(object):
         self.label_2.setText(_translate("TDS", "Voltage (V)              "))
         self.label_3.setText(_translate("TDS", "Current (A)                "))
         self.label_5.setText(_translate("TDS", "Resistivity (Ohm)"))
+        self.label_power.setText(_translate("TDS", "Power (W)"))
         self.parameters_text.setHtml(_translate("TDS",
                                                 "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
                                                 "<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\n"
@@ -728,6 +787,22 @@ class Ui_TDS(object):
         """Update how sample resistance is measured."""
         self.config['resistivity_mode'] = self.resistivity_measurement_mode.currentText()
         self.save_config()
+
+    def refresh_pid_status_label(self):
+        """Show the controller gains currently in use, above Start/Stop.
+
+        Reflects self.config, so it updates immediately after a tune (or a
+        config reload) rather than only showing whatever was tuned last.
+        """
+        controller_mode = tds_experiment.get_controller_mode(self.config)
+        kp = float(self.config.get('pid_kp', 0.0))
+        ki = float(self.config.get('pid_ki', 0.0))
+        if controller_mode == 'PID':
+            kd = float(self.config.get('pid_kd', 0.0))
+            text = f"Controller: PID   Kp={kp:.6g} A/C   Ki={ki:.6g} A/(C*s)   Kd={kd:.6g} A*s/C"
+        else:
+            text = f"Controller: PI   Kp={kp:.6g} A/C   Ki={ki:.6g} A/(C*s)"
+        self.pid_status_label.setText(text)
 
     def apply_experiment_mode_ui(self):
         """Enable or disable controls based on the selected experiment mode."""
@@ -938,6 +1013,18 @@ class Ui_TDS(object):
         experiment_name = self.sanitize_experiment_name(self.ex_name.text() or self.experiment_name)
         return DATA_DIR / f'{self.ex_counter}_{experiment_name}'
 
+    def build_run_metadata(self):
+        """Snapshot the controller/measurement settings used for this run.
+
+        Excludes runtime-only keys (leading underscore, e.g. the active DMM
+        range tracked in the config dict) since those are not settings.
+        """
+        return {
+            key: value
+            for key, value in self.config.items()
+            if not str(key).startswith('_')
+        }
+
     def can_close_window(self):
         """
         Ask the user for confirmation before closing the application.
@@ -1013,9 +1100,9 @@ class Ui_TDS(object):
             voltage=data[4],
             current=data[5],
             resistivity=data[8] if len(data) > 8 else None,
+            power=data[7] if len(data) > 7 else None,
         )
         self.commanded_current = float(data[6]) if self._is_finite_number(data[6]) else 0.0
-        self.sample_power = float(data[7]) if len(data) > 7 and self._is_finite_number(data[7]) else 0.0
         if current_mode:
             self.temperature_target_lcd.display(self._format_lcd_value(self.commanded_current, decimals=4))
 
@@ -1056,6 +1143,7 @@ class Ui_TDS(object):
         voltage=None,
         current=None,
         resistivity=None,
+        power=None,
     ):
         if self._is_finite_number(target_temperature):
             self.target_temperature = float(target_temperature)
@@ -1078,6 +1166,11 @@ class Ui_TDS(object):
             )
             self.resistivity = corrected_resistance if np.isfinite(corrected_resistance) and corrected_resistance > 0 else 0
 
+        if self._is_finite_number(power):
+            self.sample_power = float(power)
+        elif self._is_finite_number(self.voltage) and self._is_finite_number(self.current):
+            self.sample_power = float(self.voltage) * float(self.current)
+
         if self._is_finite_number(self.voltage):
             self.voltage_lcd.display(self._format_lcd_value(self.voltage, decimals=4))
         else:
@@ -1092,6 +1185,11 @@ class Ui_TDS(object):
             self.resistivity_lcd.display(self._format_lcd_value(self.resistivity, decimals=4))
         else:
             self.resistivity_lcd.display(0)
+
+        if self._is_finite_number(self.sample_power):
+            self.power_lcd.display(self._format_lcd_value(self.sample_power, decimals=4))
+        else:
+            self.power_lcd.display(0)
 
         if self._is_finite_number(self.temperature):
             self.temperature_lcd.display(round(self.temperature, 2))
@@ -1148,7 +1246,7 @@ class Ui_TDS(object):
             visible_start = 0.0
             visible_end = max(1.0, end_time)
 
-        for plot_widget in (self.temperature_vis, self.h_flux_vis):
+        for plot_widget in (self.temperature_vis, self.resistivity_vis, self.h_flux_vis):
             plot_widget.setXRange(visible_start, visible_end, padding=0.01)
 
     def update_graphs(self):
@@ -1161,6 +1259,7 @@ class Ui_TDS(object):
             # clear the graphs
             self.temperature_y = [np.nan] * len(self.temperature_x)
             self.temperature_y_target = [np.nan] * len(self.temperature_x)
+            self.resistivity_y = [np.nan] * len(self.resistivity_x)
             self.h_flux_y = [np.nan] * len(self.h_flux_x)
 
         current_mode = tds_experiment.get_experiment_mode(self.config) == "CURRENT"
@@ -1184,6 +1283,15 @@ class Ui_TDS(object):
                 color="#000000",
             )
 
+        # Update the resistivity graph
+        plotted_resistivity = self.resistivity if self._is_finite_number(self.resistivity) else np.nan
+        if self.index_plot < len(self.resistivity_y):
+            self.resistivity_y[self.index_plot] = plotted_resistivity
+        else:
+            self.resistivity_x.append(self.resistivity_x[-1] + 0.5)
+            self.resistivity_y.append(plotted_resistivity)
+        self.resistivity_vis_line.setData(self.resistivity_x, self.resistivity_y)
+
         # Update the heat flux graph
         if self.index_plot < len(self.h_flux_y):
             self.h_flux_y[self.index_plot] = 0.0
@@ -1203,9 +1311,11 @@ class Ui_TDS(object):
         self.index_plot = 0
         self.temperature_y = [np.nan] * len(self.temperature_x)
         self.temperature_y_target = [np.nan] * len(self.temperature_x)
+        self.resistivity_y = [np.nan] * len(self.resistivity_x)
         self.h_flux_y = [np.nan] * len(self.h_flux_x)
         self.temperature_vis_line_target.setData(self.temperature_x, self.temperature_y_target)
         self.temperature_vis_line.setData(self.temperature_x, self.temperature_y)
+        self.resistivity_vis_line.setData(self.resistivity_x, self.resistivity_y)
         self.h_flux_vis_line.setData(self.h_flux_x, self.h_flux_y)
         self.diff_label.setText("Diff: --", color="#000000")
         self.refresh_plot_ranges()
@@ -1296,11 +1406,12 @@ class Ui_TDS(object):
         self.save_config()
         print(
             f"{controller_mode} tuned and saved: Kp={result['Kp']:.6f}, Ki={result['Ki']:.6f}, "
-            f"Kd={result['Kd']:.6f}, baseline={result.get('baseline_current', float('nan')):.4f} V, "
-            f"response={result.get('step_voltage', float('nan')):.4f} V, "
+            f"Kd={result['Kd']:.6f}, baseline={result.get('baseline_current', float('nan')):.4f} A, "
+            f"response={result.get('step_current', float('nan')):.4f} A, "
             f"delta={result.get('step_delta_current', float('nan')):.4f} A, "
             f"peak rise={result.get('peak_rise_c', float('nan')):.2f} C"
         )
+        self.refresh_pid_status_label()
         if controller_mode == 'PID':
             tuning_message = (
                 f"PID tuned: Kp={result['Kp']:.5f}, Ki={result['Ki']:.5f}, Kd={result['Kd']:.5f}"
@@ -1380,6 +1491,7 @@ class Ui_TDS(object):
                 calibration_note=self.t0_calibration_warning,
                 flush_interval_s=self.config['autosave_flush_interval_s'],
                 batch_size=self.config['autosave_batch_size'],
+                run_metadata=self.build_run_metadata(),
             ).start()
         except Exception as exc:
             self.data_saver = None
@@ -1448,6 +1560,7 @@ class Ui_TDS(object):
         self.voltage_lcd.display(0)
         self.current_lcd.display(0)
         self.resistivity_lcd.display(0)
+        self.power_lcd.display(0)
         self.temperature_lcd.display(0)
         self.temperature_target_lcd.display(0)
         # After stop/finish show full experiment history and keep it visible.

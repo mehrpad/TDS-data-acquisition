@@ -1044,7 +1044,7 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
                 print(
                     f"Tuned {controller_mode} parameters: Kp={tuned['Kp']:.6f}, Ki={tuned['Ki']:.6f}, "
                     f"Kd={tuned['Kd']:.6f}, baseline={baseline_current:.4f} A, "
-                    f"response={candidate_current:.4f} A, delta={tuned['step_delta_current']:.4f} V, "
+                    f"response={candidate_current:.4f} A, delta={tuned['step_delta_current']:.4f} A, "
                     f"peak rise={tuned['peak_rise_c']:.2f} C"
                 )
                 return tuned

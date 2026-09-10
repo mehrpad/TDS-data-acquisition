@@ -54,7 +54,13 @@ class LowVoltageStartupTests(unittest.TestCase):
         self.assertAlmostEqual(_measurement_current_floor(config), 0.02)
 
     def test_low_voltage_slew_uses_one_millivolt_steps(self):
-        config = _config(t0_current_search_start=0.01)
+        # The default low-current step is 0.01 A (same as the normal step); pass
+        # the finer 0.001 A explicitly to exercise the two-tier mechanism itself.
+        config = _config(
+            t0_current_search_start=0.01,
+            low_current_max_step_up=0.001,
+            low_current_max_step_down=0.001,
+        )
         self.assertAlmostEqual(_limit_current_slew(0.03, 0.02, 0.01, 1.0, config), 0.021)
         self.assertAlmostEqual(_limit_current_slew(0.01, 0.02, 0.01, 1.0, config), 0.019)
 
@@ -101,7 +107,7 @@ class LowVoltageStartupTests(unittest.TestCase):
         self.assertEqual(get_experiment_mode({"experiment_mode": "CURVE_SWEEP"}), "CURRENT")
 
     def test_voltage_ramp_uses_volts_per_minute_and_normal_slew_limits(self):
-        config = _config()
+        config = _config(low_current_max_step_up=0.001, low_current_max_step_down=0.001)
         command = _current_ramp_command(
             start_current=0.01,
             ramp_speed_min=0.001,

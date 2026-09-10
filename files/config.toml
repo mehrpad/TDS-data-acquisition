@@ -9,7 +9,7 @@
 controller_mode = "PI"
 
 # Choose "TEMPERATURE" for PI/PID control or "VOLTAGE" for an elapsed-time voltage ramp.
-experiment_mode = "CURRENT"
+experiment_mode = "TEMPERATURE"
 
 # Control loop frequency in Hz; 0.5 Hz gives one synchronized update every 2 seconds.
 experiment_frequency = 0.5
@@ -33,10 +33,10 @@ DMM_speed = 10
 dmm_synchronized_reading = true
 
 # Initial fixed voltage-DMM range in volts.
-dmm_voltage_range_v = 2
+dmm_voltage_range_v = 20
 
 # Initial fixed current-DMM range in amps; 0.002 A selects the 2 mA range.
-dmm_current_range_a = 0.02
+dmm_current_range_a = 2
 
 # Increase fixed DMM ranges only when a reading approaches full scale; this is not instrument auto-ranging.
 dmm_staged_ranging_enabled = true
@@ -94,7 +94,7 @@ pid_integral_limit = 400
 pid_derivative_filter = 0.6
 
 # Initial PSU current at the start of an experiment.
-startup_current = 0.01
+startup_current = 0.005
 
 # Lowest current the controller may request.
 min_current = 0
@@ -115,10 +115,10 @@ max_current_step_down = 0.01
 low_current_step_threshold = 0.05
 
 # Largest upward PSU action at or below the low-voltage threshold.
-low_current_max_step_up = 0.001
+low_current_max_step_up = 0.01
 
 # Largest downward PSU action at or below the low-voltage threshold.
-low_current_max_step_down = 0.001
+low_current_max_step_down = 0.01
 
 # Larger upward step allowed when the sample is far below the setpoint.
 max_current_step_up_far = 0.01
@@ -191,7 +191,7 @@ curve_extrapolation_enabled = true
 curve_extrapolation_min_temperature_c = 0
 
 # Highest temperature that extrapolation may return.
-curve_extrapolation_max_temperature_c = 600
+curve_extrapolation_max_temperature_c = 1000
 
 # Number of points at each end used for the endpoint linear fits.
 curve_extrapolation_fit_points = 20
@@ -328,7 +328,7 @@ autosave_batch_size = 10
 tuning_current_step = 0.001
 
 # Starting PSU voltage for controller tuning.
-tuning_start_current = 0.01
+tuning_start_current = 0.005
 
 # Maximum PSU current allowed during controller tuning.
 tuning_search_max_current = 0.1
@@ -383,7 +383,7 @@ tuning_plateau_growth_c = 0.08
 t0_calibration_current = 0.05
 
 # Starting PSU voltage for the T0 stable-current search.
-t0_current_search_start = 0.01
+t0_current_search_start = 0.005
 
 # Voltage increment used during the T0 stable-current search.
 t0_current_step = 0.001
