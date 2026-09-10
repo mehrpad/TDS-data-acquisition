@@ -214,11 +214,20 @@ def configure_dc_range_from_config(DMM, mode, config):
     return configured_range
 
 
-def increase_dc_range_if_needed(DMM, mode, measured_value, config, force_next=False):
+def increase_dc_range_if_needed(DMM, mode, measured_value, config, force_next=False, step_margin=None):
     """Step a manually ranged DMM upward when its reading approaches full scale.
 
     The instrument remains in explicit fixed-range mode. Ranges only move up
     during an operation, preventing autorange chatter and conversion-time jumps.
+
+    `step_margin` is the largest jump the next reading could make (e.g. the
+    per-loop current step). On a starting range sized close to that step - the
+    0.02 A current range is only twice the default 0.01 A step - the flat
+    `dmm_range_switch_fraction` alone can let one more step land past full
+    scale before the escalation is even evaluated. The threshold is lowered to
+    leave at least one step of headroom whenever that would trigger earlier
+    than the flat fraction; on ranges much larger than the step, the flat
+    fraction still governs and behavior is unchanged.
     """
     if not bool(config.get("dmm_staged_ranging_enabled", True)):
         return None
@@ -235,6 +244,13 @@ def increase_dc_range_if_needed(DMM, mode, measured_value, config, force_next=Fa
         return None
     if not math.isfinite(switch_fraction) or not 0 < switch_fraction <= 1:
         raise ValueError("dmm_range_switch_fraction must be greater than 0 and at most 1.")
+
+    try:
+        margin = abs(float(step_margin)) if step_margin is not None else 0.0
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid step_margin: {step_margin!r}") from exc
+    if not math.isfinite(margin) or margin < 0:
+        raise ValueError("step_margin must be finite and non-negative.")
 
     range_key = "dmm_voltage_range_v" if mode == "VOLT" else "dmm_current_range_a"
     active_key = _active_range_key(mode)
@@ -257,7 +273,10 @@ def increase_dc_range_if_needed(DMM, mode, measured_value, config, force_next=Fa
         selected_index += 1
         selected_range = allowed_ranges[selected_index]
     else:
-        while magnitude >= selected_range * switch_fraction and selected_index < len(allowed_ranges) - 1:
+        while selected_index < len(allowed_ranges) - 1:
+            threshold = min(selected_range * switch_fraction, selected_range - margin)
+            if magnitude < threshold:
+                break
             selected_index += 1
             selected_range = allowed_ranges[selected_index]
     if selected_range == active_range:

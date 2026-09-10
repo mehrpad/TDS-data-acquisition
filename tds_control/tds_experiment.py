@@ -2903,6 +2903,7 @@ def measure_resistivity(
                 measured_current,
                 config,
                 force_next=current_overload,
+                step_margin=float(config.get("max_current_step_up", 0.01)) * current_step_scale(config),
             )
             if voltage_range_change is None and current_range_change is None:
                 if voltage_overload or current_overload:

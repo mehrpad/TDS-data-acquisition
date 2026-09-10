@@ -36,7 +36,7 @@ dmm_synchronized_reading = true
 dmm_voltage_range_v = 20
 
 # Initial fixed current-DMM range in amps; 0.002 A selects the 2 mA range.
-dmm_current_range_a = 2
+dmm_current_range_a = 0.02
 
 # Increase fixed DMM ranges only when a reading approaches full scale; this is not instrument auto-ranging.
 dmm_staged_ranging_enabled = true

@@ -270,14 +270,64 @@ class LowVoltageStartupTests(unittest.TestCase):
             [call("CONF:VOLT:DC 0.2"), call("CONF:CURR:DC 0.2")],
         )
 
+    def test_current_range_escalates_early_on_a_tight_range(self):
+        """A starting range close to the per-loop step must escalate before overload.
+
+        On the 0.02 A current range with the default 0.01 A step, waiting for
+        the flat 80%-of-range threshold (0.016 A) leaves less than one step of
+        headroom: the very next commanded step could land at or past 0.02 A
+        before the DMM range has caught up. step_margin pulls the threshold
+        down to half scale here, so escalation happens a full step early.
+        Ranges much larger than the step (0.2 A, 2 A) are unaffected - the
+        flat fraction already leaves ample headroom there.
+        """
+        dmm = Mock()
+        config = _config(dmm_current_range_a=0.02)
+        siglent.configure_dc_range_from_config(dmm, "CURR", config)
+
+        # Below the tightened threshold (0.01 A): no escalation yet.
+        result = siglent.increase_dc_range_if_needed(
+            dmm, "CURR", 0.009, config, step_margin=0.01
+        )
+        self.assertIsNone(result)
+
+        # At the tightened threshold: escalates now, a full step before 0.02 A.
+        result = siglent.increase_dc_range_if_needed(
+            dmm, "CURR", 0.01, config, step_margin=0.01
+        )
+        self.assertEqual(result, (0.02, 0.2))
+        self.assertEqual(config["_active_dmm_curr_range"], 0.2)
+
+    def test_current_range_margin_does_not_affect_a_range_much_larger_than_the_step(self):
+        dmm = Mock()
+        config = _config(dmm_current_range_a=2.0)
+        siglent.configure_dc_range_from_config(dmm, "CURR", config)
+
+        # 0.667 A is 33% of a 2 A range; nowhere near the flat 80% threshold,
+        # and the 0.01 A step margin does not pull that threshold down here.
+        result = siglent.increase_dc_range_if_needed(
+            dmm, "CURR", 0.667, config, step_margin=0.01
+        )
+        self.assertIsNone(result)
+
+    def test_voltage_ranging_is_unaffected_by_the_current_step_margin(self):
+        dmm = Mock()
+        config = _config(dmm_voltage_range_v=20.0)
+        siglent.configure_dc_range_from_config(dmm, "VOLT", config)
+
+        # 15 V is 75% of a 20 V range: below the flat 80% threshold, and VOLT
+        # calls never pass step_margin, so it stays on this range.
+        result = siglent.increase_dc_range_if_needed(dmm, "VOLT", 15.0, config)
+        self.assertIsNone(result)
+
     @patch("tds_control.tds_experiment.time.sleep")
     @patch(
         "tds_control.siglent.read_DMM_pair",
         side_effect=[
             (0.170, 0.00170),
-            (0.171, 0.0100),
-            (0.172, 0.0100),
-            (0.173, 0.0100),
+            (0.171, 0.0050),
+            (0.172, 0.0050),
+            (0.173, 0.0050),
         ],
     )
     def test_staged_fixed_ranges_step_up_and_discard_transition_readings(self, read_pair, sleep):
@@ -303,8 +353,8 @@ class LowVoltageStartupTests(unittest.TestCase):
         )
 
         self.assertAlmostEqual(measured_voltage, 0.173)
-        self.assertAlmostEqual(measured_current, 0.0100)
-        self.assertAlmostEqual(temperature, 17.3)
+        self.assertAlmostEqual(measured_current, 0.0050)
+        self.assertAlmostEqual(temperature, 34.6)
         self.assertEqual(read_pair.call_count, 4)
         sleep.assert_called_once_with(0.3)
         self.assertIn(call("CONF:VOLT:DC 2.0"), voltage_dmm.write.call_args_list)
@@ -371,6 +421,10 @@ class LowVoltageStartupTests(unittest.TestCase):
             max_current=3.0,
             dmm_voltage_range_v=1000.0,
             dmm_current_range_a=0.002,
+            # This test exercises the VOLT overload path only; a tiny step
+            # keeps the CURR margin from also escalating the stable 0.001 A
+            # reading (see test_current_range_escalates_early_on_a_tight_range).
+            max_current_step_up=0.0001,
         )
         siglent.configure_dc_range_from_config(voltage_dmm, "VOLT", config)
         siglent.configure_dc_range_from_config(current_dmm, "CURR", config)
