@@ -81,16 +81,19 @@ CONTROL_DEFAULTS = {
     "measurement_retry_delay_s": 0.15,
     "measurement_retry_consensus_ohm": 0.015,
     "stable_current_invalid_advance_count": 5,
-    # When False, every reading below skips the low-signal/temperature-jump
-    # confirmation machinery entirely: each resistance-derived temperature is
-    # trusted directly (still subject to the resistance-glitch retry in
-    # _measure_with_retry and basic finite/range checks), and the current
-    # slew-rate limit (max_current_step_up/down) is the only thing bounding
-    # how fast control can react to a reading. Set false for wires where the
-    # confirmation machinery's own hold-and-probe behavior costs more (stale
-    # dataset rows, stalled control while waiting on consensus) than the
-    # protection is worth given the slew limit already caps command changes.
-    "measurement_temperature_jump_guard_enabled": True,
+    # When False, every reading trusts the resistance-derived temperature
+    # directly: skips the low-signal/temperature-jump confirmation machinery
+    # (holding, probing, NaN rows while unconfirmed) and the resistance-glitch
+    # retry/reject in _measure_with_retry. Nothing measured is ever discarded
+    # or replaced with a stale value - the current slew-rate limit
+    # (max_current_step_up/down) is the only thing bounding how fast control
+    # can react to a reading. Default false: repeated field use found the
+    # confirmation machinery's own hold-and-probe behavior (stale dataset
+    # rows, stalled control while waiting on consensus, several distinct
+    # bugs in the probing itself) cost more than the protection was worth,
+    # given the slew limit already caps how far one reading can move the
+    # command. Set true to restore it.
+    "measurement_temperature_jump_guard_enabled": False,
     "measurement_temp_jump_c": 8.0,
     "measurement_temp_jump_up_c": 20.0,
     "measurement_temp_jump_down_c": 8.0,
@@ -1275,6 +1278,12 @@ def _measure_with_retry(
         config=config,
         power_supply=power_supply,
     )
+    if not bool(config.get("measurement_temperature_jump_guard_enabled", True)):
+        # Trust every reading directly instead of retrying/rejecting it against
+        # the previous one; the current slew-rate limit is the only thing left
+        # bounding how fast control can react to it.
+        return measured_voltage, measured_current, temperature, resistance, np.isfinite(resistance)
+
     jump_limit = _resistance_jump_limit(previous_resistance, config)
     consensus_limit = max(
         float(config.get("measurement_retry_consensus_ohm", 0.015)),
