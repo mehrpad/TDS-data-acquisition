@@ -2670,7 +2670,14 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                                 config=config,
                             )
                         )
-                        if low_signal_recovery_voltage is not None:
+                        # Once this recovery has spent its attempts it keeps returning
+                        # applied_current unchanged forever (nothing resets it outside the
+                        # fully-valid-measurement path, which can't be reached while we're
+                        # stuck) - that "hold" is only meant to pause its own stepping, not
+                        # to veto a concurrent, more specific mechanism. Applying it while a
+                        # jump probe is actively driving current silently discards every
+                        # probe request forever, deadlocking the experiment.
+                        if jump_probe_current_request is None and low_signal_recovery_voltage is not None:
                             pid_current = low_signal_recovery_voltage
                         if low_signal_recovery_stepped:
                             print(
