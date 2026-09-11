@@ -2310,7 +2310,17 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     )
                     if temperature_delta < -jump_down_limit:
                         large_jump = abs(temperature_delta) >= probe_threshold
-                        probe_eligible = _temperature_jump_probe_eligible(
+                        # Once a probe is already running for this direction, its own
+                        # corrective current step can legitimately push resistance back
+                        # toward previous_resistance (that is the whole point of probing);
+                        # re-running eligibility's frozen-reference check on every later
+                        # sample would then disqualify a probe that is working exactly as
+                        # intended. Eligibility only gates whether to START a new probe -
+                        # _advance_temperature_jump_probe's own rolling consistency check
+                        # is what should filter samples once one is already active.
+                        probe_eligible = (
+                            temperature_jump_probe.active and temperature_jump_probe.direction == "down"
+                        ) or _temperature_jump_probe_eligible(
                             "down",
                             temperature,
                             previous_temperature,
@@ -2408,7 +2418,13 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             temperature = np.nan
                     elif temperature_delta > jump_up_limit:
                         large_jump = abs(temperature_delta) >= probe_threshold
-                        probe_eligible = _temperature_jump_probe_eligible(
+                        # See the matching comment in the downward branch: a probe already
+                        # running for this direction must not be re-disqualified by
+                        # eligibility's frozen-reference check reacting to the probe's own
+                        # corrective current step.
+                        probe_eligible = (
+                            temperature_jump_probe.active and temperature_jump_probe.direction == "up"
+                        ) or _temperature_jump_probe_eligible(
                             "up",
                             temperature,
                             previous_temperature,
