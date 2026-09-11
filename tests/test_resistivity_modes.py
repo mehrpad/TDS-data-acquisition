@@ -171,13 +171,11 @@ class ResistivityModeTests(unittest.TestCase):
         1/experiment_frequency period, so a 5 s cycle has to be allowed 2.5x
         the step a 2 s cycle gets or the controller cannot follow the setpoint.
         """
-        continuous = _config(low_current_max_step_up=0.001, low_current_step_threshold=0.05)
+        continuous = _config()
         duty_cycled = _config(
             resistivity_mode="FOUR_WIRE",
             resistivity_heat_time_s=4.0,
             resistivity_measure_time_s=1.0,
-            low_current_max_step_up=0.001,
-            low_current_step_threshold=0.05,
         )
         self.assertAlmostEqual(current_step_scale(continuous), 1.0)
         self.assertAlmostEqual(current_step_scale(duty_cycled), 2.5)
@@ -210,13 +208,13 @@ class ResistivityModeTests(unittest.TestCase):
                 "startup_voltage": 0.02,
                 "t0_voltage_search_start": 0.03,
                 "max_voltage": 30.0,
-                "low_voltage_max_step_up": 0.002,
+                "max_voltage_step_up": 0.002,
             }
         )
         self.assertEqual(migrated["startup_current"], 0.02)
         self.assertEqual(migrated["t0_current_search_start"], 0.03)
         self.assertEqual(migrated["compliance_voltage"], 30.0)
-        self.assertEqual(migrated["low_current_max_step_up"], 0.002)
+        self.assertEqual(migrated["max_current_step_up"], 0.002)
         self.assertNotIn("startup_voltage", migrated)
         self.assertNotIn("max_voltage", migrated)
         # The ceiling is a current now, and comes from the defaults.
