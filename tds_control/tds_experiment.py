@@ -1742,23 +1742,18 @@ def prepare_power_supply_output(power_supply, config):
     )
 
 
-def _shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager, config=None):
+def _shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager):
     if power_supply is not None:
-        config = config or CONTROL_DEFAULTS
-        keepalive_current = None
         try:
-            keepalive_current = _psu_keepalive_current(config)
-            siglent.set_current(power_supply, current=keepalive_current)
-        except Exception as exc:
-            print(f"An error occurred in setting the PSU keep-alive current: {exc}")
-        if keepalive_current is not None:
+            siglent.set_current(power_supply, current=0.0)
             time.sleep(0.1)
-            print(f"Power supply output left ON at {keepalive_current:.6f} A.")
-        else:
-            try:
-                siglent.set_output(power_supply, state="OFF")
-            except Exception as exc:
-                print(f"An error occurred switching the power supply off: {exc}")
+        except Exception as exc:
+            print(f"An error occurred zeroing the PSU current before shutdown: {exc}")
+        try:
+            siglent.set_output(power_supply, state="OFF")
+            print("Power supply output switched OFF.")
+        except Exception as exc:
+            print(f"An error occurred switching the power supply off: {exc}")
     for instrument in (dmm_v, dmm_i, power_supply):
         if instrument is not None:
             try:
@@ -1881,7 +1876,7 @@ def curve_sweep(emitter, sweep_params, r_vs_t, config, data_saver=None):
                 time.sleep(loop_time - elapsed)
 
     finally:
-        _shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager, config=config)
+        _shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager)
         if data_saver is not None:
             data_saver.finalize()
         print("Curve sweep thread finished.")
@@ -2010,7 +2005,7 @@ def current_ramp(emitter, ramp_params, r_vs_t, config, data_saver=None):
         if emitter.stopped:
             print("Stop signal received.")
     finally:
-        _shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager, config=config)
+        _shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager)
         if data_saver is not None:
             data_saver.finalize()
         print("Voltage-ramp thread finished.")
@@ -2738,7 +2733,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                 break
 
     finally:
-        _shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager, config=config)
+        _shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager)
         if data_saver is not None:
             data_saver.finalize()
         print("TDS experiment thread finished.")

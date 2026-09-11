@@ -35,13 +35,13 @@ dmm_synchronized_reading = true
 # Initial fixed voltage-DMM range in volts.
 dmm_voltage_range_v = 20
 
-# Initial fixed current-DMM range in amps; 0.002 A selects the 2 mA range.
+# Initial fixed current-DMM range in amps; 0.02 A selects the 20 mA range.
 dmm_current_range_a = 0.02
 
 # Increase fixed DMM ranges only when a reading approaches full scale; this is not instrument auto-ranging.
 dmm_staged_ranging_enabled = true
 
-# Fraction of the active fixed range that triggers an upward range change.
+# Fraction of the active fixed range that triggers an upward range change. On a current range close to the per-loop step size, the actual threshold is pulled earlier to leave headroom for one more step.
 dmm_range_switch_fraction = 0.8
 
 # Settling delay after a fixed-range change.

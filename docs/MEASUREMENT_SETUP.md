@@ -159,7 +159,7 @@ At PSU voltages up to `low_voltage_step_threshold` (default `0.05 V`), normal co
 
 T0 and tuning baseline searches require resistance stability as well as current stability. T0 also checks the final calibration samples before accepting the scale, so noisy readings cannot silently become a misleading low-TCR calibration.
 
-Ordinary current updates do not resend the PSU `ON` command. At the end, the software returns to `psu_keepalive_current` and intentionally leaves CH1 enabled.
+Ordinary current updates do not resend the PSU `ON` command. At the end of T0 calibration, PI/PID tuning, and an experiment, the software zeroes the current and switches CH1 off.
 
 ## Pre-run checklist
 

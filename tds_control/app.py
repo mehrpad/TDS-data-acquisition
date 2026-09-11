@@ -478,14 +478,42 @@ class Ui_TDS(object):
             "                                    ")
         self.parameters_text.setObjectName("parameters_text")
         self.gridLayout_3.addWidget(self.parameters_text, 2, 0, 1, 6)
-        self.pid_status_label = QtWidgets.QLabel(parent=self.centralwidget)
-        self.pid_status_label.setMinimumSize(QtCore.QSize(0, 24))
-        self.pid_status_label.setStyleSheet(
-            "QLabel{border: 1px solid gray; border-radius: 6px; padding: 2px 8px; "
-            "background: rgb(240,240,246); font-family: 'Consolas','Courier New',monospace;}"
+        self.pid_status_widget = QtWidgets.QWidget(parent=self.centralwidget)
+        self.pid_status_widget.setObjectName("pid_status_widget")
+        self.pid_status_layout = QtWidgets.QHBoxLayout(self.pid_status_widget)
+        self.pid_status_layout.setContentsMargins(0, 0, 0, 0)
+        self.pid_status_layout.setSpacing(6)
+        pid_field_style = (
+            "QLineEdit{border: 1px solid gray; border-radius: 6px; padding: 2px 6px; "
+            "background: rgb(255,255,255); font-family: 'Consolas','Courier New',monospace;}"
         )
-        self.pid_status_label.setObjectName("pid_status_label")
-        self.gridLayout_3.addWidget(self.pid_status_label, 3, 0, 1, 6)
+        self.controller_mode_label = QtWidgets.QLabel(parent=self.pid_status_widget)
+        self.controller_mode_label.setObjectName("controller_mode_label")
+        self.pid_status_layout.addWidget(self.controller_mode_label)
+        self.pid_status_layout.addSpacing(10)
+        self.label_pid_kp = QtWidgets.QLabel("Kp", parent=self.pid_status_widget)
+        self.pid_status_layout.addWidget(self.label_pid_kp)
+        self.pid_kp_edit = QtWidgets.QLineEdit(parent=self.pid_status_widget)
+        self.pid_kp_edit.setMinimumSize(QtCore.QSize(90, 22))
+        self.pid_kp_edit.setStyleSheet(pid_field_style)
+        self.pid_kp_edit.setObjectName("pid_kp_edit")
+        self.pid_status_layout.addWidget(self.pid_kp_edit)
+        self.label_pid_ki = QtWidgets.QLabel("Ki", parent=self.pid_status_widget)
+        self.pid_status_layout.addWidget(self.label_pid_ki)
+        self.pid_ki_edit = QtWidgets.QLineEdit(parent=self.pid_status_widget)
+        self.pid_ki_edit.setMinimumSize(QtCore.QSize(90, 22))
+        self.pid_ki_edit.setStyleSheet(pid_field_style)
+        self.pid_ki_edit.setObjectName("pid_ki_edit")
+        self.pid_status_layout.addWidget(self.pid_ki_edit)
+        self.label_pid_kd = QtWidgets.QLabel("Kd", parent=self.pid_status_widget)
+        self.pid_status_layout.addWidget(self.label_pid_kd)
+        self.pid_kd_edit = QtWidgets.QLineEdit(parent=self.pid_status_widget)
+        self.pid_kd_edit.setMinimumSize(QtCore.QSize(90, 22))
+        self.pid_kd_edit.setStyleSheet(pid_field_style)
+        self.pid_kd_edit.setObjectName("pid_kd_edit")
+        self.pid_status_layout.addWidget(self.pid_kd_edit)
+        self.pid_status_layout.addStretch(1)
+        self.gridLayout_3.addWidget(self.pid_status_widget, 3, 0, 1, 6)
         self.gridLayout_2 = QtWidgets.QGridLayout()
         self.gridLayout_2.setObjectName("gridLayout_2")
         self.start_botton = QtWidgets.QPushButton(parent=self.centralwidget)
@@ -654,6 +682,9 @@ class Ui_TDS(object):
         self.max_power.editingFinished.connect(self.update_max_power)
         self.max_current.editingFinished.connect(self.update_max_current)
         self.calibration_start_current.editingFinished.connect(self.update_calibration_start_current)
+        self.pid_kp_edit.editingFinished.connect(self.update_pid_kp)
+        self.pid_ki_edit.editingFinished.connect(self.update_pid_ki)
+        self.pid_kd_edit.editingFinished.connect(self.update_pid_kd)
         self.measurement_conversion_mode.currentIndexChanged.connect(self.update_experiment_mode)
         self.resistivity_measurement_mode.currentIndexChanged.connect(self.update_resistivity_mode)
         self.calib_temperature.textEdited.connect(self.invalidate_t_zero_calibration)
@@ -708,6 +739,7 @@ class Ui_TDS(object):
         self.label_3.setText(_translate("TDS", "Current (A)                "))
         self.label_5.setText(_translate("TDS", "Resistivity (Ohm)"))
         self.label_power.setText(_translate("TDS", "Power (W)"))
+        self.controller_mode_label.setText(_translate("TDS", "Controller: PI"))
         self.parameters_text.setHtml(_translate("TDS",
                                                 "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
                                                 "<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\n"
@@ -789,7 +821,8 @@ class Ui_TDS(object):
         self.save_config()
 
     def refresh_pid_status_label(self):
-        """Show the controller gains currently in use, above Start/Stop.
+        """Show the controller gains currently in use, above Start/Stop, and
+        let the user edit them directly.
 
         Reflects self.config, so it updates immediately after a tune (or a
         config reload) rather than only showing whatever was tuned last.
@@ -797,12 +830,47 @@ class Ui_TDS(object):
         controller_mode = tds_experiment.get_controller_mode(self.config)
         kp = float(self.config.get('pid_kp', 0.0))
         ki = float(self.config.get('pid_ki', 0.0))
-        if controller_mode == 'PID':
-            kd = float(self.config.get('pid_kd', 0.0))
-            text = f"Controller: PID   Kp={kp:.6g} A/C   Ki={ki:.6g} A/(C*s)   Kd={kd:.6g} A*s/C"
-        else:
-            text = f"Controller: PI   Kp={kp:.6g} A/C   Ki={ki:.6g} A/(C*s)"
-        self.pid_status_label.setText(text)
+        kd = float(self.config.get('pid_kd', 0.0))
+        self.controller_mode_label.setText(f"Controller: {controller_mode}")
+        if not self.pid_kp_edit.hasFocus():
+            self.pid_kp_edit.setText(f'{kp:g}')
+        if not self.pid_ki_edit.hasFocus():
+            self.pid_ki_edit.setText(f'{ki:g}')
+        if not self.pid_kd_edit.hasFocus():
+            self.pid_kd_edit.setText(f'{kd:g}')
+        kd_used = controller_mode == 'PID'
+        self.pid_kd_edit.setEnabled(kd_used)
+        self.label_pid_kd.setEnabled(kd_used)
+        self.pid_kd_edit.setToolTip('' if kd_used else 'Kd is only used when controller_mode is PID.')
+
+    def _update_pid_gain(self, line_edit, config_key, label):
+        """Validate and save one PID/PI gain edited directly in the GUI."""
+        previous_value = float(self.config.get(config_key, 0.0))
+        try:
+            value = float(line_edit.text())
+            if not np.isfinite(value) or value < 0:
+                raise ValueError(f'{label} must be zero or a positive finite number.')
+        except ValueError as exc:
+            line_edit.setText(f'{previous_value:g}')
+            self.error_message(str(exc), color='red')
+            return False
+
+        self.config[config_key] = value
+        line_edit.setText(f'{value:g}')
+        self.save_config()
+        return True
+
+    def update_pid_kp(self):
+        """Save a manually edited proportional gain."""
+        return self._update_pid_gain(self.pid_kp_edit, 'pid_kp', 'Kp')
+
+    def update_pid_ki(self):
+        """Save a manually edited integral gain."""
+        return self._update_pid_gain(self.pid_ki_edit, 'pid_ki', 'Ki')
+
+    def update_pid_kd(self):
+        """Save a manually edited derivative gain."""
+        return self._update_pid_gain(self.pid_kd_edit, 'pid_kd', 'Kd')
 
     def apply_experiment_mode_ui(self):
         """Enable or disable controls based on the selected experiment mode."""
