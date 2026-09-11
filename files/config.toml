@@ -343,7 +343,7 @@ tuning_response_current_step = 0.01
 tuning_between_attempts_s = 0.5
 
 # Maximum duration of one tuning response measurement.
-tuning_max_duration_s = 180
+tuning_max_duration_s = 300
 
 # How many baseline samples are required before a tuning step.
 tuning_baseline_samples = 2
@@ -358,25 +358,25 @@ tuning_stable_current_a = 0.0001
 tuning_temperature_window_c = 40
 
 # Preferred temperature rise for the tuning step response.
-tuning_target_rise_c = 2
+tuning_target_rise_c = 20
 
 # Minimum temperature rise needed for a usable tuning result.
-tuning_min_temperature_rise_c = 1.2
+tuning_min_temperature_rise_c = 8
 
 # How long tuning waits before concluding that nothing is happening.
-tuning_no_response_timeout_s = 25
+tuning_no_response_timeout_s = 45
 
 # Minimum smoothed rise considered observable during tuning.
 tuning_min_observable_rise_c = 0.25
 
 # Maximum time allowed once the tuning response has plateaued.
-tuning_plateau_timeout_s = 15
+tuning_plateau_timeout_s = 45
 
 # Idle timeout once the smoothed rise stops improving.
-tuning_plateau_idle_timeout_s = 6
+tuning_plateau_idle_timeout_s = 20
 
 # Rise improvement required to count as continued growth during tuning.
-tuning_plateau_growth_c = 0.08
+tuning_plateau_growth_c = 0.04
 
 # T0 calibration
 # Highest voltage allowed during T0 calibration.
