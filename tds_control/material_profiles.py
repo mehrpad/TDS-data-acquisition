@@ -29,6 +29,7 @@ PROFILE_FIELDS = (
     "low_current_max_step_up",
     "low_current_max_step_down",
     "low_current_step_threshold",
+    "measurement_temperature_jump_guard_enabled",
     "resistivity_mode",
     "dmm_voltage_range_v",
     "dmm_current_range_a",
