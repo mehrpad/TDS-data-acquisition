@@ -88,7 +88,15 @@ CONTROL_DEFAULTS = {
     "measurement_temp_jump_up_c": 20.0,
     "measurement_temp_jump_down_c": 8.0,
     "measurement_jump_confirm_min_current_a": 0.02,
-    "measurement_jump_confirm_min_current": 0.1,
+    # Was 0.1: a voltage-era threshold carried over unchanged when this key
+    # was renamed from measurement_jump_confirm_min_voltage during the
+    # constant-current conversion. Combined with the old ignore_invalid_
+    # below_current * 2.0 floor (also removed), 0.1 A sat above where a
+    # sensitive low-resistance wire actually operates, permanently disabling
+    # jump confirmation there: a real, sustained temperature rise could never
+    # be confirmed once it drifted from a stale trusted value, and the
+    # controller would ignore it indefinitely (see docs/MEASUREMENT_SETUP.md).
+    "measurement_jump_confirm_min_current": 0.02,
     "measurement_temp_jump_accept_up_c": 35.0,
     "measurement_temp_jump_accept_setpoint_margin_c": 15.0,
     "low_signal_jump_confirm_samples": 3,
@@ -1511,11 +1519,14 @@ def _confirmed_upward_temperature_jump(
         config["minimum_current_a"] * 20.0,
         float(config.get("measurement_jump_confirm_min_current_a", 0.02)),
     )
-    minimum_confirm_voltage = max(
-        config.get("ignore_invalid_below_current", 0.05) * 2.0,
-        float(config.get("measurement_jump_confirm_min_current", 0.1)),
+    # Anything reaching this check has already cleared _is_low_signal_state's
+    # own ignore_invalid_below_current gate (that regime has its own working
+    # recovery path), so no extra multiple of it is needed here on top.
+    minimum_confirm_applied_current = max(
+        float(config.get("ignore_invalid_below_current", 0.05)),
+        float(config.get("measurement_jump_confirm_min_current", 0.02)),
     )
-    if abs(measured_current) < minimum_confirm_current or applied_current < minimum_confirm_voltage:
+    if abs(measured_current) < minimum_confirm_current or applied_current < minimum_confirm_applied_current:
         return False
 
     if temperature - previous_temperature > float(config.get("measurement_temp_jump_accept_up_c", 35.0)):
@@ -1563,11 +1574,14 @@ def _confirmed_downward_temperature_jump(
         config["minimum_current_a"] * 20.0,
         float(config.get("measurement_jump_confirm_min_current_a", 0.02)),
     )
-    minimum_confirm_voltage = max(
-        config.get("ignore_invalid_below_current", 0.05) * 2.0,
-        float(config.get("measurement_jump_confirm_min_current", 0.1)),
+    # Anything reaching this check has already cleared _is_low_signal_state's
+    # own ignore_invalid_below_current gate (that regime has its own working
+    # recovery path), so no extra multiple of it is needed here on top.
+    minimum_confirm_applied_current = max(
+        float(config.get("ignore_invalid_below_current", 0.05)),
+        float(config.get("measurement_jump_confirm_min_current", 0.02)),
     )
-    return abs(measured_current) >= minimum_confirm_current and applied_current >= minimum_confirm_voltage
+    return abs(measured_current) >= minimum_confirm_current and applied_current >= minimum_confirm_applied_current
 
 
 def _screen_low_signal_temperature(
@@ -1670,11 +1684,14 @@ def _temperature_jump_probe_eligible(
         config["minimum_current_a"] * 20.0,
         float(config.get("measurement_jump_confirm_min_current_a", 0.02)),
     )
-    minimum_confirm_voltage = max(
-        config.get("ignore_invalid_below_current", 0.05) * 2.0,
-        float(config.get("measurement_jump_confirm_min_current", 0.1)),
+    # Anything reaching this check has already cleared _is_low_signal_state's
+    # own ignore_invalid_below_current gate (that regime has its own working
+    # recovery path), so no extra multiple of it is needed here on top.
+    minimum_confirm_applied_current = max(
+        float(config.get("ignore_invalid_below_current", 0.05)),
+        float(config.get("measurement_jump_confirm_min_current", 0.02)),
     )
-    return abs(measured_current) >= minimum_confirm_current and applied_current >= minimum_confirm_voltage
+    return abs(measured_current) >= minimum_confirm_current and applied_current >= minimum_confirm_applied_current
 
 
 def _temperature_jump_probe_voltage(direction, applied_current, measured_current, config):

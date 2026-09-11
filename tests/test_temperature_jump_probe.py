@@ -133,6 +133,64 @@ class TemperatureJumpProbeTests(unittest.TestCase):
         self.assertIsNone(requested_voltage)
         self.assertEqual(attempts, 4)
 
+    def test_jump_confirmation_is_eligible_at_currents_common_on_sensitive_wires(self):
+        """Reproduces a field lockup: a real, sustained temperature rise past
+        the 35 C large-jump threshold was never confirmed, because the probe
+        path needed 0.1 A applied current to even start - a threshold carried
+        over unchanged from the constant-voltage era, when this key was
+        renamed from measurement_jump_confirm_min_voltage.
+
+        At 0.0943 A (the applied current in the field log), eligibility must
+        now pass and the probe must be able to run and eventually accept a
+        stable new reading, instead of resetting and rejecting every sample
+        while the trusted temperature stays frozen and the real one keeps
+        climbing.
+        """
+        config = _config()
+        self.assertTrue(
+            _temperature_jump_probe_eligible(
+                "up",
+                temperature=142.77,
+                previous_temperature=106.62,
+                measured_resistance=3.4705,
+                previous_resistance=3.3974,
+                measured_current=0.0950,
+                applied_current=0.0943,
+                resistance_confirmed=True,
+                config=config,
+            )
+        )
+        probe = TemperatureJumpProbe()
+        accepted, requested_current, attempts = _advance_temperature_jump_probe(
+            probe, "up", 142.77, 3.4705, 0.0943, 0.0950, config
+        )
+        self.assertFalse(accepted)
+        self.assertEqual(attempts, 1)
+        accepted, requested_current, attempts = _advance_temperature_jump_probe(
+            probe, "up", 143.10, 3.4720, requested_current, requested_current, config
+        )
+        self.assertTrue(accepted)
+        self.assertIsNone(requested_current)
+
+    def test_jump_confirmation_still_rejects_truly_low_current_readings(self):
+        # Below ignore_invalid_below_current, _is_low_signal_state routes the
+        # sample to the separate low-signal path instead; this check staying
+        # strict there is not a regression.
+        config = _config()
+        self.assertFalse(
+            _temperature_jump_probe_eligible(
+                "up",
+                temperature=40.0,
+                previous_temperature=23.0,
+                measured_resistance=3.0,
+                previous_resistance=2.0,
+                measured_current=0.01,
+                applied_current=0.01,
+                resistance_confirmed=True,
+                config=config,
+            )
+        )
+
     def test_downward_probe_holds_when_current_is_near_limit(self):
         # max_current is both the setpoint ceiling and the safety limit, so the
         # probe must hold once the measurement reaches 95% of it.

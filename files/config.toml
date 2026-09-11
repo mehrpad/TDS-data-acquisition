@@ -250,8 +250,8 @@ measurement_temp_jump_down_c = 8
 # Minimum current required to accept a confirmed jump.
 measurement_jump_confirm_min_current_a = 0.02
 
-# Minimum PSU voltage required to accept a confirmed jump.
-measurement_jump_confirm_min_current = 0.1
+# Minimum applied PSU current required to accept a confirmed jump.
+measurement_jump_confirm_min_current = 0.02
 
 # Largest upward jump that may still be accepted as physically plausible.
 measurement_temp_jump_accept_up_c = 35
