@@ -4,7 +4,12 @@ from unittest.mock import Mock, patch
 import numpy as np
 
 from tds_control import calibration
-from tds_control.calibration import _suggest_current_step, _tuning_schedule_targets, tune_pid_schedule
+from tds_control.calibration import (
+    _cap_next_tuning_target,
+    _suggest_current_step,
+    _tuning_schedule_targets,
+    tune_pid_schedule,
+)
 from tds_control.tds_experiment import CONTROL_DEFAULTS, build_control_config, pid_gains_for_current
 
 
@@ -109,6 +114,45 @@ class TuningScheduleTargetsTests(unittest.TestCase):
         self.assertLess(len(targets), 3)
         currents = [current for _, current in targets]
         self.assertEqual(currents, sorted(currents))
+
+
+class CapNextTuningTargetTests(unittest.TestCase):
+    """Reproduces the real failure: a high-gain wire and a naive 40% jump.
+
+    A wire measured at ~800 C/A on-device sent a naive jump to 40% of a 1 A
+    max_current past 500 C before the first stability sample was taken.
+    """
+
+    def test_a_high_gain_point_sharply_caps_the_next_target(self):
+        config = _config(tuning_schedule_jump_max_rise_c=10.0, minimum_current_change=0.001)
+        capped = _cap_next_tuning_target(
+            desired_current=0.4, previous_current=0.017, previous_gain=804.0, config=config
+        )
+        # 10 C allowed / 804 C/A ~= 0.0124 A of headroom above the low point.
+        self.assertLess(capped, 0.017 + 0.02)
+        self.assertGreater(capped, 0.017)
+
+    def test_a_low_gain_point_barely_caps_the_next_target(self):
+        config = _config(tuning_schedule_jump_max_rise_c=10.0)
+        capped = _cap_next_tuning_target(
+            desired_current=0.4, previous_current=0.02, previous_gain=15.0, config=config
+        )
+        # 10 C / 15 C/A = 0.667 A of headroom - comfortably clears 0.4 A.
+        self.assertAlmostEqual(capped, 0.4)
+
+    def test_never_returns_less_than_the_previous_current(self):
+        config = _config(tuning_schedule_jump_max_rise_c=10.0, minimum_current_change=0.001)
+        capped = _cap_next_tuning_target(
+            desired_current=0.4, previous_current=0.9, previous_gain=804.0, config=config
+        )
+        self.assertGreaterEqual(capped, 0.9)
+
+    def test_takes_a_small_fixed_first_step_without_a_prior_gain(self):
+        config = _config(tuning_current_step=0.001)
+        capped = _cap_next_tuning_target(
+            desired_current=0.4, previous_current=0.02, previous_gain=None, config=config
+        )
+        self.assertAlmostEqual(capped, 0.02 + 0.01)
 
 
 class FirstOrderPlant:
@@ -251,6 +295,104 @@ class TunePidScheduleIntegrationTests(unittest.TestCase):
         # dmm_v/dmm_i/power_supply all resolve to this same mock in the test
         # double, so _shutdown_instruments closing each of them closes it 3x.
         self.assertEqual(power_supply.close.call_count, 3)
+
+    def test_a_high_gain_wire_gets_a_capped_mid_target_instead_of_a_runaway(self):
+        """Reproduces the real failure with the fix in place.
+
+        A wire whose low-current gain is ~800 C/A must not be sent straight
+        to 40% of max_current: tune_pid_schedule should cap that jump using
+        the gain just measured at the low point, and still finish rather than
+        tripping the baseline-search safety check.
+        """
+        plant = FirstOrderPlant(
+            gain_c_per_a=800.0,
+            tau_s=0.2,
+            dead_time_s=0.02,
+            base_temperature=23.0,
+            base_resistance=2.0,
+            ohm_per_c=0.001,
+        )
+        power_supply = Mock()
+        power_supply.write_termination = None
+        power_supply.read_termination = None
+
+        siglent_double = Mock()
+        siglent_double.set_current.side_effect = lambda _ps, current: plant.set_current(current)
+
+        def read_pair(*_args, **_kwargs):
+            plant.advance(0.05)
+            return plant.read_pair()
+
+        siglent_double.read_DMM_pair.side_effect = read_pair
+        siglent_double.is_overload_reading.return_value = False
+        siglent_double.increase_dc_range_if_needed.return_value = None
+        siglent_double.configure_dc_range_from_config.return_value = None
+        siglent_double.set_mode_speed.return_value = None
+        siglent_double.set_output.return_value = None
+        siglent_double.unlock_panel.return_value = None
+        siglent_double.set_compliance_voltage.return_value = None
+
+        resource_manager = Mock()
+        resource_manager.open_resource.return_value = power_supply
+
+        config = _config(
+            DMM_v="fake-dmm-v",
+            DMM_i="fake-dmm-i",
+            PS="fake-ps",
+            DMM_speed=10,
+            max_current=1.0,
+            tuning_start_current=0.02,
+            controller_mode="PI",
+            experiment_frequency=20.0,
+            resistivity_mode="V_OVER_I",
+            tuning_settle_time_s=0.0,
+            tuning_between_attempts_s=0.0,
+            tuning_baseline_samples=2,
+            tuning_stable_current_samples=2,
+            tuning_stable_current_a=1e-5,
+            tuning_max_duration_s=20.0,
+            tuning_min_temperature_rise_c=0.05,
+            tuning_target_rise_c=0.2,
+            tuning_min_observable_rise_c=0.02,
+            tuning_no_response_timeout_s=10.0,
+            tuning_plateau_timeout_s=10.0,
+            tuning_plateau_idle_timeout_s=5.0,
+            resistance_outlier_min_ohm=0.5,
+            stable_resistance_spread_ohm=0.5,
+            measurement_fail_limit=200,
+            # A tight, realistic window - this is what a naive 40%/80% jump
+            # blew straight through in the field.
+            temperature_tolerance_c=2.0,
+            safety_temp_margin_c=15.0,
+            tuning_temperature_window_c=40.0,
+            tuning_schedule_jump_max_rise_c=10.0,
+        )
+
+        temperature_interp = _temperature_interp_for_plant(plant)
+
+        with patch.object(calibration, "pyvisa") as pyvisa_module, patch.object(
+            calibration, "siglent", siglent_double
+        ), patch.object(
+            calibration, "_prepare_curve_interpolators", return_value=(None, None, temperature_interp)
+        ), patch.object(
+            calibration.tds_experiment, "siglent", siglent_double
+        ):
+            pyvisa_module.ResourceManager.return_value = resource_manager
+            result = tune_pid_schedule(
+                experiment_params={"target_T": 300.0},
+                config=config,
+                r_vs_t=np.array([[1.0, 2.0], [20.0, 30.0]]),
+                base_temperature_hint=23.0,
+                emitter=None,
+            )
+
+        schedule = result["schedule"]
+        self.assertGreaterEqual(len(schedule), 1)
+        # The naive 40% target (0.4 A) must not have been used directly: at
+        # 800 C/A that step alone would already exceed the safety window.
+        for point in schedule:
+            if point is not schedule[0]:
+                self.assertLess(point["current_a"], 0.4)
 
 
 if __name__ == "__main__":

@@ -133,8 +133,13 @@ CONTROL_DEFAULTS = {
     "tuning_stable_current_samples": 3,
     "tuning_stable_current_a": 1e-4,
     "tuning_temperature_window_c": 40.0,
-    "tuning_target_rise_c": 20.0,
-    "tuning_min_temperature_rise_c": 8.0,
+    "tuning_target_rise_c": 8.0,
+    "tuning_min_temperature_rise_c": 3.0,
+    # Max rise permitted when jumping a schedule point's baseline toward the
+    # next target current, computed from the previous point's own measured
+    # gain (see _cap_next_tuning_target). Independent of tuning_target_rise_c,
+    # which bounds the rise during one point's own response measurement.
+    "tuning_schedule_jump_max_rise_c": 10.0,
     "tuning_no_response_timeout_s": 45.0,
     "tuning_min_observable_rise_c": 0.25,
     "tuning_plateau_timeout_s": 45.0,

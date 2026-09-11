@@ -354,7 +354,7 @@ class Ui_TDS(object):
         self.plot_window_layout.addStretch(1)
         self.plot_window_layout.addWidget(self.plot_window_button)
         self.plot_window_layout.addStretch(1)
-        self.gridLayout_4.addLayout(self.plot_window_layout, 2, 0, 1, 1)
+        self.gridLayout_4.addLayout(self.plot_window_layout, 3, 0, 1, 1)
         self.gridLayout_5.addLayout(self.gridLayout_4, 0, 1, 2, 1)
         self.gridLayout_3 = QtWidgets.QGridLayout()
         self.gridLayout_3.setObjectName("gridLayout_3")
