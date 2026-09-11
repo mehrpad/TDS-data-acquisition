@@ -230,7 +230,7 @@ measurement_retry_consensus_ohm = 0.015
 stable_current_invalid_advance_count = 5
 
 # When false, trust each resistance-derived temperature directly and rely only on the current slew limit; skips all jump/low-signal confirmation below.
-measurement_temperature_jump_guard_enabled = true
+measurement_temperature_jump_guard_enabled = false
 
 # Legacy symmetric temperature-jump threshold kept for compatibility.
 measurement_temp_jump_c = 8

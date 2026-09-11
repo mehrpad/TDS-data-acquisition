@@ -7,6 +7,7 @@ from tds_control.tds_experiment import (
     CONTROL_DEFAULTS,
     ExperimentSafetyError,
     _limit_current_slew,
+    _measure_with_retry,
     build_control_config,
     get_resistivity_mode,
     measure_resistivity,
@@ -223,6 +224,38 @@ class ResistivityModeTests(unittest.TestCase):
     def test_an_unknown_mode_falls_back_to_the_continuous_measurement(self):
         self.assertEqual(get_resistivity_mode({"resistivity_mode": "nonsense"}), "V_OVER_I")
         self.assertEqual(get_resistivity_mode({"resistivity_mode": "four_wire"}), "FOUR_WIRE")
+
+    def test_jump_guard_disabled_by_default_trusts_the_first_reading(self):
+        # A big resistance jump that would otherwise trigger retries and a
+        # possible rejection is accepted immediately with the guard off -
+        # its default since repeated field use found the confirmation/retry
+        # machinery cost more (stale rows, stalled control) than the current
+        # slew limit alone does not already provide.
+        self.assertFalse(CONTROL_DEFAULTS["measurement_temperature_jump_guard_enabled"])
+        siglent = _siglent_double([("0.4000", "0.0100")])
+        voltage, current, temperature, resistance, confirmed = _measure_with_retry(
+            Mock(),
+            Mock(),
+            siglent,
+            IdentityTemperatureModel(),
+            config=_config(),
+            previous_resistance=2.0,
+        )
+        self.assertAlmostEqual(resistance, 40.0)
+        self.assertTrue(confirmed)
+        siglent.read_DMM_pair.assert_called_once()
+
+    def test_jump_guard_enabled_still_retries_a_resistance_jump(self):
+        siglent = _siglent_double([("0.4000", "0.0100"), ("0.4000", "0.0100"), ("0.4000", "0.0100")])
+        voltage, current, temperature, resistance, confirmed = _measure_with_retry(
+            Mock(),
+            Mock(),
+            siglent,
+            IdentityTemperatureModel(),
+            config=_config(measurement_temperature_jump_guard_enabled=True),
+            previous_resistance=2.0,
+        )
+        self.assertTrue(siglent.read_DMM_pair.call_count > 1)
 
 
 if __name__ == "__main__":
