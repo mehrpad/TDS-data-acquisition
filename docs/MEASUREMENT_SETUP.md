@@ -161,6 +161,16 @@ T0 and tuning baseline searches require resistance stability as well as current 
 
 Ordinary current updates do not resend the PSU `ON` command. At the end of T0 calibration, PI/PID tuning, and an experiment, the software zeroes the current and switches CH1 off.
 
+## PI/PID gain schedule, step-limit suggestions, and material profiles
+
+A wire's process gain (temperature rise per amp) is not constant from a near-zero-power tuning point up to the several-watt point of a real heating run - self-heating shifts which loss mechanism (conduction vs. radiation) dominates. **Tune PI/PID** in the GUI runs the step-response test at three currents - `tuning_start_current`, 40%, and 80% of `max_current` (fewer if `max_current` is too small to separate them) - and builds a schedule of `{current_a, Kp, Ki, Kd}` points instead of one fixed gain set. During a run, the controller interpolates by the present current, clamping at the ends of the schedule rather than extrapolating past it.
+
+Each tuning point also derives a suggested current step limit from its identified process gain and time constant: the lowest point's suggestion becomes `low_current_max_step_up/down`, the highest point's becomes `max_current_step_up/down` (representative of sustained real operation). These are suggestions, not guarantees - they bound how much of a step's effect can appear within one control loop period, not sustained ramp rate, which the existing rate-limiting logic still governs separately. Review them before a run; both are editable fields in the GUI next to the PID gains.
+
+Editing Kp, Ki, or Kd by hand clears the gain schedule (the flat value would otherwise be silently overridden by the schedule during a run); tuning again rebuilds one.
+
+**Material Profiles** save a named snapshot of the gain schedule, step limits, and the other settings that go with a specific sample - resistivity mode, DMM ranges, current/power/voltage limits - to `files/material_profiles/<name>.json`, separate from `config.toml`. Tune once per material, save a profile, and load it in a future session instead of re-tuning. Loading a profile overwrites the corresponding live settings immediately; save your current state as its own profile first if you want to keep it.
+
 ## Pre-run checklist
 
 - Four distinct sample contacts are used: two force and two sense.
