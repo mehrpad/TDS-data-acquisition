@@ -818,7 +818,17 @@ def _run_pid_tuning_attempt(
             best_smoothed_rise_so_far = smoothed_rise_so_far
             last_growth_time_s = elapsed_s
 
-        if peak_rise_so_far >= required_rise and smoothed_rise_so_far >= smoothed_required_rise:
+        # A high-gain point can cross the rise threshold on its very first
+        # sample, before the response curve has revealed its actual shape.
+        # Accepting that immediately starves _estimate_pid_from_step of the
+        # samples it needs to identify dead time and time constant, both of
+        # which collapse toward loop_time with too few points - producing a
+        # falsely tiny tau and an over-aggressive Ki.
+        if (
+            len(response) >= int(config.get("tuning_min_response_samples", 5))
+            and peak_rise_so_far >= required_rise
+            and smoothed_rise_so_far >= smoothed_required_rise
+        ):
             return {
                 "status": "usable_response",
                 "response": response,
@@ -827,7 +837,10 @@ def _run_pid_tuning_attempt(
                 "elapsed_s": elapsed_s,
             }
 
-        if temperature >= base_temperature + desired_rise:
+        if (
+            len(response) >= int(config.get("tuning_min_response_samples", 5))
+            and temperature >= base_temperature + desired_rise
+        ):
             return {
                 "status": "target_reached",
                 "response": response,

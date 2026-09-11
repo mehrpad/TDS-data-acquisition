@@ -395,5 +395,105 @@ class TunePidScheduleIntegrationTests(unittest.TestCase):
                 self.assertLess(point["current_a"], 0.4)
 
 
+class RunPidTuningAttemptMinimumSamplesTests(unittest.TestCase):
+    """Reproduces the field bug: a high-gain point accepted after one sample.
+
+    On device, the "mid" schedule point's very first post-step reading
+    already exceeded the rise threshold, so the response was accepted with
+    a single sample. _estimate_pid_from_step then collapsed dead_time_s and
+    time_constant_s toward loop_time (times[0] - dead_time_s == 0), reporting
+    tau=2.0 s for a wire whose true tau (measured properly at the low point
+    moments earlier) was 23.8 s - and the resulting over-aggressive Ki got
+    clamped across the rest of the schedule's current range.
+    """
+
+    def _run_attempt(self, plant, config, required_rise=3.0, smoothed_required_rise=1.95):
+        power_supply = Mock()
+        power_supply.write_termination = None
+        power_supply.read_termination = None
+
+        siglent_double = Mock()
+        siglent_double.set_current.side_effect = lambda _ps, current: plant.set_current(current)
+
+        def read_pair(*_args, **_kwargs):
+            plant.advance(0.05)
+            return plant.read_pair()
+
+        siglent_double.read_DMM_pair.side_effect = read_pair
+        siglent_double.is_overload_reading.return_value = False
+        siglent_double.increase_dc_range_if_needed.return_value = None
+        siglent_double.configure_dc_range_from_config.return_value = None
+        siglent_double.set_mode_speed.return_value = None
+
+        temperature_interp = _temperature_interp_for_plant(plant)
+
+        with patch.object(calibration, "siglent", siglent_double):
+            plant.set_current(config["_response_current"])
+            return calibration._run_pid_tuning_attempt(
+                dmm_v="fake-dmm-v",
+                dmm_i="fake-dmm-i",
+                power_supply=power_supply,
+                temperature_interp=temperature_interp,
+                config=config,
+                emitter=None,
+                baseline_current=config["_baseline_current"],
+                response_current=config["_response_current"],
+                base_temperature=plant.base_temperature,
+                desired_rise=8.0,
+                required_rise=required_rise,
+                smoothed_required_rise=smoothed_required_rise,
+                safe_temperature_limit=plant.base_temperature + 60.0,
+                temperature_lower_bound=None,
+                loop_time=0.05,
+            )
+
+    def test_a_fast_first_sample_still_waits_for_the_minimum_sample_count(self):
+        # gain=162 C/A, tau=23.8 s: the real field values for the schedule
+        # point this reproduces. A small enough rise threshold relative to
+        # that gain (as happened on device) lets even the first, barely-risen
+        # sample clear it - the actual mechanism does not matter, only that
+        # it can happen well before the response curve has revealed its
+        # shape.
+        plant = FirstOrderPlant(
+            gain_c_per_a=162.0,
+            tau_s=23.8,
+            dead_time_s=0.1,
+            base_temperature=31.0,
+            base_resistance=2.1,
+            ohm_per_c=0.02,
+        )
+        config = _config(
+            resistivity_mode="V_OVER_I",
+            tuning_stable_current_a=1e-5,
+            tuning_max_duration_s=2.0,
+            tuning_min_response_samples=5,
+            measurement_fail_limit=200,
+            _baseline_current=0.0481,
+            _response_current=0.0722,
+        )
+
+        result = self._run_attempt(
+            plant, config, required_rise=0.01, smoothed_required_rise=0.005
+        )
+
+        self.assertEqual(result["status"], "usable_response")
+        self.assertGreaterEqual(len(result["response"]), config["tuning_min_response_samples"])
+
+        estimate = calibration._estimate_pid_from_step(
+            response=result["response"],
+            base_temperature=plant.base_temperature,
+            step_current=config["_response_current"] - config["_baseline_current"],
+            loop_time=0.05,
+            min_temp_rise=0.01,
+            controller_mode="PI",
+        )
+        # With only one sample, dead_time_s and time_constant_s both collapse
+        # toward loop_time (0.05 s here, 2.0 s on device) - see
+        # _estimate_pid_from_step. Requiring enough samples first should let
+        # the estimate reflect the response actually unfolding, not that
+        # floor.
+        self.assertGreater(estimate["time_constant_s"], 0.05)
+
+
 if __name__ == "__main__":
     unittest.main()

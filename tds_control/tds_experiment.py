@@ -84,6 +84,16 @@ CONTROL_DEFAULTS = {
     "measurement_retry_delay_s": 0.15,
     "measurement_retry_consensus_ohm": 0.015,
     "stable_current_invalid_advance_count": 5,
+    # When False, every reading below skips the low-signal/temperature-jump
+    # confirmation machinery entirely: each resistance-derived temperature is
+    # trusted directly (still subject to the resistance-glitch retry in
+    # _measure_with_retry and basic finite/range checks), and the current
+    # slew-rate limit (max_current_step_up/down) is the only thing bounding
+    # how fast control can react to a reading. Set false for wires where the
+    # confirmation machinery's own hold-and-probe behavior costs more (stale
+    # dataset rows, stalled control while waiting on consensus) than the
+    # protection is worth given the slew limit already caps command changes.
+    "measurement_temperature_jump_guard_enabled": True,
     "measurement_temp_jump_c": 8.0,
     "measurement_temp_jump_up_c": 20.0,
     "measurement_temp_jump_down_c": 8.0,
@@ -143,6 +153,14 @@ CONTROL_DEFAULTS = {
     "tuning_temperature_window_c": 40.0,
     "tuning_target_rise_c": 8.0,
     "tuning_min_temperature_rise_c": 3.0,
+    # A high-gain point can cross the rise threshold on its very first sample,
+    # before the response curve has had time to reveal its actual shape. With
+    # only one or two points, dead_time_s and time_constant_s collapse toward
+    # loop_time (see _estimate_pid_from_step), producing a falsely tiny tau
+    # and an over-aggressive Ki that then gets clamped across the rest of the
+    # schedule's range. Require this many samples before accepting a response
+    # as usable, regardless of how quickly the rise threshold was crossed.
+    "tuning_min_response_samples": 5,
     # Max rise permitted when jumping a schedule point's baseline toward the
     # next target current, computed from the previous point's own measured
     # gain (see _cap_next_tuning_target). Independent of tuning_target_rise_c,
@@ -2231,329 +2249,346 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                 )
                 raw_temperature = temperature
                 low_signal_state = _is_low_signal_state(applied_current, config)
+                jump_guard_enabled = bool(
+                    config.get("measurement_temperature_jump_guard_enabled", True)
+                )
                 low_signal_jump_pending = False
                 low_signal_jump_confirmed = False
-                if low_signal_state:
-                    temperature, low_signal_jump_pending, low_signal_jump_confirmed = (
-                        _screen_low_signal_temperature(
-                            temperature,
-                            measured_resistance,
-                            previous_temperature,
-                            low_signal_confirmation,
-                            config,
-                        )
-                    )
-                    if low_signal_jump_pending:
-                        print(
-                            "Large low-signal temperature jump is not yet trusted: "
-                            f"candidate={raw_temperature:.2f} C, trusted={previous_temperature:.2f} C. "
-                            f"Confirmation {low_signal_confirmation.confirmations}/"
-                            f"{max(int(config.get('low_signal_jump_confirm_samples', 3)), 2)}; "
-                            "waiting for confirmation while the target continues to ramp."
-                        )
-                    elif low_signal_jump_confirmed:
-                        print(
-                            f"Confirmed repeated low-signal temperature state at {temperature:.2f} C; "
-                            "replacing the previous trusted temperature."
-                        )
-                        temperature_history[:] = [float(temperature)]
-                else:
-                    low_signal_confirmation.reset()
-                confirmed_upward_jump = _confirmed_upward_temperature_jump(
-                    temperature=temperature,
-                    previous_temperature=previous_temperature,
-                    measured_resistance=measured_resistance,
-                    previous_resistance=previous_resistance,
-                    measured_current=measured_current,
-                    applied_current=applied_current,
-                    resistance_confirmed=resistance_confirmed,
-                    setpoint=float(program.scheduled_target),
-                    config=config,
-                )
-                confirmed_downward_jump = _confirmed_downward_temperature_jump(
-                    temperature=temperature,
-                    previous_temperature=previous_temperature,
-                    measured_resistance=measured_resistance,
-                    previous_resistance=previous_resistance,
-                    measured_current=measured_current,
-                    applied_current=applied_current,
-                    resistance_confirmed=resistance_confirmed,
-                    setpoint=float(program.scheduled_target),
-                    config=config,
-                )
-                reset_temperature_reference = low_signal_jump_confirmed
+                reset_temperature_reference = False
                 jump_probe_current_request = None
 
-                if (
-                    np.isfinite(temperature)
-                    and previous_temperature is not None
-                    and np.isfinite(previous_temperature)
-                    and not low_signal_state
-                ):
-                    temperature_delta = temperature - previous_temperature
-                    jump_up_limit = float(
-                        config.get(
-                            "measurement_temp_jump_up_c",
-                            config.get("measurement_temp_jump_c", 8.0) * 2.5,
-                        )
-                    )
-                    jump_down_limit = float(
-                        config.get(
-                            "measurement_temp_jump_down_c",
-                            config.get("measurement_temp_jump_c", 8.0),
-                        )
-                    )
-                    probe_threshold = max(
-                        float(config.get("measurement_jump_probe_threshold_c", 35.0)),
-                        jump_up_limit,
-                        jump_down_limit,
-                    )
-                    if temperature_delta < -jump_down_limit:
-                        large_jump = abs(temperature_delta) >= probe_threshold
-                        # Once a probe is already running for this direction, its own
-                        # corrective current step can legitimately push resistance back
-                        # toward previous_resistance (that is the whole point of probing);
-                        # re-running eligibility's frozen-reference check on every later
-                        # sample would then disqualify a probe that is working exactly as
-                        # intended. Eligibility only gates whether to START a new probe -
-                        # _advance_temperature_jump_probe's own rolling consistency check
-                        # is what should filter samples once one is already active.
-                        probe_eligible = (
-                            temperature_jump_probe.active and temperature_jump_probe.direction == "down"
-                        ) or _temperature_jump_probe_eligible(
-                            "down",
-                            temperature,
-                            previous_temperature,
-                            measured_resistance,
-                            previous_resistance,
-                            measured_current,
-                            applied_current,
-                            resistance_confirmed,
-                            config,
-                        )
-                        if large_jump:
-                            pending_cooldown_jump_count = 0
-                            pending_heatup_jump_count = 0
-                            if probe_eligible:
-                                probe_confirmed, jump_probe_current_request, probe_attempt = (
-                                    _advance_temperature_jump_probe(
-                                        temperature_jump_probe,
-                                        "down",
-                                        temperature,
-                                        measured_resistance,
-                                        applied_current,
-                                        measured_current,
-                                        config,
-                                    )
-                                )
-                                if probe_confirmed:
-                                    print(
-                                        f"Controlled downward-jump probe confirmed a stable new state after "
-                                        f"{probe_attempt} samples: previous={previous_temperature:.2f} C, "
-                                        f"new={temperature:.2f} C, R={measured_resistance:.4f} Ohm. "
-                                        "Accepting it and resetting the temperature filter."
-                                    )
-                                    temperature_history[:] = [float(temperature)]
-                                    reset_temperature_reference = True
-                                elif jump_probe_current_request is None:
-                                    print(
-                                        f"Downward-jump probe could not reach consensus after {probe_attempt} samples: "
-                                        f"previous={previous_temperature:.2f} C, candidate={temperature:.2f} C, "
-                                        f"R={measured_resistance:.4f} Ohm. Giving up on this probe and treating the "
-                                        "reading as invalid instead of stopping the experiment."
-                                    )
-                                    temperature = np.nan
-                                else:
-                                    probe_action = (
-                                        "increasing"
-                                        if jump_probe_current_request > applied_current + 1e-9
-                                        else "holding"
-                                    )
-                                    print(
-                                        f"Large downward temperature jump detected: previous={previous_temperature:.2f} C, "
-                                        f"candidate={temperature:.2f} C, R={measured_resistance:.4f} Ohm. "
-                                        f"Probe sample {probe_attempt}: {probe_action} PSU slightly from "
-                                        f"{applied_current:.4f} to {jump_probe_current_request:.4f} A before deciding."
-                                    )
-                                    temperature = np.nan
-                            else:
-                                temperature_jump_probe.reset()
-                                print(
-                                    f"Large downward temperature jump detected: previous={previous_temperature:.2f} C, "
-                                    f"candidate={temperature:.2f} C. Signal or resistance confirmation was insufficient; "
-                                    "treating this reading as invalid."
-                                )
-                                temperature = np.nan
-                        elif confirmed_downward_jump:
-                            if temperature_jump_probe.active:
-                                temperature_jump_probe.reset()
-                            pending_cooldown_jump_count += 1
-                            pending_heatup_jump_count = 0
-                            required_cooldown_confirms = max(
-                                int(config.get("measurement_cooldown_confirm_samples", 2)),
-                                1,
-                            )
-                            if pending_cooldown_jump_count >= required_cooldown_confirms:
-                                print(
-                                    f"Confirmed downward temperature jump: previous={previous_temperature:.2f} C, "
-                                    f"new={temperature:.2f} C. Accepting it and resetting the temperature filter."
-                                )
-                                temperature_history[:] = [float(temperature)]
-                                pending_cooldown_jump_count = 0
-                                reset_temperature_reference = True
-                            else:
-                                print(
-                                    f"Potential downward temperature jump detected: previous={previous_temperature:.2f} C, "
-                                    f"new={temperature:.2f} C. Waiting for confirmation."
-                                )
-                                temperature = np.nan
-                        else:
-                            temperature_jump_probe.reset()
-                            pending_cooldown_jump_count = 0
-                            pending_heatup_jump_count = 0
-                            print(
-                                f"Temperature jump detected: previous={previous_temperature:.2f} C, "
-                                f"new={temperature:.2f} C. Treating this reading as invalid."
-                            )
-                            temperature = np.nan
-                    elif temperature_delta > jump_up_limit:
-                        large_jump = abs(temperature_delta) >= probe_threshold
-                        # See the matching comment in the downward branch: a probe already
-                        # running for this direction must not be re-disqualified by
-                        # eligibility's frozen-reference check reacting to the probe's own
-                        # corrective current step.
-                        probe_eligible = (
-                            temperature_jump_probe.active and temperature_jump_probe.direction == "up"
-                        ) or _temperature_jump_probe_eligible(
-                            "up",
-                            temperature,
-                            previous_temperature,
-                            measured_resistance,
-                            previous_resistance,
-                            measured_current,
-                            applied_current,
-                            resistance_confirmed,
-                            config,
-                        )
-                        if large_jump:
-                            pending_cooldown_jump_count = 0
-                            pending_heatup_jump_count = 0
-                            if probe_eligible:
-                                probe_confirmed, jump_probe_current_request, probe_attempt = (
-                                    _advance_temperature_jump_probe(
-                                        temperature_jump_probe,
-                                        "up",
-                                        temperature,
-                                        measured_resistance,
-                                        applied_current,
-                                        measured_current,
-                                        config,
-                                    )
-                                )
-                                if probe_confirmed:
-                                    print(
-                                        f"Controlled upward-jump probe confirmed a stable new state after "
-                                        f"{probe_attempt} samples: previous={previous_temperature:.2f} C, "
-                                        f"new={temperature:.2f} C, R={measured_resistance:.4f} Ohm. "
-                                        "Accepting it and resetting the temperature filter."
-                                    )
-                                    temperature_history[:] = [float(temperature)]
-                                    reset_temperature_reference = True
-                                elif jump_probe_current_request is None:
-                                    print(
-                                        f"Upward-jump probe could not reach consensus after {probe_attempt} samples: "
-                                        f"previous={previous_temperature:.2f} C, candidate={temperature:.2f} C, "
-                                        f"R={measured_resistance:.4f} Ohm. Giving up on this probe and treating the "
-                                        "reading as invalid instead of stopping the experiment."
-                                    )
-                                    temperature = np.nan
-                                else:
-                                    probe_action = (
-                                        "decreasing"
-                                        if jump_probe_current_request < applied_current - 1e-9
-                                        else "holding"
-                                    )
-                                    print(
-                                        f"Large upward temperature jump detected: previous={previous_temperature:.2f} C, "
-                                        f"candidate={temperature:.2f} C, R={measured_resistance:.4f} Ohm. "
-                                        f"Probe sample {probe_attempt}: {probe_action} PSU slightly from "
-                                        f"{applied_current:.4f} to {jump_probe_current_request:.4f} A before deciding."
-                                    )
-                                    temperature = np.nan
-                            else:
-                                temperature_jump_probe.reset()
-                                print(
-                                    f"Large upward temperature jump detected: previous={previous_temperature:.2f} C, "
-                                    f"candidate={temperature:.2f} C. Signal or resistance confirmation was insufficient; "
-                                    "treating this reading as invalid."
-                                )
-                                temperature = np.nan
-                        elif confirmed_upward_jump:
-                            if temperature_jump_probe.active:
-                                temperature_jump_probe.reset()
-                            pending_heatup_jump_count += 1
-                            pending_cooldown_jump_count = 0
-                            required_heatup_confirms = max(
-                                int(config.get("measurement_heatup_confirm_samples", 2)),
-                                1,
-                            )
-                            if pending_heatup_jump_count >= required_heatup_confirms:
-                                print(
-                                    f"Confirmed upward temperature jump: previous={previous_temperature:.2f} C, "
-                                    f"new={temperature:.2f} C. Accepting it and resetting the temperature filter."
-                                )
-                                temperature_history[:] = [float(temperature)]
-                                pending_heatup_jump_count = 0
-                                reset_temperature_reference = True
-                            else:
-                                print(
-                                    f"Potential upward temperature jump detected: previous={previous_temperature:.2f} C, "
-                                    f"new={temperature:.2f} C. Waiting for confirmation."
-                                )
-                                temperature = np.nan
-                        else:
-                            temperature_jump_probe.reset()
-                            pending_cooldown_jump_count = 0
-                            pending_heatup_jump_count = 0
-                            print(
-                                f"Temperature jump detected: previous={previous_temperature:.2f} C, "
-                                f"new={temperature:.2f} C. Treating this reading as invalid."
-                            )
-                            temperature = np.nan
-                    else:
-                        if temperature_jump_probe.active:
-                            print("Temperature-jump probe cancelled because the measurement returned to the trusted range.")
-                            temperature_jump_probe.reset()
-                        pending_cooldown_jump_count = 0
-                        pending_heatup_jump_count = 0
-                else:
-                    pending_cooldown_jump_count = 0
-                    pending_heatup_jump_count = 0
-                    if temperature_jump_probe.active:
-                        temperature_jump_probe.attempts += 1
-                        maximum_probe_attempts = max(
-                            int(config.get("measurement_jump_probe_max_samples", 20)),
-                            2,
-                        )
-                        if temperature_jump_probe.attempts >= maximum_probe_attempts:
-                            print(
-                                "Temperature-jump probe could not obtain stable readings after "
-                                f"{temperature_jump_probe.attempts} samples. Giving up on this probe and treating "
-                                "the reading as invalid instead of stopping the experiment."
-                            )
-                            temperature_jump_probe.reset()
-                            jump_probe_current_request = None
-                        else:
-                            jump_probe_current_request = _temperature_jump_probe_voltage(
-                                temperature_jump_probe.direction,
-                                applied_current,
-                                measured_current,
+                if jump_guard_enabled:
+                    if low_signal_state:
+                        temperature, low_signal_jump_pending, low_signal_jump_confirmed = (
+                            _screen_low_signal_temperature(
+                                temperature,
+                                measured_resistance,
+                                previous_temperature,
+                                low_signal_confirmation,
                                 config,
                             )
+                        )
+                        if low_signal_jump_pending:
                             print(
-                                "Temperature-jump probe received an unusable measurement; repeating the small "
-                                f"current probe at {jump_probe_current_request:.4f} A."
+                                "Large low-signal temperature jump is not yet trusted: "
+                                f"candidate={raw_temperature:.2f} C, trusted={previous_temperature:.2f} C. "
+                                f"Confirmation {low_signal_confirmation.confirmations}/"
+                                f"{max(int(config.get('low_signal_jump_confirm_samples', 3)), 2)}; "
+                                "waiting for confirmation while the target continues to ramp."
                             )
+                        elif low_signal_jump_confirmed:
+                            print(
+                                f"Confirmed repeated low-signal temperature state at {temperature:.2f} C; "
+                                "replacing the previous trusted temperature."
+                            )
+                            temperature_history[:] = [float(temperature)]
+                    else:
+                        low_signal_confirmation.reset()
+                    confirmed_upward_jump = _confirmed_upward_temperature_jump(
+                        temperature=temperature,
+                        previous_temperature=previous_temperature,
+                        measured_resistance=measured_resistance,
+                        previous_resistance=previous_resistance,
+                        measured_current=measured_current,
+                        applied_current=applied_current,
+                        resistance_confirmed=resistance_confirmed,
+                        setpoint=float(program.scheduled_target),
+                        config=config,
+                    )
+                    confirmed_downward_jump = _confirmed_downward_temperature_jump(
+                        temperature=temperature,
+                        previous_temperature=previous_temperature,
+                        measured_resistance=measured_resistance,
+                        previous_resistance=previous_resistance,
+                        measured_current=measured_current,
+                        applied_current=applied_current,
+                        resistance_confirmed=resistance_confirmed,
+                        setpoint=float(program.scheduled_target),
+                        config=config,
+                    )
+                    reset_temperature_reference = low_signal_jump_confirmed
+                    jump_probe_current_request = None
+
+                    if (
+                        np.isfinite(temperature)
+                        and previous_temperature is not None
+                        and np.isfinite(previous_temperature)
+                        and not low_signal_state
+                    ):
+                        temperature_delta = temperature - previous_temperature
+                        jump_up_limit = float(
+                            config.get(
+                                "measurement_temp_jump_up_c",
+                                config.get("measurement_temp_jump_c", 8.0) * 2.5,
+                            )
+                        )
+                        jump_down_limit = float(
+                            config.get(
+                                "measurement_temp_jump_down_c",
+                                config.get("measurement_temp_jump_c", 8.0),
+                            )
+                        )
+                        probe_threshold = max(
+                            float(config.get("measurement_jump_probe_threshold_c", 35.0)),
+                            jump_up_limit,
+                            jump_down_limit,
+                        )
+                        if temperature_delta < -jump_down_limit:
+                            large_jump = abs(temperature_delta) >= probe_threshold
+                            # Once a probe is already running for this direction, its own
+                            # corrective current step can legitimately push resistance back
+                            # toward previous_resistance (that is the whole point of probing);
+                            # re-running eligibility's frozen-reference check on every later
+                            # sample would then disqualify a probe that is working exactly as
+                            # intended. Eligibility only gates whether to START a new probe -
+                            # _advance_temperature_jump_probe's own rolling consistency check
+                            # is what should filter samples once one is already active.
+                            probe_eligible = (
+                                temperature_jump_probe.active and temperature_jump_probe.direction == "down"
+                            ) or _temperature_jump_probe_eligible(
+                                "down",
+                                temperature,
+                                previous_temperature,
+                                measured_resistance,
+                                previous_resistance,
+                                measured_current,
+                                applied_current,
+                                resistance_confirmed,
+                                config,
+                            )
+                            if large_jump:
+                                pending_cooldown_jump_count = 0
+                                pending_heatup_jump_count = 0
+                                if probe_eligible:
+                                    probe_confirmed, jump_probe_current_request, probe_attempt = (
+                                        _advance_temperature_jump_probe(
+                                            temperature_jump_probe,
+                                            "down",
+                                            temperature,
+                                            measured_resistance,
+                                            applied_current,
+                                            measured_current,
+                                            config,
+                                        )
+                                    )
+                                    if probe_confirmed:
+                                        print(
+                                            f"Controlled downward-jump probe confirmed a stable new state after "
+                                            f"{probe_attempt} samples: previous={previous_temperature:.2f} C, "
+                                            f"new={temperature:.2f} C, R={measured_resistance:.4f} Ohm. "
+                                            "Accepting it and resetting the temperature filter."
+                                        )
+                                        temperature_history[:] = [float(temperature)]
+                                        reset_temperature_reference = True
+                                    elif jump_probe_current_request is None:
+                                        print(
+                                            f"Downward-jump probe could not reach consensus after {probe_attempt} samples: "
+                                            f"previous={previous_temperature:.2f} C, candidate={temperature:.2f} C, "
+                                            f"R={measured_resistance:.4f} Ohm. Giving up on this probe and treating the "
+                                            "reading as invalid instead of stopping the experiment."
+                                        )
+                                        temperature = np.nan
+                                    else:
+                                        probe_action = (
+                                            "increasing"
+                                            if jump_probe_current_request > applied_current + 1e-9
+                                            else "holding"
+                                        )
+                                        print(
+                                            f"Large downward temperature jump detected: previous={previous_temperature:.2f} C, "
+                                            f"candidate={temperature:.2f} C, R={measured_resistance:.4f} Ohm. "
+                                            f"Probe sample {probe_attempt}: {probe_action} PSU slightly from "
+                                            f"{applied_current:.4f} to {jump_probe_current_request:.4f} A before deciding."
+                                        )
+                                        temperature = np.nan
+                                else:
+                                    temperature_jump_probe.reset()
+                                    print(
+                                        f"Large downward temperature jump detected: previous={previous_temperature:.2f} C, "
+                                        f"candidate={temperature:.2f} C. Signal or resistance confirmation was insufficient; "
+                                        "treating this reading as invalid."
+                                    )
+                                    temperature = np.nan
+                            elif confirmed_downward_jump:
+                                if temperature_jump_probe.active:
+                                    temperature_jump_probe.reset()
+                                pending_cooldown_jump_count += 1
+                                pending_heatup_jump_count = 0
+                                required_cooldown_confirms = max(
+                                    int(config.get("measurement_cooldown_confirm_samples", 2)),
+                                    1,
+                                )
+                                if pending_cooldown_jump_count >= required_cooldown_confirms:
+                                    print(
+                                        f"Confirmed downward temperature jump: previous={previous_temperature:.2f} C, "
+                                        f"new={temperature:.2f} C. Accepting it and resetting the temperature filter."
+                                    )
+                                    temperature_history[:] = [float(temperature)]
+                                    pending_cooldown_jump_count = 0
+                                    reset_temperature_reference = True
+                                else:
+                                    print(
+                                        f"Potential downward temperature jump detected: previous={previous_temperature:.2f} C, "
+                                        f"new={temperature:.2f} C. Waiting for confirmation."
+                                    )
+                                    temperature = np.nan
+                            else:
+                                temperature_jump_probe.reset()
+                                pending_cooldown_jump_count = 0
+                                pending_heatup_jump_count = 0
+                                print(
+                                    f"Temperature jump detected: previous={previous_temperature:.2f} C, "
+                                    f"new={temperature:.2f} C. Treating this reading as invalid."
+                                )
+                                temperature = np.nan
+                        elif temperature_delta > jump_up_limit:
+                            large_jump = abs(temperature_delta) >= probe_threshold
+                            # See the matching comment in the downward branch: a probe already
+                            # running for this direction must not be re-disqualified by
+                            # eligibility's frozen-reference check reacting to the probe's own
+                            # corrective current step.
+                            probe_eligible = (
+                                temperature_jump_probe.active and temperature_jump_probe.direction == "up"
+                            ) or _temperature_jump_probe_eligible(
+                                "up",
+                                temperature,
+                                previous_temperature,
+                                measured_resistance,
+                                previous_resistance,
+                                measured_current,
+                                applied_current,
+                                resistance_confirmed,
+                                config,
+                            )
+                            if large_jump:
+                                pending_cooldown_jump_count = 0
+                                pending_heatup_jump_count = 0
+                                if probe_eligible:
+                                    probe_confirmed, jump_probe_current_request, probe_attempt = (
+                                        _advance_temperature_jump_probe(
+                                            temperature_jump_probe,
+                                            "up",
+                                            temperature,
+                                            measured_resistance,
+                                            applied_current,
+                                            measured_current,
+                                            config,
+                                        )
+                                    )
+                                    if probe_confirmed:
+                                        print(
+                                            f"Controlled upward-jump probe confirmed a stable new state after "
+                                            f"{probe_attempt} samples: previous={previous_temperature:.2f} C, "
+                                            f"new={temperature:.2f} C, R={measured_resistance:.4f} Ohm. "
+                                            "Accepting it and resetting the temperature filter."
+                                        )
+                                        temperature_history[:] = [float(temperature)]
+                                        reset_temperature_reference = True
+                                    elif jump_probe_current_request is None:
+                                        print(
+                                            f"Upward-jump probe could not reach consensus after {probe_attempt} samples: "
+                                            f"previous={previous_temperature:.2f} C, candidate={temperature:.2f} C, "
+                                            f"R={measured_resistance:.4f} Ohm. Giving up on this probe and treating the "
+                                            "reading as invalid instead of stopping the experiment."
+                                        )
+                                        temperature = np.nan
+                                    else:
+                                        probe_action = (
+                                            "decreasing"
+                                            if jump_probe_current_request < applied_current - 1e-9
+                                            else "holding"
+                                        )
+                                        print(
+                                            f"Large upward temperature jump detected: previous={previous_temperature:.2f} C, "
+                                            f"candidate={temperature:.2f} C, R={measured_resistance:.4f} Ohm. "
+                                            f"Probe sample {probe_attempt}: {probe_action} PSU slightly from "
+                                            f"{applied_current:.4f} to {jump_probe_current_request:.4f} A before deciding."
+                                        )
+                                        temperature = np.nan
+                                else:
+                                    temperature_jump_probe.reset()
+                                    print(
+                                        f"Large upward temperature jump detected: previous={previous_temperature:.2f} C, "
+                                        f"candidate={temperature:.2f} C. Signal or resistance confirmation was insufficient; "
+                                        "treating this reading as invalid."
+                                    )
+                                    temperature = np.nan
+                            elif confirmed_upward_jump:
+                                if temperature_jump_probe.active:
+                                    temperature_jump_probe.reset()
+                                pending_heatup_jump_count += 1
+                                pending_cooldown_jump_count = 0
+                                required_heatup_confirms = max(
+                                    int(config.get("measurement_heatup_confirm_samples", 2)),
+                                    1,
+                                )
+                                if pending_heatup_jump_count >= required_heatup_confirms:
+                                    print(
+                                        f"Confirmed upward temperature jump: previous={previous_temperature:.2f} C, "
+                                        f"new={temperature:.2f} C. Accepting it and resetting the temperature filter."
+                                    )
+                                    temperature_history[:] = [float(temperature)]
+                                    pending_heatup_jump_count = 0
+                                    reset_temperature_reference = True
+                                else:
+                                    print(
+                                        f"Potential upward temperature jump detected: previous={previous_temperature:.2f} C, "
+                                        f"new={temperature:.2f} C. Waiting for confirmation."
+                                    )
+                                    temperature = np.nan
+                            else:
+                                temperature_jump_probe.reset()
+                                pending_cooldown_jump_count = 0
+                                pending_heatup_jump_count = 0
+                                print(
+                                    f"Temperature jump detected: previous={previous_temperature:.2f} C, "
+                                    f"new={temperature:.2f} C. Treating this reading as invalid."
+                                )
+                                temperature = np.nan
+                        else:
+                            if temperature_jump_probe.active:
+                                print("Temperature-jump probe cancelled because the measurement returned to the trusted range.")
+                                temperature_jump_probe.reset()
+                            pending_cooldown_jump_count = 0
+                            pending_heatup_jump_count = 0
+                    else:
+                        pending_cooldown_jump_count = 0
+                        pending_heatup_jump_count = 0
+                        if temperature_jump_probe.active:
+                            temperature_jump_probe.attempts += 1
+                            maximum_probe_attempts = max(
+                                int(config.get("measurement_jump_probe_max_samples", 20)),
+                                2,
+                            )
+                            if temperature_jump_probe.attempts >= maximum_probe_attempts:
+                                print(
+                                    "Temperature-jump probe could not obtain stable readings after "
+                                    f"{temperature_jump_probe.attempts} samples. Giving up on this probe and treating "
+                                    "the reading as invalid instead of stopping the experiment."
+                                )
+                                temperature_jump_probe.reset()
+                                jump_probe_current_request = None
+                            else:
+                                jump_probe_current_request = _temperature_jump_probe_voltage(
+                                    temperature_jump_probe.direction,
+                                    applied_current,
+                                    measured_current,
+                                    config,
+                                )
+                                print(
+                                    "Temperature-jump probe received an unusable measurement; repeating the small "
+                                    f"current probe at {jump_probe_current_request:.4f} A."
+                                )
+                    # The temperature-jump/low-signal confirmation machinery is disabled:
+                    # trust each resistance-derived reading directly (still subject to the
+                    # basic finiteness checks and the resistance-glitch retry in
+                    # _measure_with_retry) and rely solely on the current slew-rate limit
+                    # (max_current_step_up/down) to bound how fast control can react to it.
+                else:
+                    low_signal_confirmation.reset()
+                    temperature_jump_probe.reset()
+                    pending_cooldown_jump_count = 0
+                    pending_heatup_jump_count = 0
                 if not _is_valid_measurement(measured_voltage, measured_current, temperature, config):
                     target_reference_temperature = (
                         float(previous_temperature)
