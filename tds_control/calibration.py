@@ -1227,11 +1227,11 @@ def tune_pid_schedule(experiment_params, config, r_vs_t, base_temperature_hint=N
     constant from a near-zero-power tuning point up to the several-watt
     operating point of a real heating run - self-heating shifts which loss
     mechanism (conduction vs. radiation) dominates. Returns one gain set per
-    tested current plus suggested max_current_step_up/down and
-    low_current_max_step_up/down, derived from the identified process gain
-    and time constant at each point (see _suggest_current_step): the low
-    pair from the lowest current tested, the normal pair from the highest,
-    since that is representative of sustained real operation.
+    tested current plus a single suggested max_current_step_up/down, derived
+    from the identified process gain and time constant at each point (see
+    _suggest_current_step): the smaller of the lowest- and highest-current
+    suggestions, since one step limit applies across the whole schedule and
+    must stay safe at whichever end wants the tighter bound.
     """
     config = tds_experiment.build_control_config(config)
     controller_mode = tds_experiment.get_controller_mode(config)
@@ -1341,14 +1341,13 @@ def tune_pid_schedule(experiment_params, config, r_vs_t, base_temperature_hint=N
         high_step = _suggest_current_step(
             high_point["process_gain_c_per_a"], high_point["time_constant_s"], loop_time, config
         )
+        suggested_step = min(low_step, high_step)
 
         result = {
             "schedule": schedule,
             "points": points,
-            "low_current_max_step_up": low_step,
-            "low_current_max_step_down": low_step,
-            "max_current_step_up": high_step,
-            "max_current_step_down": high_step,
+            "max_current_step_up": suggested_step,
+            "max_current_step_down": suggested_step,
             "Kp": schedule[0]["kp"],
             "Ki": schedule[0]["ki"],
             "Kd": schedule[0]["kd"],
@@ -1357,10 +1356,7 @@ def tune_pid_schedule(experiment_params, config, r_vs_t, base_temperature_hint=N
             f"{controller_mode} gain schedule tuned at {len(points)} point(s): "
             + ", ".join(f"{p['current_a']:.4f} A" for p in schedule)
         )
-        print(
-            f"Suggested step limits: low_current_max_step={low_step:.4f} A, "
-            f"max_current_step={high_step:.4f} A"
-        )
+        print(f"Suggested step limit: max_current_step={suggested_step:.4f} A")
         return result
     finally:
         tds_experiment._shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager)

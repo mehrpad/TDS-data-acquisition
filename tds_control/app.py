@@ -1655,8 +1655,6 @@ class Ui_TDS(object):
         self.config['pid_kd'] = schedule[0]['kd']
         self.config['max_current_step_up'] = result['max_current_step_up']
         self.config['max_current_step_down'] = result['max_current_step_down']
-        self.config['low_current_max_step_up'] = result['low_current_max_step_up']
-        self.config['low_current_max_step_down'] = result['low_current_max_step_down']
         self.save_config()
 
         points_summary = ", ".join(
@@ -1665,14 +1663,13 @@ class Ui_TDS(object):
         )
         print(
             f"{controller_mode} gain schedule tuned and saved at {len(schedule)} point(s): {points_summary}. "
-            f"Step limits: low={result['low_current_max_step_up']:.4f} A, "
-            f"normal={result['max_current_step_up']:.4f} A."
+            f"Step limit: {result['max_current_step_up']:.4f} A."
         )
         self.refresh_pid_status_label()
         self.error_message(
-            f"{controller_mode} tuned at {len(schedule)} current(s); step limits suggested "
-            f"(low={result['low_current_max_step_up']:.4f} A, normal={result['max_current_step_up']:.4f} A) "
-            "- review before running. Save a Material Profile to reuse this on the same wire later.",
+            f"{controller_mode} tuned at {len(schedule)} current(s); step limit suggested "
+            f"({result['max_current_step_up']:.4f} A) - review before running. Save a Material Profile to "
+            "reuse this on the same wire later.",
             color='black',
         )
 

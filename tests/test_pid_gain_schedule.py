@@ -291,7 +291,6 @@ class TunePidScheduleIntegrationTests(unittest.TestCase):
             self.assertGreater(point["kp"], 0.0)
             self.assertGreater(point["ki"], 0.0)
         self.assertGreater(result["max_current_step_up"], 0.0)
-        self.assertGreater(result["low_current_max_step_up"], 0.0)
         # dmm_v/dmm_i/power_supply all resolve to this same mock in the test
         # double, so _shutdown_instruments closing each of them closes it 3x.
         self.assertEqual(power_supply.close.call_count, 3)

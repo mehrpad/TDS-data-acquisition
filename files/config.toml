@@ -111,15 +111,6 @@ max_current_step_up = 0.01
 # Largest downward current step per loop.
 max_current_step_down = 0.01
 
-# PSU voltage at or below which the finer low-voltage slew limits apply.
-low_current_step_threshold = 0.05
-
-# Largest upward PSU action at or below the low-voltage threshold.
-low_current_max_step_up = 0.01
-
-# Largest downward PSU action at or below the low-voltage threshold.
-low_current_max_step_down = 0.01
-
 # Larger upward step allowed when the sample is far below the setpoint.
 max_current_step_up_far = 0.01
 
@@ -417,3 +408,7 @@ t0_max_temp_error_c = 80
 
 # Equivalent calibrated-temperature spread that triggers a low-TCR warning.
 t0_temperature_spread_warning_c = 5
+
+# Additional settings
+# Extra setting preserved by the application.
+tuning_min_response_samples = 5

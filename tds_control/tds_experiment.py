@@ -45,9 +45,6 @@ CONTROL_DEFAULTS = {
     "fixed_series_resistance_ohm": 0.0,
     "max_current_step_up": 0.01,
     "max_current_step_down": 0.01,
-    "low_current_step_threshold": 0.05,
-    "low_current_max_step_up": 0.01,
-    "low_current_max_step_down": 0.01,
     "temperature_tolerance_c": 2.0,
     "hold_entry_tolerance_c": 3.0,
     "safety_temp_margin_c": 15.0,
@@ -332,10 +329,6 @@ def _limit_current_slew(target_current, present_current, min_current, max_curren
     step_scale = current_step_scale(config)
     max_step_up = float(config.get("max_current_step_up", 0.01)) * step_scale
     max_step_down = float(config.get("max_current_step_down", 0.01)) * step_scale
-    low_current_threshold = float(config.get("low_current_step_threshold", 0.05))
-    if present_current <= low_current_threshold + 1e-12:
-        max_step_up = min(max_step_up, float(config.get("low_current_max_step_up", 0.001)) * step_scale)
-        max_step_down = min(max_step_down, float(config.get("low_current_max_step_down", 0.001)) * step_scale)
     if max_step_up <= 0 or max_step_down <= 0:
         raise ValueError("Voltage slew limits must be positive.")
     delta = target_current - present_current
@@ -486,9 +479,6 @@ LEGACY_CONFIG_KEYS = {
     "max_voltage_step_up": "max_current_step_up",
     "max_voltage_step_down": "max_current_step_down",
     "max_voltage_step_up_far": "max_current_step_up_far",
-    "low_voltage_step_threshold": "low_current_step_threshold",
-    "low_voltage_max_step_up": "low_current_max_step_up",
-    "low_voltage_max_step_down": "low_current_max_step_down",
     "minimum_voltage_change": "minimum_current_change",
     "measurement_voltage_floor": "measurement_current_floor",
     "invalid_voltage_step_down": "invalid_current_step_down",
