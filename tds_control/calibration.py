@@ -1184,6 +1184,27 @@ def _tuning_schedule_targets(config):
     return targets
 
 
+def _cap_next_tuning_target(desired_current, previous_current, previous_gain, config):
+    """Bound how far the next schedule point's baseline may jump from the last.
+
+    A wire's process gain can be far larger at low power than a fixed
+    fraction of max_current assumes - one observed case measured ~800 C/A at
+    a few milliamps, where jumping straight to 40% of a 1 A max_current drove
+    the sample past 500 C before the first stability sample was even taken.
+    Bounding the jump by the previous point's own measured gain (a
+    plausibility check against what has actually been seen, not a promise the
+    wire stays that sensitive) keeps each step's own risk in check; the point
+    tuned there then supplies a fresh, local gain for the next jump.
+    """
+    if previous_gain is None or not np.isfinite(previous_gain) or previous_gain <= 0:
+        max_jump = float(config.get("tuning_current_step", 0.001)) * 10.0
+    else:
+        max_safe_rise = float(config.get("tuning_schedule_jump_max_rise_c", 10.0))
+        max_jump = max_safe_rise / previous_gain
+    capped = min(float(desired_current), float(previous_current) + max_jump)
+    return max(capped, float(previous_current) + float(config["minimum_current_change"]))
+
+
 def tune_pid_schedule(experiment_params, config, r_vs_t, base_temperature_hint=None, emitter=None):
     """
     Tune gains at low/mid/high currents and build a schedule covering the
@@ -1227,27 +1248,65 @@ def tune_pid_schedule(experiment_params, config, r_vs_t, base_temperature_hint=N
         _sleep_with_stop(1.0, emitter)
 
         points = []
-        for name, start_current in targets:
+        previous_current = None
+        previous_gain = None
+        for name, desired_current in targets:
             _check_stop(emitter)
-            tuned = _tune_one_point(
-                dmm_v=dmm_v,
-                dmm_i=dmm_i,
-                power_supply=power_supply,
-                temperature_interp=temperature_interp,
-                config=config,
-                controller_mode=controller_mode,
-                loop_time=loop_time,
-                experiment_params=experiment_params,
-                base_temperature_hint=base_temperature_hint,
-                start_current=start_current,
-                emitter=emitter,
-                label=f"{controller_mode} tuning ({name})",
-            )
+            if previous_current is None:
+                start_current = desired_current
+            else:
+                start_current = _cap_next_tuning_target(
+                    desired_current, previous_current, previous_gain, config
+                )
+                if start_current < desired_current - 1e-9:
+                    print(
+                        f"{controller_mode} tuning ({name}): capping the target from "
+                        f"{desired_current:.4f} A to {start_current:.4f} A based on the "
+                        f"{previous_gain:.3g} C/A gain measured at {previous_current:.4f} A."
+                    )
+
+            try:
+                tuned = _tune_one_point(
+                    dmm_v=dmm_v,
+                    dmm_i=dmm_i,
+                    power_supply=power_supply,
+                    temperature_interp=temperature_interp,
+                    config=config,
+                    controller_mode=controller_mode,
+                    loop_time=loop_time,
+                    experiment_params=experiment_params,
+                    base_temperature_hint=base_temperature_hint,
+                    start_current=start_current,
+                    emitter=emitter,
+                    label=f"{controller_mode} tuning ({name})",
+                )
+            except tds_experiment.ExperimentSafetyError as exc:
+                print(
+                    f"{controller_mode} tuning ({name}) stopped by a safety limit at "
+                    f"{start_current:.4f} A: {exc}. Keeping the {len(points)} point(s) already tuned "
+                    "and not attempting any higher current."
+                )
+                break
+            except ValueError as exc:
+                print(
+                    f"{controller_mode} tuning ({name}) did not produce a usable result at "
+                    f"{start_current:.4f} A: {exc}. Continuing with the remaining point(s)."
+                )
+                continue
+
             tuned["point_name"] = name
             points.append(tuned)
+            previous_current = tuned["step_current"]
+            previous_gain = tuned["process_gain_c_per_a"]
             print(
                 f"{name} point done: current={tuned['step_current']:.4f} A, "
                 f"gain={tuned['process_gain_c_per_a']:.3g} C/A, tau={tuned['time_constant_s']:.1f} s"
+            )
+
+        if not points:
+            raise ValueError(
+                f"{controller_mode} tuning could not produce any usable schedule point. "
+                "Check the sample connection and Initial Current before retrying."
             )
 
         points_by_current = sorted(points, key=lambda point: point["step_current"])

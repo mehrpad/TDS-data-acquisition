@@ -151,6 +151,7 @@ CONFIG_GROUPS = [
             ("tuning_temperature_window_c", "Allowed temperature window around the hinted base temperature during tuning."),
             ("tuning_target_rise_c", "Preferred temperature rise for the tuning step response."),
             ("tuning_min_temperature_rise_c", "Minimum temperature rise needed for a usable tuning result."),
+            ("tuning_schedule_jump_max_rise_c", "Max rise permitted when jumping a schedule point's baseline toward the next target current, computed from the gain measured at the previous point."),
             ("tuning_no_response_timeout_s", "How long tuning waits before concluding that nothing is happening."),
             ("tuning_min_observable_rise_c", "Minimum smoothed rise considered observable during tuning."),
             ("tuning_plateau_timeout_s", "Maximum time allowed once the tuning response has plateaued."),
