@@ -885,9 +885,242 @@ def _run_pid_tuning_attempt(
     }
 
 
+def _suggest_current_step(process_gain, time_constant_s, loop_time, config):
+    """Suggest a per-loop current step from an identified process gain/tau.
+
+    Bounds how much of a step's eventual temperature effect can appear
+    within one control loop period to temperature_tolerance_c, using the
+    fraction of a first-order step response that manifests in one loop:
+    1 - exp(-loop_time / tau). A slower process (large tau relative to the
+    loop period) tolerates a bigger step, since only a small fraction of its
+    effect can show up before the controller gets another chance to react.
+    This is a starting suggestion, not a guarantee - it does not account for
+    sustained ramp rate, which the existing rate-limiting logic still governs
+    separately.
+    """
+    try:
+        process_gain = float(process_gain)
+        time_constant_s = float(time_constant_s)
+        loop_time = float(loop_time)
+    except (TypeError, ValueError):
+        return float(config["minimum_current_change"])
+    if not np.isfinite(process_gain) or process_gain <= 0:
+        return float(config["minimum_current_change"])
+
+    tolerance = float(config.get("temperature_tolerance_c", 2.0))
+    tau = max(time_constant_s, 1e-6)
+    dt = max(loop_time, 1e-6)
+    fraction_manifested = max(1.0 - np.exp(-dt / tau), 1e-6)
+    raw_step = tolerance / (process_gain * fraction_manifested)
+
+    lower_bound = float(config["minimum_current_change"])
+    upper_bound = max(0.1 * float(config["max_current"]), lower_bound)
+    return float(np.clip(raw_step, lower_bound, upper_bound))
+
+
+def _tune_one_point(
+    *,
+    dmm_v,
+    dmm_i,
+    power_supply,
+    temperature_interp,
+    config,
+    controller_mode,
+    loop_time,
+    experiment_params,
+    base_temperature_hint,
+    start_current,
+    emitter,
+    label,
+):
+    """Run one full baseline-search-plus-step-response tuning sequence.
+
+    Returns Kp/Ki/Kd plus the identified dead_time_s/time_constant_s and a
+    derived process_gain_c_per_a, at the single current this call tests.
+    """
+    stable_temperature_window = config["tuning_temperature_window_c"]
+    temperature_lower_bound = None
+    temperature_upper_bound = None
+    if base_temperature_hint is not None:
+        temperature_lower_bound = base_temperature_hint - stable_temperature_window
+        temperature_upper_bound = base_temperature_hint + stable_temperature_window
+
+    stable_setpoint_current, stable_samples = _find_stable_current_setpoint(
+        dmm_v=dmm_v,
+        dmm_i=dmm_i,
+        power_supply=power_supply,
+        temperature_interp=temperature_interp,
+        config=config,
+        start_current=start_current,
+        max_current=max(start_current, config["tuning_search_max_current"], config["max_current"]),
+        step_current=config["tuning_current_step"],
+        settle_time_s=config["tuning_settle_time_s"],
+        stable_samples=config["tuning_stable_current_samples"],
+        minimum_current=config["tuning_stable_current_a"],
+        emitter=emitter,
+        label=label,
+        temperature_lower_bound=temperature_lower_bound,
+        temperature_upper_bound=temperature_upper_bound,
+        display_target_temperature=base_temperature_hint,
+        stop_on_high_temperature=True,
+    )
+    baseline_current = stable_setpoint_current
+    print(f"Using {label} baseline current: {baseline_current:.4f} A")
+
+    # A step-response test is a deliberate, one-shot excitation, not the
+    # continuously running control loop - it must not be throttled by
+    # max_current_step_up (0.01 A), which would otherwise force many
+    # multi-minute retries just to reach a step big enough to see clearly.
+    # Every sample during the attempt still goes through the same
+    # max_current/max_power_w/max_sample_voltage checks as anywhere else.
+    response_step = max(
+        config["tuning_response_current_step"],
+        config["minimum_current_change"],
+        config.get("tuning_response_relative_step", 0.5) * baseline_current,
+    )
+    max_response_voltage = min(config["tuning_search_max_current"], config["max_current"])
+    candidate_current = tds_experiment._clamp(
+        baseline_current + response_step,
+        baseline_current,
+        max_response_voltage,
+    )
+    if candidate_current <= baseline_current + 1e-12:
+        raise ValueError(
+            f"{label}: could not create a current step above the stable baseline. "
+            "Increase tuning_search_max_current carefully."
+        )
+
+    seeded_baseline_samples = stable_samples
+    last_failure = None
+    attempt_number = 0
+    while candidate_current <= max_response_voltage + 1e-12:
+        attempt_number += 1
+        print(
+            f"{label} attempt {attempt_number}: baseline={baseline_current:.4f} A, "
+            f"response={candidate_current:.4f} A"
+        )
+        siglent.set_current(power_supply, current=baseline_current)
+        _sleep_with_stop(config["tuning_between_attempts_s"], emitter)
+
+        base_temperature = _collect_pid_baseline(
+            dmm_v=dmm_v,
+            dmm_i=dmm_i,
+            power_supply=power_supply,
+            temperature_interp=temperature_interp,
+            config=config,
+            emitter=emitter,
+            baseline_current=baseline_current,
+            target_temperature=base_temperature_hint,
+            temperature_lower_bound=temperature_lower_bound,
+            temperature_upper_bound=temperature_upper_bound,
+            loop_time=loop_time,
+            initial_samples=seeded_baseline_samples,
+        )
+        seeded_baseline_samples = None
+
+        available_rise = max(0.0, experiment_params["target_T"] - base_temperature)
+        desired_rise = min(config["tuning_target_rise_c"], available_rise)
+        if desired_rise < config["tuning_min_temperature_rise_c"] and available_rise > 0:
+            desired_rise = available_rise
+        if desired_rise <= 0:
+            raise ValueError(
+                f"{label}: target temperature is not above the current temperature, "
+                "so controller tuning cannot proceed."
+            )
+
+        required_rise = min(config["tuning_min_temperature_rise_c"], desired_rise)
+        smoothed_required_rise = max(
+            config["tuning_min_observable_rise_c"],
+            0.65 * required_rise,
+        )
+        safe_temperature_limit = min(
+            experiment_params["target_T"],
+            base_temperature + desired_rise + config["temperature_tolerance_c"],
+        )
+        attempt = _run_pid_tuning_attempt(
+            dmm_v=dmm_v,
+            dmm_i=dmm_i,
+            power_supply=power_supply,
+            temperature_interp=temperature_interp,
+            config=config,
+            emitter=emitter,
+            baseline_current=baseline_current,
+            response_current=candidate_current,
+            base_temperature=base_temperature,
+            desired_rise=desired_rise,
+            required_rise=required_rise,
+            smoothed_required_rise=smoothed_required_rise,
+            safe_temperature_limit=safe_temperature_limit,
+            temperature_lower_bound=temperature_lower_bound,
+            loop_time=loop_time,
+        )
+
+        siglent.set_current(power_supply, current=baseline_current)
+        _sleep_with_stop(config["tuning_between_attempts_s"], emitter)
+
+        if (
+            attempt["peak_rise_c"] >= required_rise
+            and attempt["smoothed_rise_c"] >= smoothed_required_rise
+            and attempt["response"]
+        ):
+            tuned = _estimate_pid_from_step(
+                response=attempt["response"],
+                base_temperature=base_temperature,
+                step_current=candidate_current - baseline_current,
+                loop_time=loop_time,
+                min_temp_rise=required_rise,
+                controller_mode=controller_mode,
+            )
+            tuned["baseline_current"] = baseline_current
+            tuned["step_current"] = candidate_current
+            tuned["step_delta_current"] = candidate_current - baseline_current
+            tuned["process_gain_c_per_a"] = tuned["peak_rise_c"] / max(tuned["step_delta_current"], 1e-9)
+            print(
+                f"Tuned {label}: Kp={tuned['Kp']:.6f}, Ki={tuned['Ki']:.6f}, "
+                f"Kd={tuned['Kd']:.6f}, baseline={baseline_current:.4f} A, "
+                f"response={candidate_current:.4f} A, delta={tuned['step_delta_current']:.4f} A, "
+                f"peak rise={tuned['peak_rise_c']:.2f} C"
+            )
+            return tuned
+
+        last_failure = (
+            f"Attempt at {candidate_current:.4f} A ended with status {attempt['status']} and produced "
+            f"{attempt['smoothed_rise_c']:.2f} C smoothed rise "
+            f"({attempt['peak_rise_c']:.2f} C peak)."
+        )
+        print(f"{label} attempt did not produce enough response. {last_failure}")
+        # Recompute relative to the current candidate, not the original
+        # baseline, so retries climb geometrically (1.5x, 2.25x, ...) from
+        # even a tiny starting current instead of creeping up by a fixed
+        # absolute amount that could take dozens of multi-minute attempts
+        # to reach a representative operating current.
+        response_step = max(
+            config["tuning_response_current_step"],
+            config["minimum_current_change"],
+            config.get("tuning_response_relative_step", 0.5) * candidate_current,
+        )
+        next_candidate_current = tds_experiment._clamp(
+            candidate_current + response_step,
+            baseline_current,
+            max_response_voltage,
+        )
+        if next_candidate_current <= candidate_current + 1e-12:
+            break
+        candidate_current = next_candidate_current
+
+    failure_message = (
+        f"{label} could not find a usable step response up to {max_response_voltage:.4f} A. "
+        f"{last_failure or ''}"
+    ).strip()
+    raise ValueError(failure_message)
+
+
 def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emitter=None):
     """
-    Tune conservative gains from a small guarded voltage step on the real setup.
+    Tune conservative gains from a small guarded current step on the real setup.
+
+    Single-point tuning, kept for callers that want just one gain set.
+    tune_pid_schedule is the multi-point version used by the GUI.
     """
     config = tds_experiment.build_control_config(config)
     controller_mode = tds_experiment.get_controller_mode(config)
@@ -914,179 +1147,148 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
         siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
         _sleep_with_stop(1.0, emitter)
 
-        stable_temperature_window = config["tuning_temperature_window_c"]
-        temperature_lower_bound = None
-        temperature_upper_bound = None
-        if base_temperature_hint is not None:
-            temperature_lower_bound = base_temperature_hint - stable_temperature_window
-            temperature_upper_bound = base_temperature_hint + stable_temperature_window
-
-        stable_setpoint_current, stable_samples = _find_stable_current_setpoint(
+        return _tune_one_point(
             dmm_v=dmm_v,
             dmm_i=dmm_i,
             power_supply=power_supply,
             temperature_interp=temperature_interp,
             config=config,
+            controller_mode=controller_mode,
+            loop_time=loop_time,
+            experiment_params=experiment_params,
+            base_temperature_hint=base_temperature_hint,
             start_current=config["tuning_start_current"],
-            max_current=max(config["tuning_start_current"], config["tuning_search_max_current"]),
-            step_current=config["tuning_current_step"],
-            settle_time_s=config["tuning_settle_time_s"],
-            stable_samples=config["tuning_stable_current_samples"],
-            minimum_current=config["tuning_stable_current_a"],
             emitter=emitter,
-            label=f"{controller_mode} tuning search",
-            temperature_lower_bound=temperature_lower_bound,
-            temperature_upper_bound=temperature_upper_bound,
-            display_target_temperature=base_temperature_hint,
-            stop_on_high_temperature=True,
+            label=f"{controller_mode} tuning",
         )
-        baseline_current = stable_setpoint_current
-        print(f"Using {controller_mode} baseline current: {baseline_current:.4f} A")
+    finally:
+        tds_experiment._shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager)
 
-        # A step-response test is a deliberate, one-shot excitation, not the
-        # continuously running control loop - it must not be throttled by
-        # max_current_step_up (0.01 A), which would otherwise force many
-        # multi-minute retries just to reach a step big enough to see clearly.
-        # Every sample during the attempt still goes through the same
-        # max_current/max_power_w/max_sample_voltage checks as anywhere else.
-        response_step = max(
-            config["tuning_response_current_step"],
-            config["minimum_current_change"],
-            config.get("tuning_response_relative_step", 0.5) * baseline_current,
-        )
-        max_response_voltage = min(config["tuning_search_max_current"], config["max_current"])
-        candidate_current = tds_experiment._clamp(
-            baseline_current + response_step,
-            baseline_current,
-            max_response_voltage,
-        )
-        if candidate_current <= baseline_current + 1e-12:
-            raise ValueError(
-                "Controller tuning could not create a voltage step above the stable-current baseline. "
-                "Increase tuning_search_max_current carefully."
+
+def _tuning_schedule_targets(config):
+    """Return the (name, start_current) points tune_pid_schedule tests.
+
+    Targets sit at tuning_start_current, 40%, and 80% of max_current, kept
+    only when meaningfully separated (>20%) from the previous one so a small
+    max_current collapses to fewer points instead of tuning at
+    near-duplicate currents.
+    """
+    max_current = float(config["max_current"])
+    low_start = float(config["tuning_start_current"])
+    mid_start = tds_experiment._clamp(0.4 * max_current, low_start, max_current)
+    high_start = tds_experiment._clamp(0.8 * max_current, low_start, max_current)
+    targets = []
+    for name, start_current in (("low", low_start), ("mid", mid_start), ("high", high_start)):
+        if not targets or start_current > targets[-1][1] * 1.2:
+            targets.append((name, start_current))
+    return targets
+
+
+def tune_pid_schedule(experiment_params, config, r_vs_t, base_temperature_hint=None, emitter=None):
+    """
+    Tune gains at low/mid/high currents and build a schedule covering the
+    whole operating range, instead of one fixed-gain result.
+
+    A wire's process gain (temperature rise per amp) is unlikely to stay
+    constant from a near-zero-power tuning point up to the several-watt
+    operating point of a real heating run - self-heating shifts which loss
+    mechanism (conduction vs. radiation) dominates. Returns one gain set per
+    tested current plus suggested max_current_step_up/down and
+    low_current_max_step_up/down, derived from the identified process gain
+    and time constant at each point (see _suggest_current_step): the low
+    pair from the lowest current tested, the normal pair from the highest,
+    since that is representative of sustained real operation.
+    """
+    config = tds_experiment.build_control_config(config)
+    controller_mode = tds_experiment.get_controller_mode(config)
+    loop_time = tds_experiment.resistivity_loop_time(config)
+    curve, _, temperature_interp = _prepare_curve_interpolators(r_vs_t, config=config)
+
+    targets = _tuning_schedule_targets(config)
+
+    resource_manager = None
+    dmm_v = None
+    dmm_i = None
+    power_supply = None
+
+    try:
+        resource_manager = pyvisa.ResourceManager()
+        dmm_v = resource_manager.open_resource(config["DMM_v"])
+        dmm_i = resource_manager.open_resource(config["DMM_i"])
+        power_supply = resource_manager.open_resource(config["PS"])
+        power_supply.write_termination = "\n"
+        power_supply.read_termination = "\n"
+
+        tds_experiment.prepare_power_supply_output(power_supply, config)
+        siglent.configure_dc_range_from_config(dmm_v, "VOLT", config)
+        siglent.configure_dc_range_from_config(dmm_i, "CURR", config)
+        siglent.set_mode_speed(dmm_i, "CURR", config["DMM_speed"])
+        siglent.set_mode_speed(dmm_v, "VOLT", config["DMM_speed"])
+        _sleep_with_stop(1.0, emitter)
+
+        points = []
+        for name, start_current in targets:
+            _check_stop(emitter)
+            tuned = _tune_one_point(
+                dmm_v=dmm_v,
+                dmm_i=dmm_i,
+                power_supply=power_supply,
+                temperature_interp=temperature_interp,
+                config=config,
+                controller_mode=controller_mode,
+                loop_time=loop_time,
+                experiment_params=experiment_params,
+                base_temperature_hint=base_temperature_hint,
+                start_current=start_current,
+                emitter=emitter,
+                label=f"{controller_mode} tuning ({name})",
             )
-
-        seeded_baseline_samples = stable_samples
-        last_failure = None
-        attempt_number = 0
-        while candidate_current <= max_response_voltage + 1e-12:
-            attempt_number += 1
+            tuned["point_name"] = name
+            points.append(tuned)
             print(
-                f"{controller_mode} tuning attempt {attempt_number}: baseline={baseline_current:.4f} A, "
-                f"response={candidate_current:.4f} A"
-            )
-            siglent.set_current(power_supply, current=baseline_current)
-            _sleep_with_stop(config["tuning_between_attempts_s"], emitter)
-
-            base_temperature = _collect_pid_baseline(
-                dmm_v=dmm_v,
-                dmm_i=dmm_i,
-                power_supply=power_supply,
-                temperature_interp=temperature_interp,
-                config=config,
-                emitter=emitter,
-                baseline_current=baseline_current,
-                target_temperature=base_temperature_hint,
-                temperature_lower_bound=temperature_lower_bound,
-                temperature_upper_bound=temperature_upper_bound,
-                loop_time=loop_time,
-                initial_samples=seeded_baseline_samples,
-            )
-            seeded_baseline_samples = None
-
-            available_rise = max(0.0, experiment_params["target_T"] - base_temperature)
-            desired_rise = min(config["tuning_target_rise_c"], available_rise)
-            if desired_rise < config["tuning_min_temperature_rise_c"] and available_rise > 0:
-                desired_rise = available_rise
-            if desired_rise <= 0:
-                raise ValueError(
-                    "Target temperature is not above the current temperature, so controller tuning cannot proceed."
-                )
-
-            required_rise = min(config["tuning_min_temperature_rise_c"], desired_rise)
-            smoothed_required_rise = max(
-                config["tuning_min_observable_rise_c"],
-                0.65 * required_rise,
-            )
-            safe_temperature_limit = min(
-                experiment_params["target_T"],
-                base_temperature + desired_rise + config["temperature_tolerance_c"],
-            )
-            attempt = _run_pid_tuning_attempt(
-                dmm_v=dmm_v,
-                dmm_i=dmm_i,
-                power_supply=power_supply,
-                temperature_interp=temperature_interp,
-                config=config,
-                emitter=emitter,
-                baseline_current=baseline_current,
-                response_current=candidate_current,
-                base_temperature=base_temperature,
-                desired_rise=desired_rise,
-                required_rise=required_rise,
-                smoothed_required_rise=smoothed_required_rise,
-                safe_temperature_limit=safe_temperature_limit,
-                temperature_lower_bound=temperature_lower_bound,
-                loop_time=loop_time,
+                f"{name} point done: current={tuned['step_current']:.4f} A, "
+                f"gain={tuned['process_gain_c_per_a']:.3g} C/A, tau={tuned['time_constant_s']:.1f} s"
             )
 
-            siglent.set_current(power_supply, current=baseline_current)
-            _sleep_with_stop(config["tuning_between_attempts_s"], emitter)
+        points_by_current = sorted(points, key=lambda point: point["step_current"])
+        schedule = [
+            {
+                "current_a": float(point["step_current"]),
+                "kp": float(point["Kp"]),
+                "ki": float(point["Ki"]),
+                "kd": float(point["Kd"]),
+            }
+            for point in points_by_current
+        ]
 
-            if (
-                attempt["peak_rise_c"] >= required_rise
-                and attempt["smoothed_rise_c"] >= smoothed_required_rise
-                and attempt["response"]
-            ):
-                tuned = _estimate_pid_from_step(
-                    response=attempt["response"],
-                    base_temperature=base_temperature,
-                    step_current=candidate_current - baseline_current,
-                    loop_time=loop_time,
-                    min_temp_rise=required_rise,
-                    controller_mode=controller_mode,
-                )
-                tuned["baseline_current"] = baseline_current
-                tuned["step_current"] = candidate_current
-                tuned["step_delta_current"] = candidate_current - baseline_current
-                print(
-                    f"Tuned {controller_mode} parameters: Kp={tuned['Kp']:.6f}, Ki={tuned['Ki']:.6f}, "
-                    f"Kd={tuned['Kd']:.6f}, baseline={baseline_current:.4f} A, "
-                    f"response={candidate_current:.4f} A, delta={tuned['step_delta_current']:.4f} A, "
-                    f"peak rise={tuned['peak_rise_c']:.2f} C"
-                )
-                return tuned
+        low_point = points_by_current[0]
+        high_point = points_by_current[-1]
+        low_step = _suggest_current_step(
+            low_point["process_gain_c_per_a"], low_point["time_constant_s"], loop_time, config
+        )
+        high_step = _suggest_current_step(
+            high_point["process_gain_c_per_a"], high_point["time_constant_s"], loop_time, config
+        )
 
-            last_failure = (
-                f"Attempt at {candidate_current:.4f} A ended with status {attempt['status']} and produced "
-                f"{attempt['smoothed_rise_c']:.2f} C smoothed rise "
-                f"({attempt['peak_rise_c']:.2f} C peak)."
-            )
-            print(f"{controller_mode} tuning attempt did not produce enough response. {last_failure}")
-            # Recompute relative to the current candidate, not the original
-            # baseline, so retries climb geometrically (1.5x, 2.25x, ...) from
-            # even a tiny starting current instead of creeping up by a fixed
-            # absolute amount that could take dozens of multi-minute attempts
-            # to reach a representative operating current.
-            response_step = max(
-                config["tuning_response_current_step"],
-                config["minimum_current_change"],
-                config.get("tuning_response_relative_step", 0.5) * candidate_current,
-            )
-            next_candidate_current = tds_experiment._clamp(
-                candidate_current + response_step,
-                baseline_current,
-                max_response_voltage,
-            )
-            if next_candidate_current <= candidate_current + 1e-12:
-                break
-            candidate_current = next_candidate_current
-
-        failure_message = (
-            f"{controller_mode} tuning could not find a usable step response up to {max_response_voltage:.4f} V. "
-            f"{last_failure or ''}"
-        ).strip()
-        raise ValueError(failure_message)
-
+        result = {
+            "schedule": schedule,
+            "points": points,
+            "low_current_max_step_up": low_step,
+            "low_current_max_step_down": low_step,
+            "max_current_step_up": high_step,
+            "max_current_step_down": high_step,
+            "Kp": schedule[0]["kp"],
+            "Ki": schedule[0]["ki"],
+            "Kd": schedule[0]["kd"],
+        }
+        print(
+            f"{controller_mode} gain schedule tuned at {len(points)} point(s): "
+            + ", ".join(f"{p['current_a']:.4f} A" for p in schedule)
+        )
+        print(
+            f"Suggested step limits: low_current_max_step={low_step:.4f} A, "
+            f"max_current_step={high_step:.4f} A"
+        )
+        return result
     finally:
         tds_experiment._shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager)

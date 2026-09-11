@@ -32,6 +32,11 @@ CONTROL_DEFAULTS = {
     "pid_kp": 0.0004,
     "pid_ki": 0.00002,
     "pid_kd": 0.0,
+    # Optional multi-point tuning result: a list of {current_a, kp, ki, kd}
+    # points, sorted ascending by current_a. When set, the controller
+    # interpolates gains by present_current instead of using the flat
+    # pid_kp/pid_ki/pid_kd above. Empty by default (single fixed-gain PID).
+    "pid_gain_schedule": [],
     "pid_integral_limit": 400.0,
     "pid_derivative_filter": 0.6,
     "startup_current": 0.005,
@@ -334,6 +339,59 @@ def _current_ramp_command(start_current, ramp_speed_min, elapsed_s, applied_curr
 def get_controller_mode(config):
     mode = str(config.get("controller_mode", CONTROL_DEFAULTS["controller_mode"])).strip().upper()
     return mode if mode in {"PI", "PID"} else CONTROL_DEFAULTS["controller_mode"]
+
+
+def pid_gains_for_current(config, current_a):
+    """Return (kp, ki, kd) for the given operating current.
+
+    Interpolates config["pid_gain_schedule"] (points from multi-point PI/PID
+    tuning, run at different currents to cover a range where the process
+    gain is not constant) when present, clamping at the ends rather than
+    extrapolating past the tuned range. Falls back to the flat
+    pid_kp/pid_ki/pid_kd values from a single-point tune when no schedule
+    has been set.
+    """
+    kd_enabled = get_controller_mode(config) == "PID"
+    schedule = config.get("pid_gain_schedule") or []
+    if not schedule:
+        kp = float(config.get("pid_kp", 0.0))
+        ki = float(config.get("pid_ki", 0.0))
+        kd = float(config.get("pid_kd", 0.0)) if kd_enabled else 0.0
+        return kp, ki, kd
+
+    points = sorted(schedule, key=lambda point: float(point["current_a"]))
+    try:
+        current_a = float(current_a)
+    except (TypeError, ValueError):
+        current_a = float(points[0]["current_a"])
+    if not np.isfinite(current_a):
+        current_a = float(points[0]["current_a"])
+
+    if current_a <= float(points[0]["current_a"]):
+        chosen = points[0]
+        kp, ki, kd = float(chosen["kp"]), float(chosen["ki"]), float(chosen.get("kd", 0.0))
+    elif current_a >= float(points[-1]["current_a"]):
+        chosen = points[-1]
+        kp, ki, kd = float(chosen["kp"]), float(chosen["ki"]), float(chosen.get("kd", 0.0))
+    else:
+        kp = ki = kd = None
+        for lower, upper in zip(points, points[1:]):
+            lower_current = float(lower["current_a"])
+            upper_current = float(upper["current_a"])
+            if lower_current <= current_a <= upper_current:
+                span = upper_current - lower_current
+                fraction = 0.0 if span <= 0 else (current_a - lower_current) / span
+                kp = float(lower["kp"]) + fraction * (float(upper["kp"]) - float(lower["kp"]))
+                ki = float(lower["ki"]) + fraction * (float(upper["ki"]) - float(lower["ki"]))
+                kd = float(lower.get("kd", 0.0)) + fraction * (
+                    float(upper.get("kd", 0.0)) - float(lower.get("kd", 0.0))
+                )
+                break
+        if kp is None:
+            chosen = points[-1]
+            kp, ki, kd = float(chosen["kp"]), float(chosen["ki"]), float(chosen.get("kd", 0.0))
+
+    return kp, ki, (kd if kd_enabled else 0.0)
 
 
 def get_experiment_mode(config):
@@ -1336,6 +1394,7 @@ def _compute_next_current(
             f"Measured temperature {temperature:.2f} C exceeded the safety limit near target {target_temperature:.2f} C."
         )
 
+    pid_controller.kp, pid_controller.ki, pid_controller.kd = pid_gains_for_current(config, present_current)
     delta_current = pid_controller.compute(temperature, dt=loop_time, setpoint=setpoint)
     if not np.isfinite(delta_current):
         raise ExperimentSafetyError("PID requested a non-finite voltage change.")

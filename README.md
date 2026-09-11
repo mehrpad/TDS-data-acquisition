@@ -323,7 +323,9 @@ Saved files:
 - `r_vs_t.csv`: the exact calibration curve used for that run
 - `corrected_r_vs_t_curve.pdf`: plotted temperature-versus-corrected-resistance curve used for conversion
 - `calibration_info.txt`: written when T0 calibration detected a large raw curve-to-T0 mismatch
-- `run_metadata.json`: the full controller/measurement configuration used for the run, including the PID/PI gains in effect at start
+- `run_metadata.json`: the full controller/measurement configuration used for the run, including the PID/PI gain schedule in effect at start
+
+Saved per-material tuning results (gain schedule, step limits, and related settings) live separately under `files/material_profiles/<name>.json`, loadable from the GUI's Material Profile field - see `docs/MEASUREMENT_SETUP.md`.
 
 Autosave runs in a background thread so disk writing does not block experiment control.
 The `P` / `sample_power` column records `|Vsample x I|` in watts.

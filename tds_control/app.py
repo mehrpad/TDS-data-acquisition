@@ -10,6 +10,7 @@ import pyqtgraph as pg
 
 from . import calibration
 from . import config_io
+from . import material_profiles
 from . import tds_experiment
 from .curve_io import load_resistance_temperature_file
 from .data_saver import ExperimentDataSaver
@@ -253,6 +254,36 @@ class Ui_TDS(object):
         for _ in tds_experiment.RESISTIVITY_MODES:
             self.resistivity_measurement_mode.addItem("")
         self.gridLayout.addWidget(self.resistivity_measurement_mode, 7, 1, 1, 1)
+        self.label_material_profile = QtWidgets.QLabel(parent=self.centralwidget)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Minimum)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.label_material_profile.sizePolicy().hasHeightForWidth())
+        self.label_material_profile.setSizePolicy(sizePolicy)
+        self.label_material_profile.setObjectName("label_material_profile")
+        self.gridLayout.addWidget(self.label_material_profile, 8, 0, 1, 1)
+        self.material_profile_row = QtWidgets.QWidget(parent=self.centralwidget)
+        self.material_profile_row.setObjectName("material_profile_row")
+        self.material_profile_layout = QtWidgets.QHBoxLayout(self.material_profile_row)
+        self.material_profile_layout.setContentsMargins(0, 0, 0, 0)
+        self.material_profile_layout.setSpacing(4)
+        self.material_profile_combo = QtWidgets.QComboBox(parent=self.material_profile_row)
+        self.material_profile_combo.setEditable(True)
+        self.material_profile_combo.setMinimumSize(QtCore.QSize(70, 20))
+        self.material_profile_combo.setStyleSheet("QComboBox{ background: rgb(223,223,233) }")
+        self.material_profile_combo.setObjectName("material_profile_combo")
+        self.material_profile_layout.addWidget(self.material_profile_combo)
+        self.material_profile_load_button = QtWidgets.QPushButton(parent=self.material_profile_row)
+        self.material_profile_load_button.setMinimumSize(QtCore.QSize(50, 20))
+        self.material_profile_load_button.setStyleSheet("QPushButton{background: rgb(193, 193, 193)}")
+        self.material_profile_load_button.setObjectName("material_profile_load_button")
+        self.material_profile_layout.addWidget(self.material_profile_load_button)
+        self.material_profile_save_button = QtWidgets.QPushButton(parent=self.material_profile_row)
+        self.material_profile_save_button.setMinimumSize(QtCore.QSize(50, 20))
+        self.material_profile_save_button.setStyleSheet("QPushButton{background: rgb(193, 193, 193)}")
+        self.material_profile_save_button.setObjectName("material_profile_save_button")
+        self.material_profile_layout.addWidget(self.material_profile_save_button)
+        self.gridLayout.addWidget(self.material_profile_row, 8, 1, 1, 1)
         self.gridLayout_5.addLayout(self.gridLayout, 0, 0, 1, 1)
         self.gridLayout_4 = QtWidgets.QGridLayout()
         self.gridLayout_4.setObjectName("gridLayout_4")
@@ -512,8 +543,31 @@ class Ui_TDS(object):
         self.pid_kd_edit.setStyleSheet(pid_field_style)
         self.pid_kd_edit.setObjectName("pid_kd_edit")
         self.pid_status_layout.addWidget(self.pid_kd_edit)
+        self.pid_status_layout.addSpacing(14)
+        self.label_step_up = QtWidgets.QLabel("Step Up (A)", parent=self.pid_status_widget)
+        self.pid_status_layout.addWidget(self.label_step_up)
+        self.max_current_step_up_edit = QtWidgets.QLineEdit(parent=self.pid_status_widget)
+        self.max_current_step_up_edit.setMinimumSize(QtCore.QSize(80, 22))
+        self.max_current_step_up_edit.setStyleSheet(pid_field_style)
+        self.max_current_step_up_edit.setObjectName("max_current_step_up_edit")
+        self.pid_status_layout.addWidget(self.max_current_step_up_edit)
+        self.label_step_down = QtWidgets.QLabel("Step Down (A)", parent=self.pid_status_widget)
+        self.pid_status_layout.addWidget(self.label_step_down)
+        self.max_current_step_down_edit = QtWidgets.QLineEdit(parent=self.pid_status_widget)
+        self.max_current_step_down_edit.setMinimumSize(QtCore.QSize(80, 22))
+        self.max_current_step_down_edit.setStyleSheet(pid_field_style)
+        self.max_current_step_down_edit.setObjectName("max_current_step_down_edit")
+        self.pid_status_layout.addWidget(self.max_current_step_down_edit)
         self.pid_status_layout.addStretch(1)
         self.gridLayout_3.addWidget(self.pid_status_widget, 3, 0, 1, 6)
+        self.pid_schedule_label = QtWidgets.QLabel(parent=self.centralwidget)
+        self.pid_schedule_label.setMinimumSize(QtCore.QSize(0, 20))
+        self.pid_schedule_label.setWordWrap(True)
+        self.pid_schedule_label.setStyleSheet(
+            "QLabel{color: #444444; font-family: 'Consolas','Courier New',monospace; font-size: 8pt;}"
+        )
+        self.pid_schedule_label.setObjectName("pid_schedule_label")
+        self.gridLayout_3.addWidget(self.pid_schedule_label, 4, 0, 1, 6)
         self.gridLayout_2 = QtWidgets.QGridLayout()
         self.gridLayout_2.setObjectName("gridLayout_2")
         self.start_botton = QtWidgets.QPushButton(parent=self.centralwidget)
@@ -553,7 +607,7 @@ class Ui_TDS(object):
         self.calibrate_botton_pid.setStyleSheet("QPushButton{background: rgb(193, 193, 193)}")
         self.calibrate_botton_pid.setObjectName("calibrate_botton_pid")
         self.gridLayout_2.addWidget(self.calibrate_botton_pid, 1, 2, 1, 1)
-        self.gridLayout_3.addLayout(self.gridLayout_2, 4, 0, 1, 6)
+        self.gridLayout_3.addLayout(self.gridLayout_2, 5, 0, 1, 6)
         self.gridLayout_5.addLayout(self.gridLayout_3, 1, 0, 1, 1)
         self.Error = QtWidgets.QLabel(parent=self.centralwidget)
         self.Error.setMinimumSize(QtCore.QSize(1000, 30))
@@ -685,6 +739,10 @@ class Ui_TDS(object):
         self.pid_kp_edit.editingFinished.connect(self.update_pid_kp)
         self.pid_ki_edit.editingFinished.connect(self.update_pid_ki)
         self.pid_kd_edit.editingFinished.connect(self.update_pid_kd)
+        self.max_current_step_up_edit.editingFinished.connect(self.update_max_current_step_up)
+        self.max_current_step_down_edit.editingFinished.connect(self.update_max_current_step_down)
+        self.material_profile_load_button.clicked.connect(self.load_material_profile)
+        self.material_profile_save_button.clicked.connect(self.save_material_profile)
         self.measurement_conversion_mode.currentIndexChanged.connect(self.update_experiment_mode)
         self.resistivity_measurement_mode.currentIndexChanged.connect(self.update_resistivity_mode)
         self.calib_temperature.textEdited.connect(self.invalidate_t_zero_calibration)
@@ -703,6 +761,7 @@ class Ui_TDS(object):
         self._update_file_tooltips()
         self._set_operation_running(False)
         self.refresh_pid_status_label()
+        self.refresh_material_profile_list()
 
         self.voltage_lcd.setDigitCount(8)
         self.current_lcd.setDigitCount(8)
@@ -733,6 +792,12 @@ class Ui_TDS(object):
         for index, mode in enumerate(tds_experiment.RESISTIVITY_MODES):
             self.resistivity_measurement_mode.setItemText(index, _translate("TDS", mode))
         self.resistivity_measurement_mode.setToolTip(_translate("TDS", RESISTIVITY_MODE_TOOLTIP))
+        self.label_material_profile.setText(_translate("TDS", "Material Profile"))
+        self.material_profile_combo.setToolTip(_translate(
+            "TDS", "Saved per-material tuning result: gain schedule, step limits, and related settings."
+        ))
+        self.material_profile_load_button.setText(_translate("TDS", "Load"))
+        self.material_profile_save_button.setText(_translate("TDS", "Save"))
         self.label_4.setText(_translate("TDS", "Target Temp. (°C)    "))
         self.label_1.setText(_translate("TDS", "Measured Temp (°C)"))
         self.label_2.setText(_translate("TDS", "Voltage (V)              "))
@@ -821,17 +886,21 @@ class Ui_TDS(object):
         self.save_config()
 
     def refresh_pid_status_label(self):
-        """Show the controller gains currently in use, above Start/Stop, and
-        let the user edit them directly.
+        """Show the controller gains/step limits currently in use, above
+        Start/Stop, and let the user edit them directly.
 
         Reflects self.config, so it updates immediately after a tune (or a
-        config reload) rather than only showing whatever was tuned last.
+        config/profile load) rather than only showing whatever was tuned last.
         """
         controller_mode = tds_experiment.get_controller_mode(self.config)
+        schedule = self.config.get('pid_gain_schedule') or []
         kp = float(self.config.get('pid_kp', 0.0))
         ki = float(self.config.get('pid_ki', 0.0))
         kd = float(self.config.get('pid_kd', 0.0))
-        self.controller_mode_label.setText(f"Controller: {controller_mode}")
+        mode_text = f"Controller: {controller_mode}"
+        if schedule:
+            mode_text += f" ({len(schedule)}-point schedule)"
+        self.controller_mode_label.setText(mode_text)
         if not self.pid_kp_edit.hasFocus():
             self.pid_kp_edit.setText(f'{kp:g}')
         if not self.pid_ki_edit.hasFocus():
@@ -843,8 +912,31 @@ class Ui_TDS(object):
         self.label_pid_kd.setEnabled(kd_used)
         self.pid_kd_edit.setToolTip('' if kd_used else 'Kd is only used when controller_mode is PID.')
 
+        step_up = float(self.config.get('max_current_step_up', 0.0))
+        step_down = float(self.config.get('max_current_step_down', 0.0))
+        if not self.max_current_step_up_edit.hasFocus():
+            self.max_current_step_up_edit.setText(f'{step_up:g}')
+        if not self.max_current_step_down_edit.hasFocus():
+            self.max_current_step_down_edit.setText(f'{step_down:g}')
+
+        if schedule:
+            points_text = "  |  ".join(
+                f"{point['current_a']:.4g} A: Kp={point['kp']:.4g} Ki={point['ki']:.4g}"
+                + (f" Kd={point['kd']:.4g}" if kd_used else "")
+                for point in sorted(schedule, key=lambda point: point['current_a'])
+            )
+            self.pid_schedule_label.setText(f"Gain schedule - {points_text}")
+        else:
+            self.pid_schedule_label.setText(
+                "No gain schedule - Kp/Ki/Kd above apply at every current. Tune PI/PID to build one."
+            )
+
     def _update_pid_gain(self, line_edit, config_key, label):
-        """Validate and save one PID/PI gain edited directly in the GUI."""
+        """Validate and save one PID/PI gain edited directly in the GUI.
+
+        Editing a flat gain by hand clears any multi-point schedule, since a
+        schedule would otherwise silently override this value during a run.
+        """
         previous_value = float(self.config.get(config_key, 0.0))
         try:
             value = float(line_edit.text())
@@ -856,8 +948,14 @@ class Ui_TDS(object):
             return False
 
         self.config[config_key] = value
+        if self.config.get('pid_gain_schedule'):
+            self.config['pid_gain_schedule'] = []
+            self.error_message(
+                f'{label} set manually; the multi-point gain schedule was cleared.', color='black'
+            )
         line_edit.setText(f'{value:g}')
         self.save_config()
+        self.refresh_pid_status_label()
         return True
 
     def update_pid_kp(self):
@@ -871,6 +969,80 @@ class Ui_TDS(object):
     def update_pid_kd(self):
         """Save a manually edited derivative gain."""
         return self._update_pid_gain(self.pid_kd_edit, 'pid_kd', 'Kd')
+
+    def _update_current_step(self, line_edit, config_key, label):
+        """Validate and save one current-per-loop step limit."""
+        previous_value = float(self.config.get(config_key, 0.01))
+        try:
+            value = float(line_edit.text())
+            if not np.isfinite(value) or value <= 0:
+                raise ValueError(f'{label} must be a positive finite number of amps.')
+        except ValueError as exc:
+            line_edit.setText(f'{previous_value:g}')
+            self.error_message(str(exc), color='red')
+            return False
+
+        self.config[config_key] = value
+        line_edit.setText(f'{value:g}')
+        self.save_config()
+        return True
+
+    def update_max_current_step_up(self):
+        """Save a manually edited upward per-loop current step limit."""
+        return self._update_current_step(self.max_current_step_up_edit, 'max_current_step_up', 'Step Up')
+
+    def update_max_current_step_down(self):
+        """Save a manually edited downward per-loop current step limit."""
+        return self._update_current_step(
+            self.max_current_step_down_edit, 'max_current_step_down', 'Step Down'
+        )
+
+    def refresh_material_profile_list(self):
+        """Repopulate the saved-profile dropdown from files/material_profiles/."""
+        current_text = self.material_profile_combo.currentText()
+        self.material_profile_combo.blockSignals(True)
+        try:
+            self.material_profile_combo.clear()
+            self.material_profile_combo.addItems(material_profiles.list_profiles())
+            self.material_profile_combo.setCurrentText(current_text)
+        finally:
+            self.material_profile_combo.blockSignals(False)
+
+    def save_material_profile(self):
+        """Snapshot the current tuning result and related settings under a name."""
+        name = self.material_profile_combo.currentText().strip()
+        if not name:
+            self.error_message('Enter a material name before saving a profile.', color='red')
+            return
+        try:
+            path = material_profiles.save_profile(name, self.config)
+        except ValueError as exc:
+            self.error_message(str(exc), color='red')
+            return
+        self.refresh_material_profile_list()
+        self.material_profile_combo.setCurrentText(name)
+        self.error_message(f'Saved material profile "{name}" to {path.name}.', color='black')
+
+    def load_material_profile(self):
+        """Apply a saved profile's gain schedule/step limits/settings to the live config."""
+        name = self.material_profile_combo.currentText().strip()
+        if not name:
+            self.error_message('Select a saved material profile to load.', color='red')
+            return
+        try:
+            profile = material_profiles.load_profile(name)
+        except FileNotFoundError as exc:
+            self.error_message(str(exc), color='red')
+            return
+
+        for field in material_profiles.PROFILE_FIELDS:
+            if field in profile:
+                self.config[field] = profile[field]
+        self.save_config()
+        self.refresh_pid_status_label()
+        self.resistivity_measurement_mode.setCurrentText(tds_experiment.get_resistivity_mode(self.config))
+        self.max_current.setText(f"{float(self.config['max_current']):g}")
+        self.error_message(f'Loaded material profile "{name}".', color='black')
 
     def apply_experiment_mode_ui(self):
         """Enable or disable controls based on the selected experiment mode."""
@@ -1057,8 +1229,13 @@ class Ui_TDS(object):
     def save_config(self):
         """
         Persist updated safety and PID settings to the local config file.
+
+        pid_gain_schedule is a list of {current_a, kp, ki, kd} points, not a
+        scalar, so it is not written into config.toml's flat key = value
+        format. It lives in self.config for the running session and is
+        persisted instead via a saved Material Profile.
         """
-        config_io.save_config(self.config)
+        config_io.save_config({key: value for key, value in self.config.items() if key != 'pid_gain_schedule'})
 
     def invalidate_t_zero_calibration(self):
         """
@@ -1451,7 +1628,7 @@ class Ui_TDS(object):
 
     def pid_tuning_finished(self, result):
         """
-        Handle the result of the guarded PID tuning worker.
+        Handle the result of the guarded multi-point PID tuning worker.
         """
         controller_mode = tds_experiment.get_controller_mode(self.config)
         self.calibration_worker = None
@@ -1468,29 +1645,40 @@ class Ui_TDS(object):
             self.error_message(f'{controller_mode} tuning failed: {result}', color='red')
             return
 
-        self.config['pid_kp'] = result['Kp']
-        self.config['pid_ki'] = result['Ki']
-        self.config['pid_kd'] = result['Kd']
+        schedule = result['schedule']
+        self.config['pid_gain_schedule'] = schedule
+        # Keep the flat pid_kp/ki/kd in sync too, as a fallback for any code
+        # path that has not been updated to consult the schedule, and as the
+        # value shown/edited when a schedule is later cleared.
+        self.config['pid_kp'] = schedule[0]['kp']
+        self.config['pid_ki'] = schedule[0]['ki']
+        self.config['pid_kd'] = schedule[0]['kd']
+        self.config['max_current_step_up'] = result['max_current_step_up']
+        self.config['max_current_step_down'] = result['max_current_step_down']
+        self.config['low_current_max_step_up'] = result['low_current_max_step_up']
+        self.config['low_current_max_step_down'] = result['low_current_max_step_down']
         self.save_config()
+
+        points_summary = ", ".join(
+            f"{point['current_a']:.4f} A (Kp={point['kp']:.6f}, Ki={point['ki']:.6f}, Kd={point['kd']:.6f})"
+            for point in schedule
+        )
         print(
-            f"{controller_mode} tuned and saved: Kp={result['Kp']:.6f}, Ki={result['Ki']:.6f}, "
-            f"Kd={result['Kd']:.6f}, baseline={result.get('baseline_current', float('nan')):.4f} A, "
-            f"response={result.get('step_current', float('nan')):.4f} A, "
-            f"delta={result.get('step_delta_current', float('nan')):.4f} A, "
-            f"peak rise={result.get('peak_rise_c', float('nan')):.2f} C"
+            f"{controller_mode} gain schedule tuned and saved at {len(schedule)} point(s): {points_summary}. "
+            f"Step limits: low={result['low_current_max_step_up']:.4f} A, "
+            f"normal={result['max_current_step_up']:.4f} A."
         )
         self.refresh_pid_status_label()
-        if controller_mode == 'PID':
-            tuning_message = (
-                f"PID tuned: Kp={result['Kp']:.5f}, Ki={result['Ki']:.5f}, Kd={result['Kd']:.5f}"
-            )
-        else:
-            tuning_message = f"PI tuned: Kp={result['Kp']:.5f}, Ki={result['Ki']:.5f}"
-        self.error_message(tuning_message, color='black')
+        self.error_message(
+            f"{controller_mode} tuned at {len(schedule)} current(s); step limits suggested "
+            f"(low={result['low_current_max_step_up']:.4f} A, normal={result['max_current_step_up']:.4f} A) "
+            "- review before running. Save a Material Profile to reuse this on the same wire later.",
+            color='black',
+        )
 
     def calibrate_pid(self):
         """
-        Calibrate the PID
+        Calibrate the PID/PI gain schedule across the operating current range.
         """
         controller_mode = tds_experiment.get_controller_mode(self.config)
         if not self.update_max_power() or not self.update_calibration_start_current():
@@ -1508,7 +1696,7 @@ class Ui_TDS(object):
         self.emitter.reset_stop()
         self._set_operation_running(True)
         self.calibration_worker = CalibrationWorkerThread(
-            calibration.tune_pid,
+            calibration.tune_pid_schedule,
             self.emitter,
             self.experiment_params[0],
             self.config,
@@ -1517,7 +1705,9 @@ class Ui_TDS(object):
         )
         self.calibration_worker.finished.connect(self.pid_tuning_finished)
         self.calibration_worker.start()
-        self.error_message(f'Running {controller_mode} tuning. Press Stop to cancel.', color='black')
+        self.error_message(
+            f'Running {controller_mode} tuning at multiple currents. Press Stop to cancel.', color='black'
+        )
 
     def start_clicked(self):
         """
