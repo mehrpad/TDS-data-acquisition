@@ -580,7 +580,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
         return calibrated
 
     finally:
-        tds_experiment._shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager, config=config)
+        tds_experiment._shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager)
 
 
 def _estimate_pid_from_step(response, base_temperature, step_current, loop_time, min_temp_rise, controller_mode="PI"):
@@ -1073,4 +1073,4 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
         raise ValueError(failure_message)
 
     finally:
-        tds_experiment._shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager, config=config)
+        tds_experiment._shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager)

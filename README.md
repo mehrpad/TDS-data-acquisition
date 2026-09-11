@@ -298,7 +298,7 @@ The control loop now includes:
 - five staged `+0.01 V` recovery probes when invalid low-signal measurements would otherwise stall control
 - an enforced Initial Voltage floor and 0.001 V low-voltage micro-steps
 - controlled micro-voltage probing before a large resistance/temperature jump is accepted
-- one PSU output-enable command at operation start, followed by a 0.001 V keep-alive setpoint at the end
+- one PSU output-enable command at operation start, followed by zero current and output OFF at the end
 
 `max_current` and `max_power_w` are software stop thresholds after synchronized DMM readings; they are not
 hardware limiters. The 2.5 W default is a general ceiling, not a validated safe value for a thin wire. Your

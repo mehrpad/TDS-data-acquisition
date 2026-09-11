@@ -17,6 +17,7 @@ from tds_control.tds_experiment import (
     _measurement_current_floor,
     _screen_low_signal_temperature,
     _sample_power_w,
+    _shutdown_instruments,
     _start_control_at_initial_current,
     _current_ramp_command,
     get_experiment_mode,
@@ -478,6 +479,51 @@ class LowVoltageStartupTests(unittest.TestCase):
         self.assertAlmostEqual(temperature, 23.0)
         siglent_module.read_DMM_pair.assert_called_once()
         siglent_module.read_DMM.assert_not_called()
+
+
+class ShutdownInstrumentsTests(unittest.TestCase):
+    """T0 calibration, PI/PID tuning, and every experiment type end here."""
+
+    @patch("tds_control.tds_experiment.time.sleep")
+    @patch("tds_control.siglent.set_output")
+    @patch("tds_control.siglent.set_current")
+    def test_shutdown_zeroes_current_then_switches_output_off(self, set_current, set_output, sleep):
+        power_supply = Mock()
+        dmm_v = Mock()
+        dmm_i = Mock()
+        resource_manager = Mock()
+        call_order = []
+        set_current.side_effect = lambda *a, **k: call_order.append("set_current")
+        set_output.side_effect = lambda *a, **k: call_order.append("set_output")
+
+        _shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager)
+
+        set_current.assert_called_once_with(power_supply, current=0.0)
+        set_output.assert_called_once_with(power_supply, state="OFF")
+        self.assertEqual(call_order, ["set_current", "set_output"])
+        dmm_v.close.assert_called_once()
+        dmm_i.close.assert_called_once()
+        power_supply.close.assert_called_once()
+        resource_manager.close.assert_called_once()
+
+    @patch("tds_control.tds_experiment.time.sleep")
+    @patch("tds_control.siglent.set_output")
+    @patch("tds_control.siglent.set_current", side_effect=RuntimeError("bus error"))
+    def test_shutdown_still_switches_output_off_if_zeroing_current_fails(
+        self, set_current, set_output, sleep
+    ):
+        power_supply = Mock()
+
+        _shutdown_instruments(None, None, power_supply, None)
+
+        set_output.assert_called_once_with(power_supply, state="OFF")
+
+    def test_shutdown_tolerates_a_missing_power_supply(self):
+        dmm_v = Mock()
+
+        _shutdown_instruments(dmm_v, None, None, None)
+
+        dmm_v.close.assert_called_once()
 
 
 if __name__ == "__main__":
