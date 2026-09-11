@@ -943,14 +943,22 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
         baseline_current = stable_setpoint_current
         print(f"Using {controller_mode} baseline current: {baseline_current:.4f} A")
 
-        response_step = max(config["tuning_response_current_step"], config["minimum_current_change"])
+        # A step-response test is a deliberate, one-shot excitation, not the
+        # continuously running control loop - it must not be throttled by
+        # max_current_step_up (0.01 A), which would otherwise force many
+        # multi-minute retries just to reach a step big enough to see clearly.
+        # Every sample during the attempt still goes through the same
+        # max_current/max_power_w/max_sample_voltage checks as anywhere else.
+        response_step = max(
+            config["tuning_response_current_step"],
+            config["minimum_current_change"],
+            config.get("tuning_response_relative_step", 0.5) * baseline_current,
+        )
         max_response_voltage = min(config["tuning_search_max_current"], config["max_current"])
-        candidate_current = tds_experiment._limit_current_slew(
+        candidate_current = tds_experiment._clamp(
             baseline_current + response_step,
             baseline_current,
-            baseline_current,
             max_response_voltage,
-            config,
         )
         if candidate_current <= baseline_current + 1e-12:
             raise ValueError(
@@ -1055,12 +1063,20 @@ def tune_pid(experiment_params, config, r_vs_t, base_temperature_hint=None, emit
                 f"({attempt['peak_rise_c']:.2f} C peak)."
             )
             print(f"{controller_mode} tuning attempt did not produce enough response. {last_failure}")
-            next_candidate_current = tds_experiment._limit_current_slew(
+            # Recompute relative to the current candidate, not the original
+            # baseline, so retries climb geometrically (1.5x, 2.25x, ...) from
+            # even a tiny starting current instead of creeping up by a fixed
+            # absolute amount that could take dozens of multi-minute attempts
+            # to reach a representative operating current.
+            response_step = max(
+                config["tuning_response_current_step"],
+                config["minimum_current_change"],
+                config.get("tuning_response_relative_step", 0.5) * candidate_current,
+            )
+            next_candidate_current = tds_experiment._clamp(
                 candidate_current + response_step,
-                candidate_current,
                 baseline_current,
                 max_response_voltage,
-                config,
             )
             if next_candidate_current <= candidate_current + 1e-12:
                 break

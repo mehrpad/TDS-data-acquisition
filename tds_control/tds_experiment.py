@@ -111,9 +111,17 @@ CONTROL_DEFAULTS = {
     "autosave_batch_size": 10,
     "tuning_current_step": 0.001,
     "tuning_start_current": 0.005,
-    "tuning_search_max_current": 0.1,
+    # Effectively unbounded: max_current is the real ceiling. A separate,
+    # lower number here used to cut the geometric retry climb short well
+    # below what max_current would otherwise allow.
+    "tuning_search_max_current": 1000.0,
     "tuning_settle_time_s": 0.3,
     "tuning_response_current_step": 0.01,
+    # Minimum step size as a fraction of the current baseline/candidate, so
+    # the induced excitation stays meaningful in absolute power (P ~ I^2)
+    # however small or large that baseline is, rather than being capped at
+    # a fixed 0.01 A that is negligible power near a low baseline.
+    "tuning_response_relative_step": 0.5,
     "tuning_between_attempts_s": 0.5,
     "tuning_max_duration_s": 300.0,
     "tuning_baseline_samples": 2,

@@ -330,14 +330,17 @@ tuning_current_step = 0.001
 # Starting PSU voltage for controller tuning.
 tuning_start_current = 0.005
 
-# Maximum PSU current allowed during controller tuning.
-tuning_search_max_current = 0.1
+# Ceiling on PSU current during tuning; effectively unbounded by default so max_current is the real limit.
+tuning_search_max_current = 1000
 
 # Settling delay before a tuning search sample is judged.
 tuning_settle_time_s = 0.3
 
-# Step added above the baseline during each tuning attempt.
+# Minimum absolute step added above the baseline during a tuning attempt.
 tuning_response_current_step = 0.01
+
+# Minimum step as a fraction of the baseline/candidate current, so the induced excitation stays meaningful in power at any baseline.
+tuning_response_relative_step = 0.5
 
 # Pause between tuning attempts.
 tuning_between_attempts_s = 0.5
