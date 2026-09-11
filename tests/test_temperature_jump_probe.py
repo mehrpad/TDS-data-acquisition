@@ -4,7 +4,6 @@ from unittest.mock import Mock, call, patch
 from tds_control import siglent
 from tds_control.tds_experiment import (
     CONTROL_DEFAULTS,
-    ExperimentSafetyError,
     TemperatureJumpProbe,
     _advance_temperature_jump_probe,
     _confirmed_downward_temperature_jump,
@@ -202,14 +201,54 @@ class TemperatureJumpProbeTests(unittest.TestCase):
         self.assertFalse(accepted)
         self.assertAlmostEqual(requested_current, 0.09)
 
-    def test_unstable_probe_stops_with_specific_safety_error(self):
+    def test_unstable_probe_gives_up_instead_of_stopping_the_experiment(self):
+        # Killing the whole run over one unconfirmed jump is disproportionate:
+        # the general invalid-measurement handling already has its own, more
+        # patient safety nets. Exhausting the probe's budget on genuinely
+        # inconsistent readings should give up on this probe (so the reading
+        # is treated as an ordinary invalid measurement) rather than raise.
         config = _config(measurement_jump_probe_max_samples=3)
         probe = TemperatureJumpProbe()
         _advance_temperature_jump_probe(probe, "down", 220.0, 8.0, 0.300, 0.03, config)
         _advance_temperature_jump_probe(probe, "down", 200.0, 7.0, 0.302, 0.03, config)
 
-        with self.assertRaisesRegex(ExperimentSafetyError, "did not stabilize"):
-            _advance_temperature_jump_probe(probe, "down", 180.0, 6.0, 0.304, 0.03, config)
+        accepted, requested_current, attempts = _advance_temperature_jump_probe(
+            probe, "down", 180.0, 6.0, 0.304, 0.03, config
+        )
+        self.assertFalse(accepted)
+        self.assertIsNone(requested_current)
+        self.assertEqual(attempts, 3)
+        self.assertFalse(probe.active)
+
+    def test_slow_continuous_drift_confirms_via_the_sliding_reference(self):
+        # Reproduces a field crash: a real, still-settling trend (long thermal
+        # tau) keeps every single step small and consistent, but the total
+        # drift since the very first probe sample eventually exceeds
+        # tolerance. A reference fixed at that first sample would eventually
+        # reject every later sample forever and exhaust the probe; sliding the
+        # reference forward on each confirmed step must let it accept
+        # instead, using the exact field magnitudes (R drifting smoothly
+        # 3.4684 -> 3.3828 Ohm, a total change well past the 0.02 ratio
+        # tolerance measured against the first sample alone).
+        config = _config()
+        probe = TemperatureJumpProbe()
+        temperature = 171.09
+        resistance = 3.4684
+        applied_current = 0.0600
+        accepted = False
+        attempts = 0
+        for _ in range(20):
+            applied_current += 0.002
+            temperature -= 0.1321
+            resistance -= 0.00449
+            accepted, requested_current, attempts = _advance_temperature_jump_probe(
+                probe, "down", temperature, resistance, applied_current, 0.05, config
+            )
+            if accepted:
+                break
+        self.assertTrue(accepted)
+        self.assertIsNone(requested_current)
+        self.assertLess(attempts, 20)
 
     def test_current_updates_do_not_reassert_output(self):
         ps = Mock()

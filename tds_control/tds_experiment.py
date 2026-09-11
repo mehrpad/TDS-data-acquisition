@@ -1772,9 +1772,19 @@ def _advance_temperature_jump_probe(
 
         if candidate_is_consistent and voltage_was_probed:
             probe.confirmations += 1
+            # Slide the reference to this sample. A real, still-settling trend
+            # (long thermal tau, not yet plateaued) keeps each step small and
+            # consistent even while the total drift since the first probe
+            # sample grows past tolerance - anchoring to the latest accepted
+            # sample instead of the first one lets that be confirmed quickly,
+            # while a step that is itself too large or reverses direction
+            # still fails candidate_is_consistent and resets the count below.
+            probe.candidate_temperature = float(temperature)
+            probe.candidate_resistance = float(resistance)
         else:
-            # Keep the initial candidate and voltage as the fixed probe reference.
-            # An inconsistent reading does not slide the trusted temperature window.
+            # An inconsistent reading resets the count, but does not move the
+            # reference: the next sample is judged against the same point,
+            # not against the noisy one that just failed.
             probe.confirmations = 0
 
     if probe.confirmations >= required_confirmations:
@@ -1783,10 +1793,19 @@ def _advance_temperature_jump_probe(
         return True, None, attempts
 
     if probe.attempts >= maximum_attempts:
-        raise ExperimentSafetyError(
-            "Large temperature/resistance jump did not stabilize during the controlled current probe "
-            f"after {probe.attempts} samples. Stopping instead of controlling from an uncertain temperature."
-        )
+        # A signal that never settles within tolerance of any single reference
+        # point (whether from noise or an unusually long transient) is not
+        # distinguishable here from truly bad data, but killing the whole
+        # experiment over one unconfirmed jump is disproportionate: the
+        # general invalid-measurement handling already has its own, more
+        # patient safety nets (invalid_reuse_stop_after, measurement_fail_limit)
+        # that will stop the run if the reading never becomes trustworthy
+        # again. Give up on this probe instead and let the next sample start a
+        # fresh one - a real, still-moving trend gets caught again immediately
+        # with an up-to-date reference.
+        attempts = probe.attempts
+        probe.reset()
+        return False, None, attempts
 
     requested_current = _temperature_jump_probe_voltage(
         direction,
@@ -2326,6 +2345,14 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                                     )
                                     temperature_history[:] = [float(temperature)]
                                     reset_temperature_reference = True
+                                elif jump_probe_current_request is None:
+                                    print(
+                                        f"Downward-jump probe could not reach consensus after {probe_attempt} samples: "
+                                        f"previous={previous_temperature:.2f} C, candidate={temperature:.2f} C, "
+                                        f"R={measured_resistance:.4f} Ohm. Giving up on this probe and treating the "
+                                        "reading as invalid instead of stopping the experiment."
+                                    )
+                                    temperature = np.nan
                                 else:
                                     probe_action = (
                                         "increasing"
@@ -2416,6 +2443,14 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                                     )
                                     temperature_history[:] = [float(temperature)]
                                     reset_temperature_reference = True
+                                elif jump_probe_current_request is None:
+                                    print(
+                                        f"Upward-jump probe could not reach consensus after {probe_attempt} samples: "
+                                        f"previous={previous_temperature:.2f} C, candidate={temperature:.2f} C, "
+                                        f"R={measured_resistance:.4f} Ohm. Giving up on this probe and treating the "
+                                        "reading as invalid instead of stopping the experiment."
+                                    )
+                                    temperature = np.nan
                                 else:
                                     probe_action = (
                                         "decreasing"
@@ -2485,21 +2520,24 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             2,
                         )
                         if temperature_jump_probe.attempts >= maximum_probe_attempts:
-                            raise ExperimentSafetyError(
-                                "Large temperature/resistance jump probe could not obtain stable readings after "
-                                f"{temperature_jump_probe.attempts} samples. Stopping instead of controlling "
-                                "from an uncertain temperature."
+                            print(
+                                "Temperature-jump probe could not obtain stable readings after "
+                                f"{temperature_jump_probe.attempts} samples. Giving up on this probe and treating "
+                                "the reading as invalid instead of stopping the experiment."
                             )
-                        jump_probe_current_request = _temperature_jump_probe_voltage(
-                            temperature_jump_probe.direction,
-                            applied_current,
-                            measured_current,
-                            config,
-                        )
-                        print(
-                            "Temperature-jump probe received an unusable measurement; repeating the small "
-                            f"current probe at {jump_probe_current_request:.4f} A."
-                        )
+                            temperature_jump_probe.reset()
+                            jump_probe_current_request = None
+                        else:
+                            jump_probe_current_request = _temperature_jump_probe_voltage(
+                                temperature_jump_probe.direction,
+                                applied_current,
+                                measured_current,
+                                config,
+                            )
+                            print(
+                                "Temperature-jump probe received an unusable measurement; repeating the small "
+                                f"current probe at {jump_probe_current_request:.4f} A."
+                            )
                 if not _is_valid_measurement(measured_voltage, measured_current, temperature, config):
                     target_reference_temperature = (
                         float(previous_temperature)
@@ -2662,10 +2700,14 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             f"Reusing last trusted temperature {recovery_temperature:.2f} C and "
                             f"{recovery_action} to {pid_current:.4f} A."
                         )
+                        # recovery_temperature (the last trusted value) drives the PID
+                        # while a jump is unconfirmed, but it must not be written to the
+                        # dataset/plot next to a live, still-changing resistance reading
+                        # as if it were an actual measurement of the current instant.
                         _persist_measurement(
                             data_saver,
                             setpoint,
-                            recovery_temperature,
+                            np.nan,
                             measured_voltage,
                             measured_current,
                             applied_current,
@@ -2674,7 +2716,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                         _emit_measurement(
                             emitter,
                             setpoint,
-                            recovery_temperature,
+                            np.nan,
                             measured_voltage,
                             measured_current,
                             applied_current,
