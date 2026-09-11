@@ -139,9 +139,10 @@ CONFIG_GROUPS = [
         [
             ("tuning_current_step", "Voltage increment while searching for the safe tuning baseline."),
             ("tuning_start_current", "Starting PSU voltage for controller tuning."),
-            ("tuning_search_max_current", "Maximum PSU current allowed during controller tuning."),
+            ("tuning_search_max_current", "Ceiling on PSU current during tuning; effectively unbounded by default so max_current is the real limit."),
             ("tuning_settle_time_s", "Settling delay before a tuning search sample is judged."),
-            ("tuning_response_current_step", "Step added above the baseline during each tuning attempt."),
+            ("tuning_response_current_step", "Minimum absolute step added above the baseline during a tuning attempt."),
+            ("tuning_response_relative_step", "Minimum step as a fraction of the baseline/candidate current, so the induced excitation stays meaningful in power at any baseline."),
             ("tuning_between_attempts_s", "Pause between tuning attempts."),
             ("tuning_max_duration_s", "Maximum duration of one tuning response measurement."),
             ("tuning_baseline_samples", "How many baseline samples are required before a tuning step."),
