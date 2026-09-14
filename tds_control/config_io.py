@@ -44,7 +44,14 @@ CONFIG_GROUPS = [
             ("pid_kp", "Proportional gain used by the live controller."),
             ("pid_ki", "Integral gain used by the live controller."),
             ("pid_kd", 'Derivative gain used only when controller_mode = "PID".'),
-            ("pid_integral_limit", "Clamp for the internal integral state."),
+            ("pid_gain_schedule", "Measured per-wire gains: inline tables with current_a, kp, ki and kd; interpolation uses feed-forward or filtered current."),
+            ("current_feedforward_table", "Measured equilibrium currents: inline tables with temperature_c and current_a. Empty uses Initial Current as bias; PI supplies the remaining current."),
+            ("pid_integral_current_limit_a", "Absolute limit on integral correction in amps, also bounded by max_current."),
+            ("pid_tracking_time_s", "Back-calculation time for tracking the transmitted current through output limits and overrides."),
+            ("gain_schedule_filter_time_s", "Operating-current smoothing time for gain scheduling when no feed-forward map is available."),
+            ("temperature_rate_window_s", "Timestamped regression window for heating-rate estimation, in seconds."),
+            ("temperature_prediction_time_s", "Smooth predictive damping horizon in seconds; zero disables it."),
+            ("pid_integral_limit", "Legacy error-seconds limit; retained for compatibility, replaced by pid_integral_current_limit_a."),
             ("pid_derivative_filter", "Low-pass filter factor for derivative smoothing."),
             ("startup_current", "Initial PSU current at the start of an experiment."),
             ("min_current", "Lowest current the controller may request."),
@@ -52,10 +59,10 @@ CONFIG_GROUPS = [
             ("fixed_series_resistance_ohm", "Optional verified external series resistance to subtract from V/I. Keep this at 0 for a Kelvin sample measurement."),
             ("max_current_step_up", "Largest normal upward current step per loop."),
             ("max_current_step_down", "Largest downward current step per loop."),
-            ("max_current_step_up_far", "Larger upward step allowed when the sample is far below the setpoint."),
-            ("aggressive_step_band_c", "Temperature gap below the setpoint that enables aggressive catch-up."),
-            ("rate_limit_activation_band_c", "Band around the setpoint where heating-rate limiting becomes active."),
-            ("under_target_no_decrease_band_c", "Below this band the controller avoids decreasing voltage."),
+            ("max_current_step_up_far", "Legacy setting; normal PI regulation no longer forces catch-up steps."),
+            ("aggressive_step_band_c", "Legacy catch-up band; unused by normal PI regulation."),
+            ("rate_limit_activation_band_c", "Legacy rate-limit band; normal PI now uses smooth predictive damping."),
+            ("under_target_no_decrease_band_c", "Recovery-only band; normal PI may reduce current below the setpoint."),
         ],
     ),
     (
@@ -186,6 +193,9 @@ def _format_toml_value(value):
         return json.dumps(value)
     if isinstance(value, (list, tuple)):
         return "[" + ", ".join(_format_toml_value(item) for item in value) + "]"
+    if isinstance(value, dict):
+        return "{ " + ", ".join(json.dumps(str(key)) + " = " + _format_toml_value(item)
+                                 for key, item in value.items()) + " }"
     raise TypeError(f"Unsupported config value type: {type(value).__name__}")
 
 

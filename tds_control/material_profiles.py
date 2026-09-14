@@ -20,6 +20,12 @@ PROFILES_DIR = FILES_DIR / "material_profiles"
 # that realistically change together with a sample/material.
 PROFILE_FIELDS = (
     "pid_gain_schedule",
+    "current_feedforward_table",
+    "pid_integral_current_limit_a",
+    "pid_tracking_time_s",
+    "gain_schedule_filter_time_s",
+    "temperature_rate_window_s",
+    "temperature_prediction_time_s",
     "pid_kp",
     "pid_ki",
     "pid_kd",

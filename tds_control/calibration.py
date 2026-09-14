@@ -615,8 +615,8 @@ def _estimate_pid_from_step(response, base_temperature, step_current, loop_time,
     process_gain = peak_rise / max(step_current, 1e-6)
     lambda_time_s = max(3.0 * dead_time_s, time_constant_s, 30.0)
 
-    kp = time_constant_s / (process_gain * (lambda_time_s + dead_time_s))
-    ti = max(time_constant_s + dead_time_s / 2.0, loop_time)
+    kp = min(time_constant_s / (process_gain * (lambda_time_s + dead_time_s)), 0.05)
+    ti = max(time_constant_s + dead_time_s / 2.0, lambda_time_s, loop_time)
     ki = kp / ti
 
     controller_mode = str(controller_mode).strip().upper()
@@ -632,8 +632,10 @@ def _estimate_pid_from_step(response, base_temperature, step_current, loop_time,
         kd = 0.0
 
     return {
-        "Kp": float(np.clip(kp, 0.001, 0.05)),
-        "Ki": float(np.clip(ki, 1e-5, 0.01)),
+        # Small fitted gains are valid for high-gain wires. Hardware resolution
+        # limits the command, not the minimum permissible controller gain.
+        "Kp": float(kp),
+        "Ki": float(min(ki, 0.01)),
         "Kd": kd,
         "base_temperature": base_temperature,
         "step_current": step_current,

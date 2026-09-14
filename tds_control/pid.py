@@ -27,8 +27,8 @@ class PIDController:
         """
         Initialize a PID controller that supports output limiting and anti-windup.
 
-        The controller returns a delta voltage request, so output_limits usually
-        represent the maximum allowed voltage change per control loop.
+        Output and integral state are in actuator units (amps for wire heating).
+        The output is absolute: callers must not add it to the previous command.
         """
         self.kp = kp
         self.ki = ki
@@ -43,6 +43,9 @@ class PIDController:
         self.integral = 0.0
         self.derivative = 0.0
         self.output = 0.0
+        self.requested_output = 0.0
+        self.previous_setpoint = None
+        self.operating_current = None
 
     def update_setpoint(self, setpoint):
         """
@@ -50,17 +53,39 @@ class PIDController:
         """
         self.setpoint = setpoint
 
-    def reset(self, measurement=None):
+    def reset(self, measurement=None, preserve_integral=False):
         """
         Reset the dynamic controller state between experiment phases.
         """
         self.previous_error = 0.0
         self.previous_measurement = measurement
-        self.integral = 0.0
+        if not preserve_integral:
+            self.integral = 0.0
         self.derivative = 0.0
         self.output = 0.0
 
-    def compute(self, current_temperature, dt=1.0, setpoint=None):
+    def set_gains(self, kp, ki, kd):
+        # Keep the last correction continuous when scheduled Kp changes.
+        if self.ki > 0 or ki > 0:
+            self.integral = _clamp(
+                self.integral + (self.kp - kp) * self.previous_error,
+                self.integral_limits,
+            )
+        self.kp, self.ki, self.kd = kp, ki, kd
+
+    def track_output(self, applied_output, dt, tracking_time_s=30.0, deadband=0.0):
+        """Back-calculate from the accepted actuator setting, including overrides.
+
+        Ignore sub-resolution differences so small integral corrections can
+        accumulate across the hardware's quantization grid.
+        """
+        difference = applied_output - self.requested_output
+        if self.ki > 0 and abs(difference) > deadband + 1e-12:
+            weight = dt / (max(tracking_time_s, 0.0) + dt)
+            self.integral = _clamp(self.integral + weight * difference, self.integral_limits)
+        self.output = applied_output
+
+    def compute(self, current_temperature, dt=1.0, setpoint=None, bias=0.0, integrate=True):
         """
         Compute the control output for the current measurement.
 
@@ -78,9 +103,9 @@ class PIDController:
         error = self.setpoint - current_temperature
         proportional = self.kp * error
 
-        candidate_integral = self.integral + error * dt
+        candidate_integral = self.integral + (self.ki * error * dt if integrate else 0.0)
         candidate_integral = _clamp(candidate_integral, self.integral_limits)
-        integral_term = self.ki * candidate_integral
+        integral_term = candidate_integral
 
         derivative_term = 0.0
         if self.previous_measurement is not None:
@@ -94,7 +119,7 @@ class PIDController:
             else:
                 derivative_term = raw_derivative
 
-        unclamped_output = proportional + integral_term + derivative_term
+        unclamped_output = bias + proportional + integral_term + derivative_term
         output = _clamp(unclamped_output, self.output_limits)
 
         at_upper_limit = self.output_limits[1] is not None and output >= self.output_limits[1]
@@ -104,11 +129,12 @@ class PIDController:
             or (at_upper_limit and error < 0)
             or (at_lower_limit and error > 0)
         )
-        if should_integrate:
+        if integrate and should_integrate:
             self.integral = candidate_integral
 
         self.previous_error = error
         self.previous_measurement = current_temperature
         self.derivative = derivative_term
         self.output = output
+        self.requested_output = unclamped_output
         return output

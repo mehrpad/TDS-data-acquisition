@@ -182,6 +182,14 @@ Controller mode notes:
 - set `controller_mode = "PID"` if you want derivative action enabled
 - the `Tune PI/PID` button uses the selected mode from `config.toml`
 
+Temperature feedback uses an **absolute current command**: measured equilibrium
+feed-forward current plus PI correction. Normal regulation no longer forces
+catch-up steps or resets the integral on a noisy heating-rate threshold.
+Commands are quantized to the PSU's 1 mA grid, and the integral tracks the
+transmitted setting through current limits, slew limits, and recovery overrides.
+See [Temperature control](docs/TEMPERATURE_CONTROL.md) for configuration,
+per-wire feed-forward maps, gain scheduling, and retuning after this change.
+
 Experiment mode notes:
 
 - `experiment_mode = "TEMPERATURE"` is the default
@@ -288,7 +296,7 @@ The control loop now includes:
 
 - voltage step-up and step-down limits
 - PID anti-windup
-- rate limiting when temperature rises too quickly
+- smooth predictive damping using a timestamped heating-rate regression
 - software current cutoff using `max_current`
 - measured sample-power cutoff using `max_power_w`
 - invalid-measurement detection
