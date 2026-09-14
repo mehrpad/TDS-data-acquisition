@@ -10,6 +10,32 @@ to the PI output. Current and power safety aborts remain active.
 
 ## Feed-forward and gain schedules
 
+The GUI has an editable **Integral time Ti = Kp/Ki (s)** field beneath the
+gain/current-step row. Larger Ti slows integration. Editing Ti calculates
+`Ki = Kp/Ti`; entering zero disables integral action. Editing Kp or Ki directly
+recalculates the displayed Ti. Manual changes to Ti or gains clear an existing
+gain schedule, so that schedule cannot silently override the new settings.
+
+`pid_integral_time_s` is saved in both `files/config.toml` and Material Profile
+JSON files. For example, these equivalent settings produce Ki = 0.000002:
+
+```json
+{
+  "pid_kp": 0.0002,
+  "pid_ki": 0.000002,
+  "pid_integral_time_s": 100
+}
+```
+
+On file/profile load, explicit Ti takes precedence over flat Ki. You can edit
+the JSON's Ti to change integration speed, or omit Ti to use a legacy Ki-only
+file. Older profiles derive Ti from their existing gains without changing Ki.
+For I-only control (`Kp = 0`, `Ki > 0`), Ti is undefined: the GUI shows N/A and
+you edit Ki directly. Saved Ti is zero in that case while Ki is retained.
+
+With a gain schedule enabled, the flat Ti is the fallback value; each scheduled
+point's Ti is displayed alongside its gains and may differ.
+
 Add equilibrium measurements for the actual wire to `files/config.toml` using
 `current_feedforward_table`. Each point contains `temperature_c` and `current_a`.
 For example, the **format only**, with illustrative values that must be replaced:

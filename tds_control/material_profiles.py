@@ -13,6 +13,7 @@ re-editing (or losing) a previous material's tuned values.
 import json
 
 from .paths import FILES_DIR
+from .pid import normalize_integral_time
 
 PROFILES_DIR = FILES_DIR / "material_profiles"
 
@@ -28,6 +29,7 @@ PROFILE_FIELDS = (
     "temperature_prediction_time_s",
     "pid_kp",
     "pid_ki",
+    "pid_integral_time_s",
     "pid_kd",
     "controller_mode",
     "max_current_step_up",
@@ -69,6 +71,7 @@ def list_profiles():
 def save_profile(name, config):
     """Snapshot the material-specific fields of config under a saved name."""
     sanitized_name = _sanitize_profile_name(name)
+    config = normalize_integral_time(config)
     data = {field: config[field] for field in PROFILE_FIELDS if field in config}
     data["profile_name"] = sanitized_name
     PROFILES_DIR.mkdir(parents=True, exist_ok=True)
@@ -84,7 +87,7 @@ def load_profile(name):
     if not path.exists():
         raise FileNotFoundError(f"No saved profile named {name!r} at {path}.")
     with path.open("r", encoding="utf-8") as profile_file:
-        return json.load(profile_file)
+        return normalize_integral_time(json.load(profile_file), prefer_time=True)
 
 
 def delete_profile(name):

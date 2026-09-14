@@ -1,4 +1,5 @@
 import json
+from .pid import normalize_integral_time
 
 try:
     import tomllib
@@ -43,6 +44,7 @@ CONFIG_GROUPS = [
         [
             ("pid_kp", "Proportional gain used by the live controller."),
             ("pid_ki", "Integral gain used by the live controller."),
+            ("pid_integral_time_s", "Integral time Ti = Kp/Ki in seconds. Zero disables integration when Kp > 0. On load, explicit Ti takes precedence over flat Ki; omit Ti in legacy Ki-only files."),
             ("pid_kd", 'Derivative gain used only when controller_mode = "PID".'),
             ("pid_gain_schedule", "Measured per-wire gains: inline tables with current_a, kp, ki and kd; interpolation uses feed-forward or filtered current."),
             ("current_feedforward_table", "Measured equilibrium currents: inline tables with temperature_c and current_a. Empty uses Initial Current as bias; PI supplies the remaining current."),
@@ -217,6 +219,7 @@ def load_config():
 
 
 def save_config(config):
+    config = normalize_integral_time(config)
     ensure_runtime_dirs()
     lines = [
         "# TDS control configuration",
