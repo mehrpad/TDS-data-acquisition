@@ -546,7 +546,7 @@ def build_control_config(config):
     merged["controller_mode"] = get_controller_mode(merged)
     merged["experiment_mode"] = get_experiment_mode(merged)
     merged["resistivity_mode"] = get_resistivity_mode(merged)
-    return merged
+    return pid.normalize_integral_time(merged, prefer_time=True)
 
 
 @dataclass

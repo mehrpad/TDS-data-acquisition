@@ -11,6 +11,7 @@ import pyqtgraph as pg
 from . import calibration
 from . import config_io
 from . import material_profiles
+from .pid import normalize_integral_time
 from . import tds_experiment
 from .curve_io import load_resistance_temperature_file
 from .data_saver import ExperimentDataSaver
@@ -511,7 +512,10 @@ class Ui_TDS(object):
         self.gridLayout_3.addWidget(self.parameters_text, 2, 0, 1, 6)
         self.pid_status_widget = QtWidgets.QWidget(parent=self.centralwidget)
         self.pid_status_widget.setObjectName("pid_status_widget")
-        self.pid_status_layout = QtWidgets.QHBoxLayout(self.pid_status_widget)
+        self.pid_status_outer_layout = QtWidgets.QVBoxLayout(self.pid_status_widget)
+        self.pid_status_outer_layout.setContentsMargins(0, 0, 0, 0)
+        self.pid_status_layout = QtWidgets.QHBoxLayout()
+        self.pid_status_outer_layout.addLayout(self.pid_status_layout)
         self.pid_status_layout.setContentsMargins(0, 0, 0, 0)
         self.pid_status_layout.setSpacing(6)
         pid_field_style = (
@@ -559,6 +563,19 @@ class Ui_TDS(object):
         self.max_current_step_down_edit.setObjectName("max_current_step_down_edit")
         self.pid_status_layout.addWidget(self.max_current_step_down_edit)
         self.pid_status_layout.addStretch(1)
+        self.pid_time_layout = QtWidgets.QHBoxLayout()
+        self.label_pid_ti = QtWidgets.QLabel("Integral time Ti = Kp/Ki (s)", parent=self.pid_status_widget)
+        self.pid_time_layout.addWidget(self.label_pid_ti)
+        self.pid_ti_edit = QtWidgets.QLineEdit(parent=self.pid_status_widget)
+        self.pid_ti_edit.setMinimumSize(QtCore.QSize(90, 22))
+        self.pid_ti_edit.setMaximumWidth(120)
+        self.pid_ti_edit.setStyleSheet(pid_field_style)
+        self.pid_ti_edit.setObjectName("pid_ti_edit")
+        self.pid_time_layout.addWidget(self.pid_ti_edit)
+        self.pid_ti_hint = QtWidgets.QLabel("0 = integral off", parent=self.pid_status_widget)
+        self.pid_time_layout.addWidget(self.pid_ti_hint)
+        self.pid_time_layout.addStretch(1)
+        self.pid_status_outer_layout.addLayout(self.pid_time_layout)
         self.gridLayout_3.addWidget(self.pid_status_widget, 3, 0, 1, 6)
         self.pid_schedule_label = QtWidgets.QLabel(parent=self.centralwidget)
         self.pid_schedule_label.setMinimumSize(QtCore.QSize(0, 20))
@@ -738,6 +755,7 @@ class Ui_TDS(object):
         self.calibration_start_current.editingFinished.connect(self.update_calibration_start_current)
         self.pid_kp_edit.editingFinished.connect(self.update_pid_kp)
         self.pid_ki_edit.editingFinished.connect(self.update_pid_ki)
+        self.pid_ti_edit.editingFinished.connect(self.update_pid_ti)
         self.pid_kd_edit.editingFinished.connect(self.update_pid_kd)
         self.max_current_step_up_edit.editingFinished.connect(self.update_max_current_step_up)
         self.max_current_step_down_edit.editingFinished.connect(self.update_max_current_step_down)
@@ -905,6 +923,16 @@ class Ui_TDS(object):
             self.pid_kp_edit.setText(f'{kp:g}')
         if not self.pid_ki_edit.hasFocus():
             self.pid_ki_edit.setText(f'{ki:g}')
+        ti = kp / ki if kp > 0 and ki > 0 else 0.0
+        if not self.pid_ti_edit.hasFocus():
+            self.pid_ti_edit.setText(f'{ti:.15g}' if kp > 0 or ki == 0 else 'N/A')
+        self.pid_ti_edit.setEnabled(kp > 0)
+        self.pid_ti_edit.setToolTip(
+            'Integral time in seconds: Ki = Kp / Ti. Larger Ti gives slower integration. '
+            'Enter 0 to disable integral action. Editing Ti clears the gain schedule.'
+            if kp > 0 else 'Ti requires Kp > 0. For I-only control, edit Ki directly.'
+        )
+        self.pid_ti_hint.setText('Ti undefined for I-only control' if kp == 0 and ki > 0 else '0 = integral off')
         if not self.pid_kd_edit.hasFocus():
             self.pid_kd_edit.setText(f'{kd:g}')
         kd_used = controller_mode == 'PID'
@@ -922,6 +950,7 @@ class Ui_TDS(object):
         if schedule:
             points_text = "  |  ".join(
                 f"{point['current_a']:.4g} A: Kp={point['kp']:.4g} Ki={point['ki']:.4g}"
+                + (f" Ti={point['kp']/point['ki']:.4g} s" if point['kp'] > 0 and point['ki'] > 0 else '')
                 + (f" Kd={point['kd']:.4g}" if kd_used else "")
                 for point in sorted(schedule, key=lambda point: point['current_a'])
             )
@@ -947,6 +976,8 @@ class Ui_TDS(object):
             self.error_message(str(exc), color='red')
             return False
 
+        if value == previous_value:
+            return True
         self.config[config_key] = value
         if self.config.get('pid_gain_schedule'):
             self.config['pid_gain_schedule'] = []
@@ -969,6 +1000,34 @@ class Ui_TDS(object):
     def update_pid_kd(self):
         """Save a manually edited derivative gain."""
         return self._update_pid_gain(self.pid_kd_edit, 'pid_kd', 'Kd')
+
+    def update_pid_ti(self):
+        """Edit integral time directly and calculate the matching Ki."""
+        kp = float(self.config.get('pid_kp', 0.0))
+        ki = float(self.config.get('pid_ki', 0.0))
+        previous_time = kp / ki if kp > 0 and ki > 0 else 0.0
+        try:
+            value = float(self.pid_ti_edit.text())
+            if not np.isfinite(value) or value < 0:
+                raise ValueError('Integral time Ti must be zero or positive finite seconds.')
+            if kp <= 0:
+                raise ValueError('Set Kp greater than zero before editing Ti; use Ki for I-only control.')
+            updated = normalize_integral_time(dict(self.config, pid_integral_time_s=value), prefer_time=True)
+        except ValueError as exc:
+            self.pid_ti_edit.setText(f'{previous_time:g}' if kp > 0 or ki == 0 else 'N/A')
+            self.refresh_pid_status_label()
+            self.error_message(str(exc), color='red')
+            return False
+        if np.isclose(value, previous_time, rtol=1e-12, atol=0):
+            return True
+        self.config.update(updated)
+        if self.config.get('pid_gain_schedule'):
+            self.config['pid_gain_schedule'] = []
+            self.error_message('Ti set manually; the multi-point gain schedule was cleared.', color='black')
+        self.pid_ti_edit.setText(f'{value:g}')
+        self.save_config()
+        self.refresh_pid_status_label()
+        return True
 
     def _update_current_step(self, line_edit, config_key, label):
         """Validate and save one current-per-loop step limit."""
@@ -1031,7 +1090,7 @@ class Ui_TDS(object):
             return
         try:
             profile = material_profiles.load_profile(name)
-        except FileNotFoundError as exc:
+        except (FileNotFoundError, ValueError) as exc:
             self.error_message(str(exc), color='red')
             return
 
@@ -1227,15 +1286,9 @@ class Ui_TDS(object):
         return {'ramp_speed_min': ramp_speed_min}
 
     def save_config(self):
-        """
-        Persist updated safety and PID settings to the local config file.
-
-        pid_gain_schedule is a list of {current_a, kp, ki, kd} points, not a
-        scalar, so it is not written into config.toml's flat key = value
-        format. It lives in self.config for the running session and is
-        persisted instead via a saved Material Profile.
-        """
-        config_io.save_config({key: value for key, value in self.config.items() if key != 'pid_gain_schedule'})
+        """Persist synchronized gains/Ti and measured schedules as TOML tables."""
+        self.config.update(normalize_integral_time(self.config))
+        config_io.save_config(self.config)
 
     def invalidate_t_zero_calibration(self):
         """

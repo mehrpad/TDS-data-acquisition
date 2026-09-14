@@ -84,6 +84,9 @@ pid_kp = 0.0004
 # Integral gain used by the live controller.
 pid_ki = 2e-05
 
+# Integral time Ti = Kp/Ki, in seconds. 0 disables integration; explicit Ti takes precedence over flat Ki on file load.
+pid_integral_time_s = 20
+
 # Derivative gain used only when controller_mode = "PID".
 pid_kd = 0
 

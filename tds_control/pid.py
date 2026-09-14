@@ -1,7 +1,33 @@
+import math
 
 
+def normalize_integral_time(config, prefer_time=False):
+    """Keep parallel-form Ki and editable Ti seconds consistent.
 
-
+    Gains are canonical in memory; file loads may explicitly specify Ti.
+    Zero Ti represents disabled integration (or undefined Ti for I-only).
+    Legacy files without Ti continue using their existing Ki.
+    """
+    result = dict(config)
+    if "pid_kp" not in result or not ({"pid_ki", "pid_integral_time_s"} & result.keys()):
+        return result
+    kp = float(result["pid_kp"])
+    ki = float(result.get("pid_ki", 0.0))
+    if not all(math.isfinite(value) and value >= 0 for value in (kp, ki)):
+        raise ValueError("Kp and Ki must be nonnegative finite numbers.")
+    if (prefer_time or "pid_ki" not in result) and "pid_integral_time_s" in result:
+        ti = float(result["pid_integral_time_s"])
+        if not math.isfinite(ti) or ti < 0:
+            raise ValueError("Integral time Ti must be zero or positive finite seconds.")
+        if kp > 0:
+            ki = kp / ti if ti > 0 else 0.0
+        elif ti > 0:
+            raise ValueError("A positive integral time Ti requires Kp greater than zero.")
+    ti = kp / ki if kp > 0 and ki > 0 else 0.0
+    if not math.isfinite(ki) or not math.isfinite(ti):
+        raise ValueError("Kp, Ki and Ti produce an unrepresentable integral gain/time.")
+    result.update(pid_kp=kp, pid_ki=ki, pid_integral_time_s=ti)
+    return result
 
 
 def _clamp(value, limits):
