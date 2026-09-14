@@ -34,17 +34,24 @@ CONTROL_DEFAULTS = {
     "pid_kd": 0.0,
     # Optional multi-point tuning result: a list of {current_a, kp, ki, kd}
     # points, sorted ascending by current_a. When set, the controller
-    # interpolates gains by present_current instead of using the flat
+    # interpolates gains by feed-forward or filtered accepted current instead of the flat
     # pid_kp/pid_ki/pid_kd above. Empty by default (single fixed-gain PID).
     "pid_gain_schedule": [],
+    # Equilibrium measurements for this wire: {temperature_c, current_a}.
+    "current_feedforward_table": [],
+    "pid_integral_current_limit_a": 1.0,
+    "pid_tracking_time_s": 30.0,
+    "gain_schedule_filter_time_s": 10.0,
+    "temperature_rate_window_s": 8.0,
+    "temperature_prediction_time_s": 2.0,
     "pid_integral_limit": 400.0,
     "pid_derivative_filter": 0.6,
     "startup_current": 0.005,
     "min_current": 0.0,
     "psu_keepalive_current": 0.001,
     "fixed_series_resistance_ohm": 0.0,
-    "max_current_step_up": 0.01,
-    "max_current_step_down": 0.01,
+    "max_current_step_up": 0.001,
+    "max_current_step_down": 0.001,
     "temperature_tolerance_c": 2.0,
     "hold_entry_tolerance_c": 3.0,
     "safety_temp_margin_c": 15.0,
@@ -302,7 +309,9 @@ def _measurement_current_floor(config):
     )
     if not all(np.isfinite(value) for value in candidates) or not np.isfinite(maximum):
         raise ValueError("Initial and minimum voltage settings must be finite.")
-    return _clamp(max(candidates), minimum, maximum)
+    # Active measurement floors must also be reachable on the hardware grid.
+    floor = _clamp(max(candidates), minimum, maximum)
+    return _quantized_current(floor, floor, maximum)
 
 
 def current_step_scale(config):
@@ -326,10 +335,12 @@ def current_step_scale(config):
     return max(actual_period_s / reference_period_s, 1.0)
 
 
-def _limit_current_slew(target_current, present_current, min_current, max_current, config):
+def _limit_current_slew(target_current, present_current, min_current, max_current, config, dt=None):
     if not np.isfinite(target_current) or not np.isfinite(present_current):
         return _clamp(present_current, min_current, max_current)
     step_scale = current_step_scale(config)
+    if dt is not None:
+        step_scale = max(float(dt), 0.0) * float(config["experiment_frequency"])
     max_step_up = float(config.get("max_current_step_up", 0.01)) * step_scale
     max_step_down = float(config.get("max_current_step_down", 0.01)) * step_scale
     if max_step_up <= 0 or max_step_down <= 0:
@@ -1134,6 +1145,45 @@ def _temperature_filter(history, temperature, window):
     return float(np.median(np.array(history, dtype=float)))
 
 
+class TemperatureRateEstimator:
+    """Timestamped regression; invalid/reused readings are never added."""
+
+    def __init__(self, window_s=8.0):
+        if not np.isfinite(window_s) or window_s <= 0:
+            raise ValueError("temperature_rate_window_s must be positive and finite.")
+        self.window_s = window_s
+        self.samples = []
+
+    def update(self, timestamp, temperature, reset=False):
+        if reset:
+            self.samples.clear()
+        if not np.isfinite(temperature) or not np.isfinite(timestamp):
+            return None
+        if self.samples and timestamp <= self.samples[-1][0]:
+            return None
+        self.samples.append((float(timestamp), float(temperature)))
+        self.samples = [sample for sample in self.samples if timestamp - sample[0] <= self.window_s]
+        if len(self.samples) < 3:
+            return None
+        times, temperatures = np.asarray(self.samples).T
+        times = times - times[0]
+        return float(np.polyfit(times, temperatures, 1)[0] * 60.0)
+
+
+def current_feedforward_for_temperature(config, temperature):
+    """Interpolate measured equilibrium currents, clamped to table endpoints."""
+    table = config.get("current_feedforward_table") or []
+    if not table:
+        return _measurement_current_floor(config)
+    points = sorted((float(p["temperature_c"]), float(p["current_a"])) for p in table)
+    if (not np.all(np.isfinite(points)) or any(p[1] < 0 for p in points)
+            or any(a[0] == b[0] for a, b in zip(points, points[1:]))):
+        raise ValueError("Feed-forward points must be finite, nonnegative currents at distinct temperatures.")
+    temperatures, currents = np.asarray(points).T
+    return _clamp(float(np.interp(temperature, temperatures, currents)),
+                  _measurement_current_floor(config), float(config["max_current"]))
+
+
 def _calculate_resistance(measured_voltage, measured_current, config=None):
     if not np.isfinite(measured_voltage) or not np.isfinite(measured_current):
         return np.nan
@@ -1257,7 +1307,7 @@ def _start_control_at_initial_current(
         "this value remains the experiment current floor."
     )
     time.sleep(max(settle_time, loop_time))
-    return initial_current, previous_current
+    return previous_current, previous_current
 
 
 def _measure_with_retry(
@@ -1356,11 +1406,32 @@ def _measure_with_retry(
     return best[0], best[1], np.nan, best[3], False
 
 
+def _quantized_current(current, lower, upper):
+    """Round to the SPD1000X 1 mA grid without crossing software bounds."""
+    if not all(np.isfinite(v) for v in (current, lower, upper)):
+        raise ValueError("Current request and limits must be finite.")
+    lower_tick = int(np.ceil(lower * 1000 - 1e-9))
+    upper_tick = int(np.floor(upper * 1000 + 1e-9))
+    if lower_tick > upper_tick:
+        raise ValueError("Current limits contain no programmable 1 mA setting.")
+    tick = int(np.floor(current * 1000 + 0.5))
+    return min(max(tick, lower_tick), upper_tick) / 1000.0
+
+
 def _set_current_if_needed(power_supply, current, previous_current, config):
-    if previous_current is None or abs(current - previous_current) >= config["minimum_current_change"]:
+    current = _quantized_current(current, float(config["min_current"]), float(config["max_current"]))
+    threshold = max(float(config["minimum_current_change"]), 0.001)
+    if previous_current is None or abs(current - previous_current) >= threshold - 1e-12:
         siglent.set_current(power_supply, current=current)
         return current
     return previous_current
+
+
+def _apply_control_current(power_supply, current, previous_current, config, controller, dt):
+    current = _quantized_current(current, _measurement_current_floor(config), float(config["max_current"]))
+    accepted = _set_current_if_needed(power_supply, current, previous_current, config)
+    controller.track_output(accepted, dt, config.get("pid_tracking_time_s", 30.0), deadband=0.0005)
+    return accepted
 
 
 def _curve_ordered_temperature_profile(r_vs_t):
@@ -1412,6 +1483,7 @@ def _compute_next_current(
     ramp_speed_min,
     config,
     loop_time,
+    integrate=True,
 ):
     control_min_current = _measurement_current_floor(config)
     if abs(measured_current) > config["max_current"]:
@@ -1424,83 +1496,42 @@ def _compute_next_current(
             f"Measured temperature {temperature:.2f} C exceeded the safety limit near target {target_temperature:.2f} C."
         )
 
-    pid_controller.kp, pid_controller.ki, pid_controller.kd = pid_gains_for_current(config, present_current)
-    delta_current = pid_controller.compute(temperature, dt=loop_time, setpoint=setpoint)
-    if not np.isfinite(delta_current):
-        raise ExperimentSafetyError("PID requested a non-finite voltage change.")
+    feedforward = current_feedforward_for_temperature(config, setpoint)
+    if config.get("current_feedforward_table"):
+        operating_current = feedforward
+    else:
+        previous = pid_controller.operating_current
+        weight = loop_time / (max(float(config.get("gain_schedule_filter_time_s", 10.0)), 0.0) + loop_time)
+        operating_current = present_current if previous is None else previous + weight * (present_current - previous)
+    pid_controller.operating_current = operating_current
+    pid_controller.set_gains(*pid_gains_for_current(config, operating_current))
 
-    under_target_band = float(
-        config.get("under_target_no_decrease_band_c", config.get("temperature_tolerance_c", 2.0))
-    )
-    rate_limit_band = float(
-        config.get("rate_limit_activation_band_c", config.get("temperature_tolerance_c", under_target_band))
-    )
-    rate_limit_band = min(
-        rate_limit_band,
-        max(float(config.get("temperature_tolerance_c", 2.0)), under_target_band),
-    )
-    current_limited = abs(measured_current) >= 0.95 * config["max_current"]
-
-    if temperature <= setpoint - under_target_band and delta_current < 0.0:
-        delta_current = 0.0
-
-    step_scale = current_step_scale(config)
-    aggressive_step = (
-        float(config.get("max_current_step_up_far", config["max_current_step_up"])) * step_scale
-    )
-    catchup_step = float(config["max_current_step_up"]) * step_scale
-    far_below_setpoint = temperature <= setpoint - config.get("aggressive_step_band_c", 4.0)
-    significantly_below_setpoint = temperature <= setpoint - rate_limit_band
-    catchup_rate_c_min = max(ramp_speed_min * 0.6, ramp_speed_min - 3.0, 1.0)
-    if far_below_setpoint and not current_limited:
-        if temp_rate_c_min is None or not np.isfinite(temp_rate_c_min) or temp_rate_c_min < catchup_rate_c_min:
-            delta_current = max(delta_current, aggressive_step)
-        else:
-            delta_current = max(delta_current, catchup_step)
-    elif significantly_below_setpoint and not current_limited:
-        delta_current = max(delta_current, catchup_step)
-
-    if temperature >= setpoint + config["temperature_tolerance_c"]:
-        delta_current = min(delta_current, 0.0)
-
-    near_setpoint = temperature >= setpoint - rate_limit_band
-    soft_rate_limit = max(
-        ramp_speed_min + config["soft_temp_rate_margin_c_min"],
-        config["soft_temp_rate_margin_c_min"],
-    )
-    hard_rate_limit = max(
-        ramp_speed_min + config["hard_temp_rate_margin_c_min"],
-        config["hard_temp_rate_margin_c_min"],
-    )
-
+    program_rate = 0.0
+    if pid_controller.previous_setpoint is not None:
+        program_rate = (setpoint - pid_controller.previous_setpoint) * 60.0 / loop_time
+    pid_controller.previous_setpoint = setpoint
+    # Smooth predictive damping rather than thresholded full-step backoff.
+    predicted_temperature = temperature
     if temp_rate_c_min is not None and np.isfinite(temp_rate_c_min):
-        if near_setpoint and temp_rate_c_min > soft_rate_limit and delta_current > 0.0:
-            delta_current = 0.0
-        if (
-            near_setpoint
-            and temp_rate_c_min > soft_rate_limit
-            and temperature >= setpoint - config["temperature_tolerance_c"]
-        ):
-            delta_current = min(delta_current, -config["max_current_step_down"] / 2.0)
-        if near_setpoint and temp_rate_c_min > hard_rate_limit:
-            pid_controller.reset(measurement=temperature)
-            delta_current = -config["max_current_step_down"]
-
-    if current_limited and delta_current > 0.0:
-        delta_current = 0.0
-
-    if temperature >= target_temperature and setpoint >= target_temperature:
-        delta_current = min(delta_current, 0.0)
-
-    requested_current = _clamp(present_current + delta_current, control_min_current, config["max_current"])
-    new_voltage = _limit_current_slew(
+        predicted_temperature += max(0.0, temp_rate_c_min - program_rate) * max(
+            float(config.get("temperature_prediction_time_s", 2.0)), 0.0) / 60.0
+    requested_current = pid_controller.compute(
+        predicted_temperature, dt=loop_time, setpoint=setpoint, bias=feedforward, integrate=integrate,
+    )
+    if not np.isfinite(requested_current):
+        raise ExperimentSafetyError("PI/PID requested a non-finite current.")
+    if abs(measured_current) >= 0.95 * config["max_current"]:
+        requested_current = min(requested_current, present_current)
+    requested_current = _clamp(requested_current, control_min_current, config["max_current"])
+    new_current = _limit_current_slew(
         requested_current,
         present_current,
         control_min_current,
         config["max_current"],
         config,
+        dt=loop_time,
     )
-    return new_voltage
+    return new_current
 
 
 def _confirmed_upward_temperature_jump(
@@ -2185,10 +2216,13 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                 kd=config["pid_kd"] if controller_mode == "PID" else 0.0,
                 setpoint=t_zero,
                 output_limits=(
-                    -config["max_current_step_down"] * current_step_scale(config),
-                    config["max_current_step_up"] * current_step_scale(config),
+                    _measurement_current_floor(config),
+                    config["max_current"],
                 ),
-                integral_limits=(-config["pid_integral_limit"], config["pid_integral_limit"]),
+                integral_limits=(
+                    -min(config["max_current"], config["pid_integral_current_limit_a"]),
+                    min(config["max_current"], config["pid_integral_current_limit_a"]),
+                ),
                 derivative_filter=config["pid_derivative_filter"],
             )
 
@@ -2224,6 +2258,8 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
             low_signal_confirmation = LowSignalTemperatureConfirmation()
             low_signal_voltage_recovery = LowSignalCurrentRecovery()
             last_program_update_time = time.monotonic()
+            last_measurement_time = None
+            rate_estimator = TemperatureRateEstimator(config["temperature_rate_window_s"])
 
             while not emitter.stopped:
                 loop_started = time.time()
@@ -2247,6 +2283,10 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     power_supply=power_supply,
                 )
                 raw_temperature = temperature
+                measurement_time = time.monotonic()
+                control_dt = (loop_time if last_measurement_time is None
+                              else max(measurement_time - last_measurement_time, 1e-6))
+                last_measurement_time = measurement_time
                 low_signal_state = _is_low_signal_state(applied_current, config)
                 jump_guard_enabled = bool(
                     config.get("measurement_temperature_jump_guard_enabled", True)
@@ -2617,11 +2657,8 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             invalid_recovery_peak_voltage = max(float(invalid_recovery_peak_voltage), float(applied_current))
                         recovery_temperature = previous_temperature
 
-                        if phase != previous_phase:
-                            pid_controller.reset(measurement=recovery_temperature)
-                            previous_phase = phase
-                        else:
-                            pid_controller.reset(measurement=recovery_temperature)
+                        pid_controller.reset(measurement=recovery_temperature, preserve_integral=True)
+                        previous_phase = phase
 
                         pid_current = _compute_next_current(
                             pid_controller=pid_controller,
@@ -2633,7 +2670,8 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                             temp_rate_c_min=0.0,
                             ramp_speed_min=program.ramp_speed_min,
                             config=config,
-                            loop_time=loop_time,
+                            loop_time=control_dt,
+                            integrate=False,
                         )
                         if low_signal_jump_pending:
                             pid_current = min(pid_current, applied_current)
@@ -2737,7 +2775,11 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                                 f"increasing commanded PSU from {applied_current:.4f} to {pid_current:.4f} A "
                                 "and observing the next measurements."
                             )
-                        previous_current = _set_current_if_needed(power_supply, pid_current, previous_current, config)
+                        previous_current = _apply_control_current(
+                            power_supply, pid_current, previous_current, config, pid_controller, control_dt,
+                        )
+                        pid_current = previous_current
+                        rate_estimator.samples.clear()
                         invalid_measurements = 0
                         if (
                             resistance_confirmed
@@ -2795,7 +2837,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                         invalid_recovery_peak_voltage = float(applied_current)
                     else:
                         invalid_recovery_peak_voltage = max(float(invalid_recovery_peak_voltage), float(applied_current))
-                    pid_controller.reset(measurement=previous_temperature)
+                    pid_controller.reset(measurement=previous_temperature, preserve_integral=True)
                     pid_current = _clamp(
                         applied_current - config.get("invalid_current_step_down", config["max_current_step_down"]),
                         measurement_current_floor,
@@ -2814,7 +2856,11 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                         float(invalid_recovery_peak_voltage) - max_invalid_drop,
                     )
                     pid_current = max(pid_current, invalid_recovery_floor)
-                    previous_current = _set_current_if_needed(power_supply, pid_current, previous_current, config)
+                    previous_current = _apply_control_current(
+                        power_supply, pid_current, previous_current, config, pid_controller, control_dt,
+                    )
+                    pid_current = previous_current
+                    rate_estimator.samples.clear()
                     print(
                         "Invalid measurement received. "
                         f"Measured Vsample={measured_voltage}, I={measured_current} while commanded PSU was {applied_current:.4f} A. "
@@ -2854,14 +2900,13 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     temperature,
                     config.get("measurement_filter_samples", 3),
                 )
-                rate_reference_temperature = (
-                    filtered_temperature if reset_temperature_reference else previous_temperature
+                temp_rate_c_min = rate_estimator.update(
+                    measurement_time, filtered_temperature, reset=reset_temperature_reference,
                 )
-                temp_rate_c_min = _temperature_rate_c_min(filtered_temperature, rate_reference_temperature, loop_time)
                 setpoint, phase, finished = program.update(filtered_temperature, program_dt)
 
                 if phase != previous_phase:
-                    pid_controller.reset(measurement=filtered_temperature)
+                    # Preserve the holding-current correction across ramp/hold transitions.
                     previous_phase = phase
 
                 pid_current = _compute_next_current(
@@ -2874,14 +2919,19 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     temp_rate_c_min=temp_rate_c_min,
                     ramp_speed_min=program.ramp_speed_min,
                     config=config,
-                    loop_time=loop_time,
+                    loop_time=control_dt,
                 )
-                previous_current = _set_current_if_needed(power_supply, pid_current, previous_current, config)
+                previous_current = _apply_control_current(
+                    power_supply, pid_current, previous_current, config, pid_controller, control_dt,
+                )
+                pid_current = previous_current
 
                 print(
                     f"Phase: {phase}, T: {filtered_temperature:.2f} C, Setpoint: {setpoint:.2f} C, "
                     f"Vsample: {measured_voltage:.6f} V, Current: {measured_current:.4e} A, "
                     f"PSU command: {applied_current:.4f} -> {pid_current:.4f} A, "
+                    f"Requested: {pid_controller.requested_output:.6f} A, "
+                    f"Integral correction: {pid_controller.integral:.6f} A, "
                     f"Rate: {temp_rate_c_min if temp_rate_c_min is not None else 0.0:.2f} C/min"
                 )
                 _persist_measurement(

@@ -87,7 +87,21 @@ pid_ki = 2e-05
 # Derivative gain used only when controller_mode = "PID".
 pid_kd = 0
 
-# Clamp for the internal integral state.
+# Optional measured equilibrium currents for this wire; no values are inferred from ramp tests.
+# Format: [{ temperature_c = <measured temperature>, current_a = <equilibrium current> }, ...]
+current_feedforward_table = []
+
+# Optional measured gains at operating currents; saved by Tune PI/PID.
+pid_gain_schedule = []
+
+# Integral correction is stored in amps in the absolute-current PI controller.
+pid_integral_current_limit_a = 1
+pid_tracking_time_s = 30
+gain_schedule_filter_time_s = 10
+temperature_rate_window_s = 8
+temperature_prediction_time_s = 2
+
+# Legacy error-seconds clamp; replaced by pid_integral_current_limit_a.
 pid_integral_limit = 400
 
 # Low-pass filter factor for derivative smoothing.
@@ -106,21 +120,21 @@ psu_keepalive_current = 0.001
 fixed_series_resistance_ohm = 0
 
 # Largest normal upward current step per loop.
-max_current_step_up = 0.01
+max_current_step_up = 0.001
 
 # Largest downward current step per loop.
-max_current_step_down = 0.01
+max_current_step_down = 0.001
 
-# Larger upward step allowed when the sample is far below the setpoint.
-max_current_step_up_far = 0.01
+# Legacy catch-up setting; no longer used by normal PI regulation.
+max_current_step_up_far = 0.001
 
-# Temperature gap below the setpoint that enables aggressive catch-up.
+# Legacy catch-up band; no longer used by normal PI regulation.
 aggressive_step_band_c = 4
 
-# Band around the setpoint where heating-rate limiting becomes active.
+# Legacy rate-limit band; normal PI now uses smooth predictive damping.
 rate_limit_activation_band_c = 2
 
-# Below this band the controller avoids decreasing voltage.
+# Invalid-reading recovery band; normal PI can decrease current below target.
 under_target_no_decrease_band_c = 1.5
 
 # Safety, filtering, and invalid-reading handling
