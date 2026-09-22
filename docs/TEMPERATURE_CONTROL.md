@@ -2,8 +2,8 @@
 
 > Latest Ni update: see [runs 100 and 107](NI_RUNS_100_107.md). The Ni table above 100 C
 > now uses provisional current-ramp estimates. The older Ni table description below
-> is superseded. Ni current/power ceilings now use run 107 maxima: 0.305911385 A /
-> 0.821924605868587 W. Both profiles have a 600 C software temperature cutoff.
+> is superseded. Ni current/power ceilings now use run 107 maxima rounded upward: 0.31 A /
+> 0.83 W. Both profiles have a 600 C software temperature cutoff.
 
 Temperature mode commands absolute current:
 
@@ -137,8 +137,8 @@ equilibrium maps and not validated PI gains.
 | Current slew step per 2 s | 0.001 A | 0.001 A |
 | Prediction horizon | 0 s | 0 s |
 | Trial target ceiling | 600 C | 600 C |
-| Current ceiling | 0.305911385 A | 0.1 A |
-| Sample power cutoff | 0.821924605868587 W | 0.25 W |
+| Current ceiling | 0.31 A | 0.1 A |
+| Sample power cutoff | 0.83 W | 0.25 W |
 
 The reduced electrical limits bound this comparison; they are not wire ratings.
 Programs above the trial target ceiling or with ramp rates other than 10 C/min
@@ -220,7 +220,7 @@ method when the loaded source reference ends earlier. Temperature outside the
 source reference is an estimate, not a validated calibration. Independently
 validate high-temperature readings before treating them as measurement results.
 Current/power cutoffs and feedback guards remain enabled. Ni electrical ceilings
-now use the run 107 measured maxima at the user's explicit request. The new
+now use the run 107 measured maxima rounded upward to two decimal places at the user's request. The new
 Maximum Temperature GUI field adds an independent software shutdown threshold
 (600 C in both profiles), checked on raw converted T before filtering or masking.
 
