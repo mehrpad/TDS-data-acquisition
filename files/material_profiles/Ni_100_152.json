@@ -87,7 +87,17 @@
     "method": "RMS commanded current per target-temperature bin, paired with mean filtered measured T",
     "ramp_rate_c_min": 10.0,
     "run": "139_Ni100_uncharged_test_1",
-    "startup_anchor": "23 C / 10 mA is the recorded startup command, not a measured equilibrium point"
+    "startup_anchor": "23 C / 10 mA is the recorded startup command, not a measured equilibrium point",
+    "temperature_estimation": "R(T) extrapolation enabled through 600 C; temperatures beyond the source curve are estimates requiring independent validation.",
+    "unmeasured_extension": {
+      "limitations": "Placeholder bias, not calibrated heating current. Electrical limits may prevent reaching the target.",
+      "measured": false,
+      "method": "Constant last data-derived current; PI supplies the remaining correction",
+      "range_c": [
+        111.111,
+        600.0
+      ]
+    }
   },
   "current_feedforward_table": [
     {
@@ -129,10 +139,15 @@
     {
       "current_a": 0.062327,
       "temperature_c": 111.111
+    },
+    {
+      "current_a": 0.062327,
+      "temperature_c": 600.0
     }
   ],
   "current_settle_time_s": 0.5,
-  "curve_extrapolation_enabled": false,
+  "curve_extrapolation_enabled": true,
+  "curve_extrapolation_max_temperature_c": 600.0,
   "dmm_current_range_a": 0.02,
   "dmm_range_discard_readings": 3,
   "dmm_range_settle_time_s": 0.5,
@@ -184,6 +199,6 @@
   "t0_current_search_start": 0.01,
   "temperature_prediction_time_s": 0.0,
   "temperature_rate_window_s": 8.0,
-  "trial_max_temperature_c": 110.0,
+  "trial_max_temperature_c": 600.0,
   "tuning_start_current": 0.01
 }
