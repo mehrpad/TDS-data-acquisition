@@ -54,7 +54,7 @@ def build_profile(source, run_name, profile_name, nicr):
             "limitations": "Ramp-derived bias only; not equilibrium calibration or validated tuning. Endpoints clamp. Recalibrate for the actual wire and mounting.",
             "bins": evidence,
         },
-        trial_max_temperature_c=600.,
+        trial_max_temperature_c=600., max_temperature_c=600.,
         experiment_frequency=.5, max_current_step_up=.001, max_current_step_down=.001,
         minimum_current_change=.001, min_current=0.,
         startup_current=.01, measurement_current_floor=.01,

@@ -23,6 +23,9 @@ max_current = 1
 # Sample voltage that aborts the run; in constant-current mode this is what an open contact looks like.
 max_sample_voltage = 15
 
+# Software temperature shutdown limit; material profiles can override it.
+max_temperature_c = 1000.0
+
 # Maximum sample power in watts, calculated as the absolute synchronized Kelvin voltage times current.
 max_power_w = 10
 

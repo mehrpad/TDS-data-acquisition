@@ -1,5 +1,10 @@
 # Temperature control
 
+> Latest Ni update: see [runs 100 and 107](NI_RUNS_100_107.md). The Ni table above 100 C
+> now uses provisional current-ramp estimates. The older Ni table description below
+> is superseded. Ni current/power ceilings now use run 107 maxima: 0.305911385 A /
+> 0.821924605868587 W. Both profiles have a 600 C software temperature cutoff.
+
 Temperature mode commands absolute current:
 
 `I_requested = I_feedforward(T_set) + Kp*(T_set - T_measured) + integral_correction_A - prediction_correction_A`
@@ -116,8 +121,11 @@ establish the resulting temperature tolerance.
 
 ## September 2026 Ni / NiCr trial profiles
 
-The application profiles Ni_100_152 and NiCr_100_163 were rebuilt from
-runs 139 and 136 respectively. tools/build_ramp_profiles.py reproduces them.
+The original profiles came from runs 139 and 136. Ni was subsequently updated
+above 100 C using current ramp 107. See NI_RUNS_100_107.md and NEXT_WIRE_TRIAL.md
+for the current table, limits and GUI cutoff. tools/build_ramp_profiles.py
+reproduces the historical ramp tables; tools/update_current_ramp_profile.py
+applies the reviewed Ni current-ramp update while preserving configured limits.
 They contain **provisional 10 C/min ramp-derived current biases**, not measured
 equilibrium maps and not validated PI gains.
 
@@ -129,8 +137,8 @@ equilibrium maps and not validated PI gains.
 | Current slew step per 2 s | 0.001 A | 0.001 A |
 | Prediction horizon | 0 s | 0 s |
 | Trial target ceiling | 600 C | 600 C |
-| Current ceiling | 0.1 A | 0.1 A |
-| Sample power cutoff | 0.05 W | 0.25 W |
+| Current ceiling | 0.305911385 A | 0.1 A |
+| Sample power cutoff | 0.821924605868587 W | 0.25 W |
 
 The reduced electrical limits bound this comparison; they are not wire ratings.
 Programs above the trial target ceiling or with ramp rates other than 10 C/min
@@ -201,8 +209,8 @@ it does not make a flat calibration physically invertible.
 
 ### Temporary extension to 600 C
 
-Both profiles now allow 600 C programs at 10 C/min. Each table adds a 600 C
-placeholder with the last data-derived current (Ni 0.062327 A, NiCr 0.059810 A).
+Both profiles allow 600 C programs at 10 C/min. Ni now holds its last run 107
+binned current, 0.225035369 A, at 600 C; NiCr holds 0.059810 A.
 This holds the bias constant above the measured range; PI adjusts the current.
 These are not measurements or validated high-temperature heating currents.
 The original derived ranges and source evidence remain in the JSON provenance.
@@ -211,8 +219,10 @@ R(T) extrapolation is enabled through 600 C using the existing endpoint-fit
 method when the loaded source reference ends earlier. Temperature outside the
 source reference is an estimate, not a validated calibration. Independently
 validate high-temperature readings before treating them as measurement results.
-Existing current/power cutoffs and feedback guards remain enabled; they may
-stop the run or prevent reaching 600 C. No higher electrical limits were inferred.
+Current/power cutoffs and feedback guards remain enabled. Ni electrical ceilings
+now use the run 107 measured maxima at the user's explicit request. The new
+Maximum Temperature GUI field adds an independent software shutdown threshold
+(600 C in both profiles), checked on raw converted T before filtering or masking.
 
 Click Load again for the installed wire's profile, reload its R(T) reference,
 and recalibrate T. Zero. An already loaded GUI profile does not update from disk.

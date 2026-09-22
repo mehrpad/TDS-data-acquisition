@@ -18,6 +18,7 @@ CONTROL_DEFAULTS = {
     "max_current": 1.0,
     "max_sample_voltage": 15.0,
     "max_power_w": 10.0,
+    "max_temperature_c": 1000.0,
     "dmm_voltage_range_v": 20.0,
     "dmm_current_range_a": 2.0,
     "dmm_staged_ranging_enabled": True,
@@ -267,6 +268,21 @@ def _is_finite_scalar(value):
         return bool(np.isfinite(float(value)))
     except (TypeError, ValueError, OverflowError):
         return False
+
+
+def _maximum_temperature(config):
+    limit = float(config.get("max_temperature_c", CONTROL_DEFAULTS["max_temperature_c"]))
+    if not np.isfinite(limit) or limit <= 0:
+        raise ValueError("Maximum Temperature must be positive and finite.")
+    return limit
+
+
+def _enforce_temperature_safety(temperature, config):
+    limit = _maximum_temperature(config)
+    if np.isfinite(temperature) and temperature > limit:
+        raise ExperimentSafetyError(
+            f"Measured temperature {temperature:.2f} C exceeded Maximum Temperature {limit:g} C."
+        )
 
 
 def _enforce_electrical_safety(measured_voltage, measured_current, config):
@@ -549,6 +565,7 @@ def build_control_config(config):
                  "measurement_retry_temperature_consensus_c"):
         if not np.isfinite(float(merged[name])) or float(merged[name]) < 0:
             raise ValueError(f"{name} must be finite and nonnegative.")
+    _maximum_temperature(merged)
     merged["controller_mode"] = get_controller_mode(merged)
     merged["experiment_mode"] = get_experiment_mode(merged)
     merged["resistivity_mode"] = get_resistivity_mode(merged)
@@ -976,7 +993,10 @@ def _validate_trial_program(experiment_params, config):
     limit = float(config.get("trial_max_temperature_c", 0))
     if not np.isfinite(limit) or limit < 0:
         raise ValueError("trial_max_temperature_c must be finite and nonnegative.")
+    maximum_temperature = _maximum_temperature(config)
     for program in experiment_params:
+        if max(float(program["start_T"]), float(program["target_T"])) > maximum_temperature:
+            raise ValueError(f"Temperature program exceeds Maximum Temperature {maximum_temperature:g} C.")
         if limit and max(float(program["start_T"]), float(program["target_T"])) > limit:
             raise ValueError(f"This provisional profile is limited to {limit:g} C. "
                              "Collect and review wider-range data before extending it.")
@@ -1144,6 +1164,11 @@ def _record_control_diagnostics(saver, config, controller, raw_temperature, filt
         "prediction_c": getattr(controller, "prediction_c", None) if status == "accepted" else None,
         "feedforward_a": getattr(controller, "feedforward_current", None) if status == "accepted" else None,
         "output_limited": abs(controller.requested_output - accepted) > .0005 if status == "accepted" else None,
+        "current_limit_active": bool(getattr(controller, "current_limit_active", False)) if status == "accepted" else None,
+        "configured_max_current_a": config["max_current"],
+        "measured_current_increase_guard_a": .95 * config["max_current"],
+        "configured_max_power_w": config["max_power_w"],
+        "configured_max_temperature_c": _maximum_temperature(config),
         "voltage_range_v": config.get("_active_dmm_volt_range", config.get("dmm_voltage_range_v")),
         "current_range_a": config.get("_active_dmm_curr_range", config.get("dmm_current_range_a")),
         "range_change_count": config.get("_range_change_count", 0),
@@ -1241,7 +1266,7 @@ class TemperatureRateEstimator:
 
 
 def current_feedforward_for_temperature(config, temperature):
-    """Interpolate measured equilibrium currents, clamped to table endpoints."""
+    """Interpolate the configured current bias, clamped to endpoints and limits."""
     table = config.get("current_feedforward_table") or []
     if not table:
         return _measurement_current_floor(config)
@@ -1564,6 +1589,7 @@ def _compute_next_current(
             f"Measured current {measured_current:.4e} A exceeded max_current {config['max_current']:.4e} A."
         )
 
+    _enforce_temperature_safety(temperature, config)
     if temperature > target_temperature + config["safety_temp_margin_c"]:
         raise ExperimentSafetyError(
             f"Measured temperature {temperature:.2f} C exceeded the safety limit near target {target_temperature:.2f} C."
@@ -1596,7 +1622,17 @@ def _compute_next_current(
     )
     if not np.isfinite(requested_current):
         raise ExperimentSafetyError("PI/PID requested a non-finite current.")
-    if abs(measured_current) >= 0.95 * config["max_current"]:
+    was_current_limited = getattr(pid_controller, "current_limit_active", False)
+    guard_blocks_increase = (abs(measured_current) >= 0.95 * config["max_current"]
+                             and requested_current > present_current)
+    pid_controller.current_limit_active = bool(
+        guard_blocks_increase or pid_controller.requested_output > config["max_current"])
+    if pid_controller.current_limit_active and not was_current_limited:
+        print(f"CURRENT LIMIT: measured {measured_current:.6f} A; "
+              f"increase guard {0.95 * config['max_current']:.6f} A; "
+              f"configured ceiling {config['max_current']:.6f} A. "
+              "Temperature may lag the target while current is limited.")
+    if guard_blocks_increase:
         requested_current = min(requested_current, present_current)
     requested_current = _clamp(requested_current, control_min_current, config["max_current"])
     new_current = _limit_current_slew(
@@ -3314,6 +3350,12 @@ def measure_resistivity(
     except Exception as exc:
         print(f"An error occurred interpolating temperature: {exc}")
         temperature = np.nan
+
+    # Check raw conversion before filtering/retries or out-of-range masking can
+    # hide an over-temperature value. Shared by temperature/current modes and tuning.
+    # T0 calibration uses an unanchored curve, so its temperatures are not valid yet.
+    if config is not None and not calibration:
+        _enforce_temperature_safety(temperature, config)
 
     if config is not None and not _resistance_in_curve_bounds(resistance, temperature_interp, config):
         print(

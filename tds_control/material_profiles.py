@@ -75,6 +75,7 @@ PROFILE_FIELDS = (
     "dmm_resistance_range_ohm",
     "max_current",
     "max_power_w",
+    "max_temperature_c",
     "max_sample_voltage",
     "compliance_voltage",
     "resistivity_heat_time_s",

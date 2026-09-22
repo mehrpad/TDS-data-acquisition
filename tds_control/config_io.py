@@ -19,6 +19,7 @@ CONFIG_GROUPS = [
             ("compliance_voltage", "CV ceiling the supply may reach while holding the set current; bounds an open circuit."),
             ("max_current", "Highest current the controller may command, and the software abort threshold."),
             ("max_sample_voltage", "Sample voltage that aborts the run; in constant-current mode this is what an open contact looks like."),
+            ("max_temperature_c", "Software shutdown when raw indicated temperature exceeds this value; must be positive and finite. Also bounds temperature program targets."),
             ("max_power_w", "Maximum sample power in watts, calculated as the absolute synchronized Kelvin voltage times current."),
             ("DMM_speed", "Measurement speed setting sent to both DMMs. Explicit fixed DC ranges are used; instrument auto-ranging is disabled."),
             ("dmm_synchronized_reading", "Start both DMM conversions before fetching voltage and current."),
@@ -198,7 +199,7 @@ def _format_toml_value(value):
     if isinstance(value, int) and not isinstance(value, bool):
         return str(value)
     if isinstance(value, float):
-        return format(value, ".15g")
+        return repr(value)  # Preserve exact float values in tables and provenance.
     if isinstance(value, str):
         return json.dumps(value)
     if isinstance(value, (list, tuple)):

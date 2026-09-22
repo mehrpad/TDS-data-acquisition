@@ -218,6 +218,9 @@ class ExportAndProfileTests(unittest.TestCase):
                 loaded=material_profiles.load_profile(name)
                 config_io.save_config(loaded)
                 loaded=config_io.load_config()
+                # Ti is recomputed from Kp/Ki; allow floating-point division noise.
+                self.assertAlmostEqual(loaded['pid_integral_time_s'], original['pid_integral_time_s'])
+                loaded['pid_integral_time_s'] = original['pid_integral_time_s']
                 self.assertEqual(loaded,original)
 
     def test_ramp_binning_uses_complete_target_bins_and_rms_current(self):
@@ -235,7 +238,7 @@ class ExportAndProfileTests(unittest.TestCase):
 class ExtendedTrialProfileTests(unittest.TestCase):
     def test_600_degree_program_and_placeholder_preserve_limits(self):
         root = Path(__file__).resolve().parents[1]
-        for name, power in (("Ni_100_152", .05), ("NiCr_100_163", .25)):
+        for name, power in (("Ni_100_152", .821924605868587), ("NiCr_100_163", .25)):
             profile = json.loads((root / "files/material_profiles" / (name + ".json")).read_text())
             config = ctl.build_control_config(profile)
             program = [dict(start_T=40, step_T=200, target_T=600,
@@ -248,8 +251,86 @@ class ExtendedTrialProfileTests(unittest.TestCase):
             table = profile["current_feedforward_table"]
             self.assertEqual(table[-1]["temperature_c"], 600)
             self.assertEqual(table[-1]["current_a"], table[-2]["current_a"])
-            self.assertEqual(ctl.current_feedforward_for_temperature(config, 400), table[-1]["current_a"])
-            self.assertEqual(profile["max_current"], .1)
+            self.assertLessEqual(ctl.current_feedforward_for_temperature(config, 600), profile["max_current"])
+            self.assertEqual(profile["max_current"], .305911385 if name == "Ni_100_152" else .1)
             self.assertEqual(profile["max_power_w"], power)
-            self.assertFalse(profile["current_feedforward_provenance"]["unmeasured_extension"]["measured"])
+            if "unmeasured_extension" in profile["current_feedforward_provenance"]:
+                self.assertFalse(profile["current_feedforward_provenance"]["unmeasured_extension"]["measured"])
             self.assertLess(profile["current_feedforward_provenance"]["derived_temperature_range_c"][1], 300)
+
+
+class CurrentRampUpdateTests(unittest.TestCase):
+    def test_preserves_cold_interpolation_excludes_invalid_and_preserves_limits(self):
+        import pandas as pd
+        from tools.update_current_ramp_profile import update_profile
+        base = {"max_current": .1, "max_power_w": .05,
+                "current_feedforward_provenance": {},
+                "current_feedforward_table": [
+                    {"temperature_c": 23., "current_a": .01},
+                    {"temperature_c": 90., "current_a": .055},
+                    {"temperature_c": 120., "current_a": .061},
+                    {"temperature_c": 600., "current_a": .061}]}
+        data = pd.DataFrame({"time": np.arange(10),
+                             "T": [80., 110., 120., 130., 140., 420., 440., 480., float('nan'), 580.],
+                             "I": [.01, .09, .1, .11, .12, .17, .18, .19, .2, .22],
+                             "C_V": [.01, .09, .1, .11, .12, .17, .18, .19, .2, .22],
+                             "P": [.001]*10})
+        result = update_profile(base, data, excluded_rows=(7,))
+        for t in np.linspace(23, 100, 101):
+            self.assertAlmostEqual(ctl.current_feedforward_for_temperature(settings(**base), t),
+                                   ctl.current_feedforward_for_temperature(settings(**result), t))
+        self.assertEqual((result['max_current'], result['max_power_w']), (.1, .05))
+        used = [r for b in result['current_feedforward_provenance']['current_ramp_update']['bins'] for r in b['csv_data_rows']]
+        self.assertEqual(used, [1, 2, 3, 4, 5, 6, 9])
+        self.assertEqual(ctl.current_feedforward_for_temperature(settings(**result), 600), .1)
+        self.assertEqual(update_profile(result, data, excluded_rows=(7,)), result)
+
+    def test_current_guard_remains_enforced_and_is_reported(self):
+        config = settings(max_current=.1, pid_kp=.001, pid_ki=.00001, max_current_step_up=.001, max_current_step_down=.001)
+        controller = PIDController(.001, .00001, 0, 400, output_limits=(.01, .1))
+        with patch('builtins.print') as output:
+            current = ctl._compute_next_current(controller, 284, 400, .095, .096,
+                                                600, 0, 10, config, 2)
+        self.assertLessEqual(current, .095)
+        self.assertTrue(controller.current_limit_active)
+        self.assertTrue(any('CURRENT LIMIT' in str(c) for c in output.call_args_list))
+        saver = Mock()
+        ctl._record_control_diagnostics(saver, config, controller, 284, 284, 400, .095, current, 2, 'accepted')
+        record = saver.enqueue_diagnostics.call_args.args[0]
+        self.assertTrue(record['current_limit_active'])
+        self.assertEqual(record['measured_current_increase_guard_a'], .095)
+
+
+class MaximumTemperatureTests(unittest.TestCase):
+    def test_rejects_invalid_limits_and_programs_above_limit(self):
+        for value in (0, -1, float('nan'), float('inf')):
+            with self.assertRaises(ValueError):
+                settings(max_temperature_c=value)
+        with self.assertRaisesRegex(ValueError, 'Maximum Temperature'):
+            ctl._validate_trial_program([dict(start_T=23, target_T=301)], settings(max_temperature_c=300))
+        ctl._validate_trial_program([dict(start_T=23, target_T=300)], settings(max_temperature_c=300))
+
+    def test_raw_overtemperature_stops_before_out_of_range_masking(self):
+        config = settings(max_temperature_c=600, curve_extrapolation_enabled=False)
+        curve = ctl.build_temperature_interpolator(np.array([[1., 2.], [0., 600.]]), config)
+        module = Mock()
+        module.read_DMM_pair.return_value = (.021, .01)  # R=2.1 implies 660 C, outside curve
+        module.is_overload_reading.return_value = False
+        module.increase_dc_range_if_needed.return_value = None
+        with self.assertRaisesRegex(ctl.ExperimentSafetyError, 'Maximum Temperature 600'):
+            ctl.measure_resistivity(Mock(), Mock(), module, curve, config=config)
+        ctl._enforce_temperature_safety(600, config)
+
+    def test_current_ramp_shuts_instruments_down_on_temperature_cutoff(self):
+        config = settings(DMM_v='v', DMM_i='i', PS='ps', DMM_speed=10, max_temperature_c=600)
+        emitter = Mock(); emitter.stopped = False
+        saver = Mock()
+        with patch.object(ctl.pyvisa, 'ResourceManager'), patch.object(ctl, 'siglent'), \
+             patch.object(ctl.time, 'sleep'), patch.object(ctl, 'prepare_power_supply_output'), \
+             patch.object(ctl, '_set_current_if_needed', return_value=.01), \
+             patch.object(ctl, '_shutdown_instruments') as shutdown, \
+             patch.object(ctl, '_measure_with_retry', side_effect=ctl.ExperimentSafetyError('Maximum Temperature')):
+            with self.assertRaisesRegex(ctl.ExperimentSafetyError, 'Maximum Temperature'):
+                ctl.current_ramp(emitter, {'ramp_speed_min': .1}, np.array([[1., 2.], [23., 600.]]), config, saver)
+        shutdown.assert_called_once()
+        saver.finalize.assert_called_once()

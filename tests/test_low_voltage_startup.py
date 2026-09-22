@@ -378,6 +378,7 @@ class LowVoltageStartupTests(unittest.TestCase):
         current_dmm = Mock()
         config = _config(
             max_current=3.0,
+            max_temperature_c=6000.,  # Synthetic identity R->T model in this range test.
             dmm_voltage_range_v=0.2,
             dmm_current_range_a=0.002,
             dmm_range_recovery_attempts=5,
