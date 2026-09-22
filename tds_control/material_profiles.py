@@ -53,6 +53,7 @@ PROFILE_FIELDS = (
     "tuning_start_current",
     "trial_max_temperature_c",
     "curve_extrapolation_enabled",
+    "curve_extrapolation_max_temperature_c",
     "pid_gain_schedule",
     "current_feedforward_table",
     "pid_integral_current_limit_a",

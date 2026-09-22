@@ -128,14 +128,13 @@ equilibrium maps and not validated PI gains.
 | Ti (s) | 100 | 100 |
 | Current slew step per 2 s | 0.001 A | 0.001 A |
 | Prediction horizon | 0 s | 0 s |
-| Trial target ceiling | 110 C | 250 C |
+| Trial target ceiling | 600 C | 600 C |
 | Current ceiling | 0.1 A | 0.1 A |
 | Sample power cutoff | 0.05 W | 0.25 W |
 
 The reduced electrical limits bound this comparison; they are not wire ratings.
 Programs above the trial target ceiling or with ramp rates other than 10 C/min
-are rejected before instruments open. Extending Ni later requires reviewing new
-data and deliberately updating the trial limits.
+are rejected before instruments open. Both trial ceilings are now 600 C at the user's request.
 
 Table construction uses RMS commanded current in target-temperature bins,
 paired with mean logged temperature. This includes both phases of Ni's
@@ -157,10 +156,10 @@ the software cannot correct an unreliable sensor by tuning.
 Suggested next comparison programs, in the GUI's actual input syntax:
 
 Ni (continuous ramp followed by a five-minute final hold):
-    {start_T=23; step_T=0; target_T=110; ramp_speed_min=10; hold_step_time_min=5}
+    {start_T=23; step_T=0; target_T=600; ramp_speed_min=10; hold_step_time_min=5}
 
 NiCr (continuous ramp followed by a five-minute final hold):
-    {start_T=23; step_T=0; target_T=250; ramp_speed_min=10; hold_step_time_min=5}
+    {start_T=23; step_T=0; target_T=600; ramp_speed_min=10; hold_step_time_min=5}
 
 The final hold now honors hold_step_time_min for both simple and stepped ramps.
 The ramp-derived bias can initially overheat a hold; the integral corrects its
@@ -199,3 +198,22 @@ Flat R(T) sections now use a deterministic midpoint temperature (except the
 source endpoint used to anchor extrapolation), expose their ambiguity intervals,
 and print the maximum ambiguity. This removes arbitrary duplicate selection;
 it does not make a flat calibration physically invertible.
+
+### Temporary extension to 600 C
+
+Both profiles now allow 600 C programs at 10 C/min. Each table adds a 600 C
+placeholder with the last data-derived current (Ni 0.062327 A, NiCr 0.059810 A).
+This holds the bias constant above the measured range; PI adjusts the current.
+These are not measurements or validated high-temperature heating currents.
+The original derived ranges and source evidence remain in the JSON provenance.
+
+R(T) extrapolation is enabled through 600 C using the existing endpoint-fit
+method when the loaded source reference ends earlier. Temperature outside the
+source reference is an estimate, not a validated calibration. Independently
+validate high-temperature readings before treating them as measurement results.
+Existing current/power cutoffs and feedback guards remain enabled; they may
+stop the run or prevent reaching 600 C. No higher electrical limits were inferred.
+
+Click Load again for the installed wire's profile, reload its R(T) reference,
+and recalibrate T. Zero. An already loaded GUI profile does not update from disk.
+Replace the placeholder bias with reviewed data after the next experiment.

@@ -54,7 +54,7 @@ def build_profile(source, run_name, profile_name, nicr):
             "limitations": "Ramp-derived bias only; not equilibrium calibration or validated tuning. Endpoints clamp. Recalibrate for the actual wire and mounting.",
             "bins": evidence,
         },
-        trial_max_temperature_c=250. if nicr else 110.,
+        trial_max_temperature_c=600.,
         experiment_frequency=.5, max_current_step_up=.001, max_current_step_down=.001,
         minimum_current_change=.001, min_current=0.,
         startup_current=.01, measurement_current_floor=.01,
@@ -72,9 +72,22 @@ def build_profile(source, run_name, profile_name, nicr):
         resistance_power_guard_enabled=True, resistance_power_guard_window_s=30.,
         resistance_power_guard_drop_c=15., resistance_power_guard_power_ratio=1.2,
         resistance_power_guard_min_current_a=.02,
-        curve_extrapolation_enabled=False,
+        curve_extrapolation_enabled=True,
+        curve_extrapolation_max_temperature_c=600.,
         # Bounded limits for this next trial, not inferred wire ratings.
         max_current=.1, max_power_w=.25 if nicr else .05,
+    )
+    # Unmeasured range: retain the endpoint bias, without inventing heating data.
+    profile["current_feedforward_table"].append(
+        {"temperature_c": 600., "current_a": points[-1]["current_a"]})
+    profile["current_feedforward_provenance"]["unmeasured_extension"] = {
+        "range_c": [points[-1]["temperature_c"], 600.],
+        "method": "Constant last data-derived current; PI supplies the remaining correction",
+        "measured": False,
+        "limitations": "Placeholder bias, not calibrated heating current. Electrical limits may prevent reaching the target.",
+    }
+    profile["current_feedforward_provenance"]["temperature_estimation"] = (
+        "R(T) extrapolation enabled through 600 C; temperatures beyond the source curve are estimates requiring independent validation."
     )
     return profile
 

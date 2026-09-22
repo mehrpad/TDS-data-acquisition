@@ -230,3 +230,26 @@ class ExportAndProfileTests(unittest.TestCase):
         self.assertAlmostEqual(points[0]["current_a"],np.sqrt((.02**2+.04**2)/2),places=6)
         self.assertEqual(points[0]["temperature_c"],32)
         self.assertEqual(evidence[0]["samples"],20)
+
+
+class ExtendedTrialProfileTests(unittest.TestCase):
+    def test_600_degree_program_and_placeholder_preserve_limits(self):
+        root = Path(__file__).resolve().parents[1]
+        for name, power in (("Ni_100_152", .05), ("NiCr_100_163", .25)):
+            profile = json.loads((root / "files/material_profiles" / (name + ".json")).read_text())
+            config = ctl.build_control_config(profile)
+            program = [dict(start_T=40, step_T=200, target_T=600,
+                            ramp_speed_min=10, hold_step_time_min=1)]
+            ctl._validate_trial_program(program, config)
+            curve = ctl.build_temperature_interpolator(np.array([[1., 2., 3.], [23., 100., 200.]]), config)
+            ctl._validate_temperature_program_bounds(program, curve)
+            with self.assertRaises(ValueError):
+                ctl._validate_trial_program([dict(program[0], target_T=601)], config)
+            table = profile["current_feedforward_table"]
+            self.assertEqual(table[-1]["temperature_c"], 600)
+            self.assertEqual(table[-1]["current_a"], table[-2]["current_a"])
+            self.assertEqual(ctl.current_feedforward_for_temperature(config, 400), table[-1]["current_a"])
+            self.assertEqual(profile["max_current"], .1)
+            self.assertEqual(profile["max_power_w"], power)
+            self.assertFalse(profile["current_feedforward_provenance"]["unmeasured_extension"]["measured"])
+            self.assertLess(profile["current_feedforward_provenance"]["derived_temperature_range_c"][1], 300)
