@@ -50,9 +50,9 @@ class LinearTemperatureModel:
 
 
 class LowVoltageStartupTests(unittest.TestCase):
-    def test_t0_initial_voltage_is_always_part_of_experiment_floor(self):
-        config = _config(startup_current=0.01, t0_current_search_start=0.02)
-        self.assertAlmostEqual(_measurement_current_floor(config), 0.02)
+    def test_startup_and_calibration_current_do_not_raise_measurement_floor(self):
+        config = _config(startup_current=0.04, t0_current_search_start=0.02)
+        self.assertAlmostEqual(_measurement_current_floor(config), 0.01)
 
     def test_current_slew_uses_a_single_step_limit(self):
         config = _config(t0_current_search_start=0.01, max_current_step_up=0.001, max_current_step_down=0.001)
@@ -63,7 +63,7 @@ class LowVoltageStartupTests(unittest.TestCase):
     @patch("tds_control.tds_experiment.siglent.set_current")
     def test_experiment_starts_directly_at_initial_voltage_without_search(self, set_current, sleep):
         power_supply = Mock()
-        config = _config(t0_current_search_start=0.02, startup_settle_time_s=1.0)
+        config = _config(startup_current=0.02, t0_current_search_start=0.03, startup_settle_time_s=1.0)
 
         voltage, previous_current = _start_control_at_initial_current(
             power_supply,
@@ -403,7 +403,9 @@ class LowVoltageStartupTests(unittest.TestCase):
             [
                 call("CONF:VOLT:DC 0.2"),
                 call("CONF:VOLT:DC 2.0"),
+                call("VOLT:DC:NPLC 10"),
                 call("CONF:VOLT:DC 20.0"),
+                call("VOLT:DC:NPLC 10"),
             ],
         )
 

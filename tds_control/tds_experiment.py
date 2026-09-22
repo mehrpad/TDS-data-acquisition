@@ -8,6 +8,7 @@ from scipy.interpolate import interp1d
 
 from . import pid
 from . import siglent
+from .measurement_quality import ResistancePowerGuard
 
 
 CONTROL_DEFAULTS = {
@@ -39,6 +40,18 @@ CONTROL_DEFAULTS = {
     "pid_gain_schedule": [],
     # Equilibrium measurements for this wire: {temperature_c, current_a}.
     "current_feedforward_table": [],
+    "current_feedforward_provenance": {},
+    "trial_max_temperature_c": 0.0,
+    "current_settle_time_s": 0.3,
+    "measurement_resistance_retry_enabled": True,
+    "measurement_retry_temperature_jump_c": 8.0,
+    "measurement_retry_temperature_consensus_c": 5.0,
+    "invalid_measurement_policy": "hold",
+    "resistance_power_guard_enabled": False,
+    "resistance_power_guard_window_s": 30.0,
+    "resistance_power_guard_drop_c": 15.0,
+    "resistance_power_guard_power_ratio": 1.2,
+    "resistance_power_guard_min_current_a": 0.02,
     "pid_integral_current_limit_a": 1.0,
     "pid_tracking_time_s": 30.0,
     "gain_schedule_filter_time_s": 10.0,
@@ -88,18 +101,7 @@ CONTROL_DEFAULTS = {
     "measurement_retry_delay_s": 0.15,
     "measurement_retry_consensus_ohm": 0.015,
     "stable_current_invalid_advance_count": 5,
-    # When False, every reading trusts the resistance-derived temperature
-    # directly: skips the low-signal/temperature-jump confirmation machinery
-    # (holding, probing, NaN rows while unconfirmed) and the resistance-glitch
-    # retry/reject in _measure_with_retry. Nothing measured is ever discarded
-    # or replaced with a stale value - the current slew-rate limit
-    # (max_current_step_up/down) is the only thing bounding how fast control
-    # can react to a reading. Default false: repeated field use found the
-    # confirmation machinery's own hold-and-probe behavior (stale dataset
-    # rows, stalled control while waiting on consensus, several distinct
-    # bugs in the probing itself) cost more than the protection was worth,
-    # given the slew limit already caps how far one reading can move the
-    # command. Set true to restore it.
+    # Optional legacy dynamic jump/probe policy. Acquisition retries are independent.
     "measurement_temperature_jump_guard_enabled": False,
     "measurement_temp_jump_c": 8.0,
     "measurement_temp_jump_up_c": 20.0,
@@ -304,8 +306,6 @@ def _measurement_current_floor(config):
     candidates = (
         minimum,
         float(config.get("measurement_current_floor", minimum)),
-        float(config.get("startup_current", minimum)),
-        float(config.get("t0_current_search_start", minimum)),
     )
     if not all(np.isfinite(value) for value in candidates) or not np.isfinite(maximum):
         raise ValueError("Initial and minimum voltage settings must be finite.")
@@ -543,6 +543,12 @@ def build_control_config(config):
     merged = migrate_legacy_config(config)
     for key, value in CONTROL_DEFAULTS.items():
         merged.setdefault(key, value)
+    if merged.get("invalid_measurement_policy") not in ("hold", "legacy"):
+        raise ValueError("invalid_measurement_policy must be hold or legacy.")
+    for name in ("current_settle_time_s", "measurement_retry_temperature_jump_c",
+                 "measurement_retry_temperature_consensus_c"):
+        if not np.isfinite(float(merged[name])) or float(merged[name]) < 0:
+            raise ValueError(f"{name} must be finite and nonnegative.")
     merged["controller_mode"] = get_controller_mode(merged)
     merged["experiment_mode"] = get_experiment_mode(merged)
     merged["resistivity_mode"] = get_resistivity_mode(merged)
@@ -557,6 +563,7 @@ class ResistanceTemperatureModel:
     linear_coefficients: Optional[Tuple[float, float]] = None
     temperature_bounds: Optional[Tuple[float, float]] = None
     source_temperature_bounds: Optional[Tuple[float, float]] = None
+    plateau_intervals: tuple = ()
 
     @property
     def x(self):
@@ -917,15 +924,33 @@ def _build_temperature_interpolator_from_curve(
     temperature_bounds,
     source_temperature_bounds,
 ):
-    resistance_order = np.argsort(curve[0, :])
-    resistance_curve = curve[:, resistance_order]
-    _, unique_indices = np.unique(resistance_curve[0, :], return_index=True)
-    resistance_curve = resistance_curve[:, np.sort(unique_indices)]
+    resistances = np.unique(curve[0, :])
+    temperatures = []
+    plateaus = []
+    for resistance in resistances:
+        values = curve[1, curve[0, :] == resistance]
+        lower, upper = float(values.min()), float(values.max())
+        representative = (lower + upper) / 2.0
+        # Preserve the endpoint anchor used to construct each extrapolated segment.
+        if source_temperature_bounds is not None:
+            for boundary in source_temperature_bounds:
+                if lower <= boundary <= upper:
+                    representative = boundary
+        temperatures.append(representative)
+        if upper > lower:
+            plateaus.append((float(resistance), lower, upper))
+    resistance_curve = np.array([resistances, temperatures])
+    if len(resistances) < 2:
+        raise ValueError("R vs. T inversion needs at least two distinct resistances.")
+    if plateaus:
+        print(f"WARNING: R(T) has {len(plateaus)} flat intervals; midpoint estimates are ambiguous "
+              f"by up to {max(p[2]-p[1] for p in plateaus):.3f} C peak-to-peak.")
     return ResistanceTemperatureModel(
         mode="INTERPOLATE",
         resistance_axis=np.asarray(resistance_curve[0, :], dtype=float),
         temperature_bounds=temperature_bounds,
         source_temperature_bounds=source_temperature_bounds,
+        plateau_intervals=tuple(plateaus),
         interpolator=interp1d(
             resistance_curve[0, :],
             resistance_curve[1, :],
@@ -945,6 +970,23 @@ def build_temperature_interpolator(r_vs_t, config=None):
         temperature_bounds,
         source_temperature_bounds,
     )
+
+
+def _validate_trial_program(experiment_params, config):
+    limit = float(config.get("trial_max_temperature_c", 0))
+    if not np.isfinite(limit) or limit < 0:
+        raise ValueError("trial_max_temperature_c must be finite and nonnegative.")
+    for program in experiment_params:
+        if limit and max(float(program["start_T"]), float(program["target_T"])) > limit:
+            raise ValueError(f"This provisional profile is limited to {limit:g} C. "
+                             "Collect and review wider-range data before extending it.")
+        source = config.get("current_feedforward_provenance", {})
+        if source.get("kind") == "provisional_ramp":
+            reference_rate = float(source["ramp_rate_c_min"])
+            if not np.isclose(float(program["ramp_speed_min"]), reference_rate, rtol=0, atol=.01):
+                raise ValueError(f"This provisional feed-forward table requires a {reference_rate:g} C/min ramp.")
+            # Holds are allowed: PI removes any remaining ramp-heating bias.
+            print("Using provisional ramp-derived feed-forward; hold currents are not calibrated.")
 
 
 def _validate_temperature_program_bounds(experiment_params, temperature_interp):
@@ -1021,6 +1063,12 @@ class TemperatureProgram:
                     target >= self.target_T
                     and measured_temperature >= self.target_T - self.temperature_tolerance_c
                 )
+                if finished and self.hold_step_time_s > 0:
+                    self.phase = "hold"
+                    self.current_plateau = self.target_T
+                    self.hold_elapsed_s = 0.0
+                    dt = 0.0
+                    continue
                 return target, self.phase, finished
 
             if self.phase == "step_ramp":
@@ -1031,7 +1079,7 @@ class TemperatureProgram:
                 )
                 if plateau_reached:
                     self.scheduled_target = self.current_plateau
-                    if self.current_plateau >= self.target_T:
+                    if self.current_plateau >= self.target_T and self.hold_step_time_s <= 0:
                         return self.current_plateau, self.phase, True
                     self.phase = "hold"
                     self.scheduled_target = self.current_plateau
@@ -1080,6 +1128,28 @@ def _emit_measurement(
             measured_resistance,
         ]
     )
+
+
+def _record_control_diagnostics(saver, config, controller, raw_temperature, filtered_temperature,
+                                setpoint, applied, accepted, dt, status):
+    if saver is None or not hasattr(saver, "enqueue_diagnostics"):
+        return
+    saver.enqueue_diagnostics({
+        "time": time.time(), "status": status, "dt_s": dt,
+        "raw_temperature_c": raw_temperature, "filtered_temperature_c": filtered_temperature,
+        "setpoint_c": setpoint, "applied_current_a": applied, "accepted_current_a": accepted,
+        "requested_current_a": controller.requested_output if status == "accepted" else None,
+        "integral_a": controller.integral,
+        "proportional_a": getattr(controller, "proportional_term", None) if status == "accepted" else None,
+        "prediction_c": getattr(controller, "prediction_c", None) if status == "accepted" else None,
+        "feedforward_a": getattr(controller, "feedforward_current", None) if status == "accepted" else None,
+        "output_limited": abs(controller.requested_output - accepted) > .0005 if status == "accepted" else None,
+        "voltage_range_v": config.get("_active_dmm_volt_range", config.get("dmm_voltage_range_v")),
+        "current_range_a": config.get("_active_dmm_curr_range", config.get("dmm_current_range_a")),
+        "range_change_count": config.get("_range_change_count", 0),
+        "acquisition": config.get("_last_acquisition", {}),
+        "first_candidate": config.get("_first_candidate", {}),
+    })
 
 
 def _persist_measurement(
@@ -1299,12 +1369,15 @@ def _start_control_at_initial_current(
     previous_current,
     loop_time,
 ):
-    initial_current = _measurement_current_floor(config)
+    floor = _measurement_current_floor(config)
+    initial_current = _quantized_current(
+        max(float(config.get("startup_current", floor)), floor), floor, float(config["max_current"])
+    )
     previous_current = _set_current_if_needed(power_supply, initial_current, previous_current, config)
     settle_time = max(float(config.get("startup_settle_time_s", 1.0)), 0.0)
     print(
         f"Starting controller directly at Initial Current {initial_current:.4f} A; "
-        "this value remains the experiment current floor."
+        f"active measurement floor is {floor:.4f} A."
     )
     time.sleep(max(settle_time, loop_time))
     return previous_current, previous_current
@@ -1328,23 +1401,30 @@ def _measure_with_retry(
         config=config,
         power_supply=power_supply,
     )
-    if not bool(config.get("measurement_temperature_jump_guard_enabled", True)):
-        # Trust every reading directly instead of retrying/rejecting it against
-        # the previous one; the current slew-rate limit is the only thing left
-        # bounding how fast control can react to it.
+    config["_first_candidate"] = {"temperature_c": temperature, "resistance_ohm": resistance,
+                                  "voltage": measured_voltage, "current": measured_current,
+                                  "acquisition": dict(config.get("_last_acquisition", {}))}
+    if not bool(config.get("measurement_resistance_retry_enabled", True)):
         return measured_voltage, measured_current, temperature, resistance, np.isfinite(resistance)
 
     jump_limit = _resistance_jump_limit(previous_resistance, config)
-    consensus_limit = max(
-        float(config.get("measurement_retry_consensus_ohm", 0.015)),
-        jump_limit * 0.5,
-    )
+    consensus_limit = float(config.get("measurement_retry_consensus_ohm", 0.015))
+    temperature_jump = float(config.get("measurement_retry_temperature_jump_c", 8.0))
+    temperature_consensus = float(config.get("measurement_retry_temperature_consensus_c", 5.0))
+
+    def temperatures_agree(first, second, limit):
+        values = [float(temperature_interp(float(r))) for r in (first, second)]
+        return all(np.isfinite(values)) and abs(values[1] - values[0]) <= limit
+
+    def near_previous(resistance):
+        return (np.isfinite(resistance) and abs(resistance - previous_resistance) <= jump_limit
+                and temperatures_agree(previous_resistance, resistance, temperature_jump))
 
     if (
         previous_resistance is None
         or not np.isfinite(previous_resistance)
         or not np.isfinite(resistance)
-        or abs(resistance - previous_resistance) <= jump_limit
+        or near_previous(resistance)
     ):
         return measured_voltage, measured_current, temperature, resistance, np.isfinite(resistance)
 
@@ -1372,32 +1452,24 @@ def _measure_with_retry(
             if retry_distance < best_distance:
                 best = (retry_voltage, retry_current, retry_temperature, retry_resistance)
                 best_distance = retry_distance
-            if retry_distance <= jump_limit:
-                return best[0], best[1], best[2], best[3], True
+            if near_previous(retry_resistance):
+                return retry_voltage, retry_current, retry_temperature, retry_resistance, True
 
-    if np.isfinite(best[3]) and best_distance <= jump_limit:
+    if np.isfinite(best[3]) and near_previous(best[3]):
         return best[0], best[1], best[2], best[3], True
 
-    valid_candidates = [candidate for candidate in candidates if np.isfinite(candidate[3])]
+    # The initial outlier must not veto agreement between fresh retries.
+    valid_candidates = [candidate for candidate in candidates[-2:] if np.isfinite(candidate[3])]
+    if len(candidates) < 3:
+        valid_candidates = []
     if len(valid_candidates) >= 2:
         resistances = np.array([candidate[3] for candidate in valid_candidates], dtype=float)
-        if float(np.max(resistances) - np.min(resistances)) <= consensus_limit:
-            accepted_voltage = float(np.median(np.array([candidate[0] for candidate in valid_candidates], dtype=float)))
-            accepted_current = float(np.median(np.array([candidate[1] for candidate in valid_candidates], dtype=float)))
-            accepted_temperature_candidates = [
-                candidate[2] for candidate in valid_candidates if np.isfinite(candidate[2])
-            ]
-            accepted_temperature = (
-                float(np.median(np.array(accepted_temperature_candidates, dtype=float)))
-                if accepted_temperature_candidates
-                else np.nan
-            )
-            accepted_resistance = float(np.median(resistances))
-            print(
-                f"Accepting stable retried measurement at {accepted_resistance:.4f} Ohm "
-                f"despite jump from previous {previous_resistance:.4f} Ohm."
-            )
-            return accepted_voltage, accepted_current, accepted_temperature, accepted_resistance, True
+        if (float(np.ptp(resistances)) <= consensus_limit
+                and temperatures_agree(float(resistances.min()), float(resistances.max()), temperature_consensus)):
+            # Return one coherent V/I/T/R tuple, not medians from different pairs.
+            accepted = valid_candidates[-1]
+            print(f"Accepting fresh retry consensus at {accepted[3]:.6f} Ohm.")
+            return *accepted, True
 
     print(
         f"Rejecting measurement after retries; best resistance {best[3]:.4f} Ohm "
@@ -1423,6 +1495,7 @@ def _set_current_if_needed(power_supply, current, previous_current, config):
     threshold = max(float(config["minimum_current_change"]), 0.001)
     if previous_current is None or abs(current - previous_current) >= threshold - 1e-12:
         siglent.set_current(power_supply, current=current)
+        config["_current_command_time"] = time.monotonic()
         return current
     return previous_current
 
@@ -1511,12 +1584,15 @@ def _compute_next_current(
         program_rate = (setpoint - pid_controller.previous_setpoint) * 60.0 / loop_time
     pid_controller.previous_setpoint = setpoint
     # Smooth predictive damping rather than thresholded full-step backoff.
-    predicted_temperature = temperature
+    prediction_c = 0.0
     if temp_rate_c_min is not None and np.isfinite(temp_rate_c_min):
-        predicted_temperature += max(0.0, temp_rate_c_min - program_rate) * max(
+        prediction_c = max(0.0, temp_rate_c_min - program_rate) * max(
             float(config.get("temperature_prediction_time_s", 2.0)), 0.0) / 60.0
+    pid_controller.prediction_c = prediction_c
+    pid_controller.feedforward_current = feedforward
     requested_current = pid_controller.compute(
-        predicted_temperature, dt=loop_time, setpoint=setpoint, bias=feedforward, integrate=integrate,
+        temperature, dt=loop_time, setpoint=setpoint, bias=feedforward, integrate=integrate,
+        output_correction=-pid_controller.kp * prediction_c,
     )
     if not np.isfinite(requested_current):
         raise ExperimentSafetyError("PI/PID requested a non-finite current.")
@@ -2174,6 +2250,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
     config = build_control_config(config)
     temperature_interp = build_temperature_interpolator(r_vs_t, config=config)
     _validate_temperature_program_bounds(experiment_params, temperature_interp)
+    _validate_trial_program(experiment_params, config)
     loop_time = resistivity_loop_time(config)
 
     resource_manager = None
@@ -2260,6 +2337,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
             last_program_update_time = time.monotonic()
             last_measurement_time = None
             rate_estimator = TemperatureRateEstimator(config["temperature_rate_window_s"])
+            resistance_power_guard = ResistancePowerGuard(config)
 
             while not emitter.stopped:
                 loop_started = time.time()
@@ -2628,6 +2706,26 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     temperature_jump_probe.reset()
                     pending_cooldown_jump_count = 0
                     pending_heatup_jump_count = 0
+                if (not _is_valid_measurement(measured_voltage, measured_current, temperature, config)
+                        and config.get("invalid_measurement_policy", "hold") == "hold"):
+                    invalid_measurements += 1
+                    rate_estimator.samples.clear()
+                    resistance_power_guard.reset()
+                    # Freeze integral and program progression; never probe upward without feedback.
+                    setpoint = float(program.scheduled_target)
+                    _record_control_diagnostics(data_saver, config, pid_controller,
+                        raw_temperature, np.nan, setpoint, applied_current, applied_current,
+                        control_dt, "invalid_hold")
+                    _persist_measurement(data_saver, setpoint, np.nan, measured_voltage,
+                        measured_current, applied_current, measured_resistance)
+                    _emit_measurement(emitter, setpoint, np.nan, measured_voltage,
+                        measured_current, applied_current, measured_resistance)
+                    if invalid_measurements >= int(config["measurement_fail_limit"]):
+                        raise ExperimentSafetyError("Temperature feedback remained invalid; stopped without increasing current.")
+                    elapsed = time.time() - loop_started
+                    if elapsed < loop_time:
+                        time.sleep(loop_time - elapsed)
+                    continue
                 if not _is_valid_measurement(measured_voltage, measured_current, temperature, config):
                     target_reference_temperature = (
                         float(previous_temperature)
@@ -2904,6 +3002,17 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     measurement_time, filtered_temperature, reset=reset_temperature_reference,
                 )
                 setpoint, phase, finished = program.update(filtered_temperature, program_dt)
+                inconsistency = resistance_power_guard.update(
+                    measurement_time, filtered_temperature, measured_resistance,
+                    measured_current, _sample_power_w(measured_voltage, measured_current), setpoint,
+                )
+                if inconsistency:
+                    _record_control_diagnostics(data_saver, config, pid_controller,
+                        raw_temperature, filtered_temperature, setpoint, applied_current,
+                        applied_current, control_dt, "resistance_power_abort")
+                    _persist_measurement(data_saver, setpoint, filtered_temperature,
+                        measured_voltage, measured_current, applied_current, measured_resistance)
+                    raise ExperimentSafetyError(inconsistency)
 
                 if phase != previous_phase:
                     # Preserve the holding-current correction across ramp/hold transitions.
@@ -2926,6 +3035,9 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                 )
                 pid_current = previous_current
 
+                _record_control_diagnostics(data_saver, config, pid_controller,
+                    raw_temperature, filtered_temperature, setpoint, applied_current,
+                    pid_current, control_dt, "accepted")
                 print(
                     f"Phase: {phase}, T: {filtered_temperature:.2f} C, Setpoint: {setpoint:.2f} C, "
                     f"Vsample: {measured_voltage:.6f} V, Current: {measured_current:.4e} A, "
@@ -3008,42 +3120,37 @@ def measure_resistivity(
 
     def read_pair_once():
         synchronized_reader = getattr(siglent_module, "read_DMM_pair", None)
-        use_synchronized_reading = config is None or bool(config.get("dmm_synchronized_reading", True))
-        if use_synchronized_reading and synchronized_reader is not None:
+        synchronized = config is None or bool(config.get("dmm_synchronized_reading", True))
+        for attempt in range(2):
+            started = time.monotonic()
             try:
-                raw_voltage, raw_current = synchronized_reader(dmm_v, dmm_i)
+                if synchronized:
+                    if not callable(synchronized_reader):
+                        raise RuntimeError("Synchronized pair reader unavailable.")
+                    raw_voltage, raw_current = synchronized_reader(dmm_v, dmm_i)
+                else:
+                    # Explicit legacy mode; never combine with half of a failed pair.
+                    raw_voltage = siglent_module.read_DMM(dmm_v)
+                    raw_current = siglent_module.read_DMM(dmm_i)
                 voltage, voltage_overload = parse_reading(raw_voltage)
                 current, current_overload = parse_reading(raw_current)
             except Exception as exc:
-                print(f"Synchronized DMM reading failed; retrying this sample with READ?: {exc}")
-                voltage = np.nan
-                current = np.nan
-                voltage_overload = False
-                current_overload = False
-        else:
-            voltage = np.nan
-            current = np.nan
-            voltage_overload = False
-            current_overload = False
-
-        if not np.isfinite(voltage) and not voltage_overload:
-            try:
-                voltage, voltage_overload = parse_reading(siglent_module.read_DMM(dmm_v))
-                if not np.isfinite(voltage) and not voltage_overload:
-                    print("Voltage DMM returned a non-numeric response.")
-            except Exception as exc:
-                print(f"An error occurred reading voltage DMM: {exc}")
-                voltage = np.nan
-
-        if not np.isfinite(current) and not current_overload:
-            try:
-                current, current_overload = parse_reading(siglent_module.read_DMM(dmm_i))
-                if not np.isfinite(current) and not current_overload:
-                    print("Current DMM returned a non-numeric response.")
-            except Exception as exc:
-                print(f"An error occurred reading current DMM: {exc}")
-                current = np.nan
-        return voltage, current, voltage_overload, current_overload
+                print(f"Paired DMM acquisition failed: {exc}")
+                voltage = current = np.nan
+                voltage_overload = current_overload = False
+            if config is not None:
+                config["_last_acquisition"] = {
+                    "start_monotonic_s": started, "end_monotonic_s": time.monotonic(),
+                    "pair_attempt": attempt + 1, "synchronized": synchronized,
+                    "voltage": voltage, "current": current,
+                }
+            if voltage_overload or current_overload:
+                # Preserve overload identity for deterministic range recovery.
+                return voltage, current, voltage_overload, current_overload
+            if np.isfinite(voltage) and np.isfinite(current):
+                return voltage, current, False, False
+        # No mixed-time V/I ratio can escape this function.
+        return np.nan, np.nan, False, False
 
     def read_with_output_off(mode):
         """Open the heater circuit, take the quiet-window reading, restore the output.
@@ -3103,6 +3210,12 @@ def measure_resistivity(
             raise ValueError("resistivity_heat_time_s must be finite and non-negative.")
         time.sleep(heat_time_s)
 
+    if config is not None and "_current_command_time" in config:
+        remaining = float(config.get("current_settle_time_s", 0.3)) - (
+            time.monotonic() - config["_current_command_time"]
+        )
+        if remaining > 0:
+            time.sleep(remaining)
     measured_voltage, measured_current, voltage_overload, current_overload = read_pair_once()
 
     range_increaser = (
@@ -3152,6 +3265,11 @@ def measure_resistivity(
                 break
 
             completed_range_changes += 1
+            config["_range_change_count"] = config.get("_range_change_count", 0) + 1
+            # CONF can alter instrument configuration; restore the intended aperture.
+            if "set_mode_speed" in dir(siglent_module):
+                siglent_module.set_mode_speed(dmm_v, "VOLT", config.get("DMM_speed", 10))
+                siglent_module.set_mode_speed(dmm_i, "CURR", config.get("DMM_speed", 10))
             if settle_time_s:
                 time.sleep(settle_time_s)
             for _ in range(discard_readings):

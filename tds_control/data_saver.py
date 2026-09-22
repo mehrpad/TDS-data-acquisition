@@ -1,4 +1,6 @@
 import csv
+import hashlib
+import math
 import json
 import os
 import queue
@@ -37,9 +39,11 @@ class ExperimentDataSaver:
         batch_size=10,
         calibration_note=None,
         run_metadata=None,
+        source_r_vs_t=None,
     ):
         self.experiment_dir = experiment_dir
         self.r_vs_t = np.array(r_vs_t, dtype=float)
+        self.source_r_vs_t = np.array(source_r_vs_t, dtype=float) if source_r_vs_t is not None else None
         self.calibration_note = str(calibration_note).strip() if calibration_note else None
         self.run_metadata = dict(run_metadata) if run_metadata else None
         self.columns = list(columns or DEFAULT_COLUMNS)
@@ -53,6 +57,7 @@ class ExperimentDataSaver:
         self.r_vs_t_pdf_path = os.path.join(self.experiment_dir, "corrected_r_vs_t_curve.pdf")
         self.calibration_info_path = os.path.join(self.experiment_dir, "calibration_info.txt")
         self.metadata_path = os.path.join(self.experiment_dir, "run_metadata.json")
+        self.diagnostics_path = os.path.join(self.experiment_dir, "control_diagnostics.jsonl")
 
         self._queue = queue.Queue()
         self._stop_token = object()
@@ -87,6 +92,25 @@ class ExperimentDataSaver:
             )
         self._queue.put(tuple(float(value) for value in row))
 
+    def enqueue_diagnostics(self, record):
+        """Queue an immutable strict-JSON snapshot on the existing background writer."""
+        self.raise_if_error()
+        if self._closed:
+            raise RuntimeError("Experiment data saver is already closed.")
+        def clean(value):
+            if isinstance(value, dict):
+                return {str(k): clean(v) for k, v in value.items()}
+            if isinstance(value, (list, tuple)):
+                return [clean(v) for v in value]
+            if isinstance(value, (float, np.floating)):
+                return float(value) if math.isfinite(value) else None
+            if isinstance(value, np.integer):
+                return int(value)
+            if isinstance(value, np.bool_):
+                return bool(value)
+            return value
+        self._queue.put({"diagnostic_json": json.dumps(clean(record), allow_nan=False)})
+
     def finalize(self, timeout=15.0):
         if self._closed:
             self.raise_if_error()
@@ -108,6 +132,24 @@ class ExperimentDataSaver:
             writer.writerow(["resistivity", "temperature"])
             for resistivity, temperature in self.r_vs_t.T:
                 writer.writerow([float(resistivity), float(temperature)])
+
+        if self.source_r_vs_t is not None:
+            source_path = os.path.join(self.experiment_dir, "r_vs_t_source.csv")
+            with open(source_path, "w", newline="", encoding="utf-8") as source_file:
+                writer = csv.writer(source_file)
+                writer.writerow(["resistivity", "temperature"])
+                writer.writerows(self.source_r_vs_t.T)
+            def digest(path):
+                with open(path, "rb") as stream:
+                    return hashlib.sha256(stream.read()).hexdigest()
+            metadata = {
+                "source_temperature_bounds_c": [float(np.min(self.source_r_vs_t[1])),
+                                                float(np.max(self.source_r_vs_t[1]))],
+                "export_sha256": digest(self.r_vs_t_path), "source_sha256": digest(source_path),
+                "source_file": "r_vs_t_source.csv",
+            }
+            with open(os.path.join(self.experiment_dir, "curve_metadata.json"), "w", encoding="utf-8") as stream:
+                json.dump(metadata, stream, indent=2)
 
     def _ordered_finite_curve(self):
         if self.r_vs_t.ndim != 2 or self.r_vs_t.shape[0] != 2:
@@ -423,7 +465,7 @@ class ExperimentDataSaver:
             workbook, excel_sheet = self._create_excel_workbook()
             with open(self.csv_path, "w", newline="", encoding="utf-8") as csv_file, h5py.File(
                 self.h5_path, "w"
-            ) as h5_file:
+            ) as h5_file, open(self.diagnostics_path, "w", encoding="utf-8") as diagnostics_file:
                 csv_writer = csv.writer(csv_file)
                 csv_writer.writerow([column_name for column_name, _ in self.columns])
                 datasets = self._create_h5_datasets(h5_file)
@@ -447,7 +489,10 @@ class ExperimentDataSaver:
                         )
                         break
 
-                    if item is not None:
+                    if isinstance(item, dict):
+                        diagnostics_file.write(item["diagnostic_json"] + "\n")
+                        diagnostics_file.flush()
+                    elif item is not None:
                         batch.append(item)
 
                     if batch and (

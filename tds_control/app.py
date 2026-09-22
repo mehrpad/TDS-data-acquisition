@@ -1,4 +1,6 @@
 import os
+import hashlib
+from pathlib import Path
 import re
 import sys
 import traceback
@@ -1097,11 +1099,23 @@ class Ui_TDS(object):
         for field in material_profiles.PROFILE_FIELDS:
             if field in profile:
                 self.config[field] = profile[field]
+            elif field in tds_experiment.CONTROL_DEFAULTS:
+                self.config[field] = tds_experiment.CONTROL_DEFAULTS[field]
         self.save_config()
         self.refresh_pid_status_label()
         self.resistivity_measurement_mode.setCurrentText(tds_experiment.get_resistivity_mode(self.config))
         self.max_current.setText(f"{float(self.config['max_current']):g}")
-        self.error_message(f'Loaded material profile "{name}".', color='black')
+        self.max_power.setText(f"{float(self.config['max_power_w']):g}")
+        self.calibration_start_current.setText(f"{float(self.config['startup_current']):g}")
+        # Do not silently retain the previous material's calibration when switching wire.
+        self.t_zero_calibrated = False
+        self.apply_experiment_mode_ui()
+        provenance = self.config.get("current_feedforward_provenance", {})
+        note = ""
+        if provenance.get("kind") == "provisional_ramp":
+            note = (f" Provisional {provenance['ramp_rate_c_min']:g} C/min feed-forward; "
+                    f"trial limit {self.config.get('trial_max_temperature_c', 0):g} C.")
+        self.error_message(f'Loaded material profile "{name}". Recalibrate T. Zero.{note}', color='black')
 
     def apply_experiment_mode_ui(self):
         """Enable or disable controls based on the selected experiment mode."""
@@ -1164,8 +1178,8 @@ class Ui_TDS(object):
             f'Selected file: {selected_file}'
         )
         self.calibration_start_current.setToolTip(
-            'Shared starting PSU voltage and enforced experiment floor (default: 0.01 V).\n'
-            'Startup requires stable readings and searches upward only in cautious 0.001 V steps.'
+            'Starting current for calibration, tuning and the experiment, in amperes.\n'
+            'The experiment measurement-current floor is configured separately.'
         )
         self.calibrate_botton_base_t.setToolTip(
             'Measure the current wire at the entered zero temperature and scale the loaded material curve.'
@@ -1317,11 +1331,16 @@ class Ui_TDS(object):
         Excludes runtime-only keys (leading underscore, e.g. the active DMM
         range tracked in the config dict) since those are not settings.
         """
-        return {
-            key: value
-            for key, value in self.config.items()
+        metadata = {
+            key: value for key, value in self.config.items()
             if not str(key).startswith('_')
         }
+        metadata["experiment_program"] = self.experiment_params
+        metadata["software_sha256"] = {
+            path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in Path(__file__).parent.glob("*.py")
+        }
+        return metadata
 
     def can_close_window(self):
         """
@@ -1780,6 +1799,7 @@ class Ui_TDS(object):
                 return
             try:
                 self.experiment_params = self.parse_experiment_params()
+                tds_experiment._validate_trial_program(self.experiment_params, self.config)
                 t_zero = float(self.calib_temperature.text())
             except ValueError as exc:
                 self.error_message(str(exc), color='red')
@@ -1796,6 +1816,7 @@ class Ui_TDS(object):
             self.data_saver = ExperimentDataSaver(
                 experiment_dir=self.current_experiment_dir,
                 r_vs_t=results_curve,
+                source_r_vs_t=self.r_vs_t,
                 calibration_note=self.t0_calibration_warning,
                 flush_interval_s=self.config['autosave_flush_interval_s'],
                 batch_size=self.config['autosave_batch_size'],

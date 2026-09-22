@@ -90,7 +90,7 @@ pid_integral_time_s = 20
 # Derivative gain used only when controller_mode = "PID".
 pid_kd = 0
 
-# Optional measured equilibrium currents for this wire; no values are inferred from ramp tests.
+# Prefer measured equilibrium currents. Trial profiles label provisional ramp-derived biases.
 # Format: [{ temperature_c = <measured temperature>, current_a = <equilibrium current> }, ...]
 current_feedforward_table = []
 
@@ -110,7 +110,7 @@ pid_integral_limit = 400
 # Low-pass filter factor for derivative smoothing.
 pid_derivative_filter = 0.6
 
-# Initial PSU current at the start of an experiment.
+# Initial PSU current at experiment start; the active measurement-current floor is separate.
 startup_current = 0.005
 
 # Lowest current the controller may request.
@@ -246,7 +246,7 @@ measurement_retry_consensus_ohm = 0.015
 # How many invalid search samples at one voltage are allowed before stepping higher.
 stable_current_invalid_advance_count = 5
 
-# When false, trust each resistance-derived temperature directly and rely only on the current slew limit; skips all jump/low-signal confirmation below.
+# Enables legacy temperature jump/probe handling; paired resistance retries remain independent.
 measurement_temperature_jump_guard_enabled = false
 
 # Legacy symmetric temperature-jump threshold kept for compatibility.

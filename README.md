@@ -146,35 +146,22 @@ experiment measurement failures. If overload remains on the largest range, that 
 hardware current limit/OCP.
 Do not enable Auto Range manually during calibration, tuning, or an experiment.
 
-### Low-voltage startup policy
+### Startup and measurement recovery
 
-The GUI `Initial Voltage` is shared by T0 calibration, PI/PID tuning, Temperature mode, and Voltage mode.
-It is an enforced runtime floor: an experiment starts directly at this voltage and cannot request a
-lower value. There is no separate experiment-start measurement search. After `startup_settle_time_s`, the normal
-controller loop reads the meters and increases, holds, or decreases voltage from live measurements, while the
-Initial Voltage floor remains enforced. At or below `low_voltage_step_threshold`, controller, recovery, T0-search,
-and tuning-search actions use the finer low-voltage step sizes.
+The GUI Initial Current starts calibration, tuning and the experiment. The
+active measurement-current floor is configured separately. Raising Initial
+Current no longer prevents later cooling by lowering the current.
 
-Logged `PSU command` values are requested power-supply setpoints. They are not the same as `Vsample`, which is the
-Kelvin voltage measured directly across the wire, and either value may differ slightly from the PSU front-panel
-readback because of output accuracy, display resolution, settling, and wiring voltage drop.
+The controller waits for current-command settling, acquires a complete paired
+V/I measurement, and retries suspicious resistance changes independently of
+the optional legacy temperature-jump guard. The default invalid-measurement
+policy holds current, freezes integration and pauses the target ramp. Persistent
+invalid feedback stops the run; it does not trigger upward recovery probes.
 
-In Temperature mode, the programmed temperature target starts from calibrated T0 and advances according to
-`ramp_speed_min`, interpreted as degrees C per minute.
-Reaching `start_T` changes the ramp phase but does not wait for the measured temperature, so noisy or lagging
-measurements cannot freeze the target. Deliberately configured step holds still pause the target as requested.
-
-At low PSU voltage, one large inferred-temperature jump cannot replace calibrated T0 or the last trusted
-temperature. The controller initially holds its present voltage while checking the candidate and requires
-`low_signal_jump_confirm_samples` matching temperature-and-resistance readings (default `3`). If the jump is not
-confirmed, subsequent invalid readings continue from the prior trusted temperature instead of reusing the spike.
-This confirmation does not pause the programmed target ramp.
-
-If low-signal readings remain invalid, the controller no longer stays indefinitely at Initial Voltage. After five
-consecutive invalid readings it increases the commanded PSU voltage by `0.01 V`, observes five more measurements,
-and repeats when necessary. It performs up to five upward probes in one recovery episode, while still enforcing
-`max_power_w`, `max_voltage`, `max_current`, and the Initial Voltage floor. One valid measurement resets this recovery sequence;
-the programmed temperature target continues to ramp throughout it.
+Logged current commands are software settings, not PSU readback. Vsample is
+the Kelvin voltage across the wire. The default temperature target advances
+with elapsed time while measurements are valid; noisy but valid tracking lag
+does not freeze it. Explicit holds and invalid-feedback pauses do.
 
 Controller mode notes:
 
@@ -182,8 +169,8 @@ Controller mode notes:
 - set `controller_mode = "PID"` if you want derivative action enabled
 - the `Tune PI/PID` button uses the selected mode from `config.toml`
 
-Temperature feedback uses an **absolute current command**: measured equilibrium
-feed-forward current plus PI correction. Normal regulation no longer forces
+Temperature feedback uses an **absolute current command**: feed-forward
+current plus PI correction. Trial profiles explicitly label ramp-derived biases. Normal regulation no longer forces
 catch-up steps or resets the integral on a noisy heating-rate threshold.
 Commands are quantized to the PSU's 1 mA grid, and the integral tracks the
 transmitted setting through current limits, slew limits, and recovery overrides.
@@ -278,8 +265,9 @@ Meaning:
 
 Behavior:
 
-- If `step_T >= target_T - start_T`, the program becomes a simple ramp.
-- Otherwise the loop ramps to each intermediate step, holds for the requested time, and stops as soon as the final plateau is reached.
+- If step_T <= 0 or step_T >= target_T - start_T, the program becomes a simple ramp.
+- Otherwise the loop ramps to intermediate steps and holds for the requested time.
+- Both modes honor hold_step_time_min at the final target before finishing.
 
 In Voltage mode, enter one parameter:
 
@@ -292,28 +280,17 @@ per-loop voltage slew limits. There is no temperature target in Voltage mode.
 
 ## Safety Behavior
 
-The control loop now includes:
+The control loop includes current slew limits, actuator-tracking anti-windup,
+electrical/temperature cutoffs, optional predictive damping, atomic V/I retries,
+and bounded hold-on-invalid behavior. The trial profiles also enable a sustained
+resistance-versus-power consistency abort. Every normal completion or exception
+shuts down the instrument sessions with zero current and PSU output OFF.
 
-- voltage step-up and step-down limits
-- PID anti-windup
-- smooth predictive damping using a timestamped heating-rate regression
-- software current cutoff using `max_current`
-- measured sample-power cutoff using `max_power_w`
-- invalid-measurement detection
-- direct controlled startup at the enforced Initial Voltage floor
-- time-driven target advancement at the configured ramp speed
-- repeated confirmation before a large low-signal reading replaces T0 or the last trusted temperature
-- five staged `+0.01 V` recovery probes when invalid low-signal measurements would otherwise stall control
-- an enforced Initial Voltage floor and 0.001 V low-voltage micro-steps
-- controlled micro-voltage probing before a large resistance/temperature jump is accepted
-- one PSU output-enable command at operation start, followed by zero current and output OFF at the end
-
-`max_current` and `max_power_w` are software stop thresholds after synchronized DMM readings; they are not
-hardware limiters. The 2.5 W default is a general ceiling, not a validated safe value for a thin wire. Your
-100-micrometre NiCr sample glowed below 1 W in the reviewed run, so use a substantially lower independently
-validated limit for that sample. Set an independent current limit/OCP on the power supply before each run.
-
-When an inferred-temperature jump is at least `measurement_jump_probe_threshold_c`, the controller does not immediately trust it. An upward jump causes a small PSU decrease; a downward jump causes a small increase only while the measured current is safely below `max_current`. Follow-up temperatures must remain inside the fixed window centered on the first probe candidate (default +/-50 C), and resistance must also be consistent before a new reference is established. The reference window does not move when a sample is inconsistent. By default, an unstable probe may try for 20 cycles before stopping rather than continuing with stale data.
+Software current and power cutoffs act after measurements; they are not hardware
+limiters or independently validated wire ratings. Profile-specific trial limits
+and the next experiment procedure are described in
+[Next wire trial](docs/NEXT_WIRE_TRIAL.md). Legacy dynamic jump/probe behavior is
+available only through its explicit configuration switches.
 
 ## Data Output
 
