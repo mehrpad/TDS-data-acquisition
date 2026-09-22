@@ -151,9 +151,11 @@
       "current_ramp_a_min": 0.1,
       "data_sha256": "0287f399a8472e993b50361e4c9d46a7fd09cedfd26167cbfb3fd78c6067ee1f",
       "electrical_limits": {
-        "max_current_a": 0.305911385,
-        "max_power_w": 0.821924605868587,
-        "method": "User requested maximum absolute measured I and maximum absolute recorded P over all run 107 rows"
+        "max_current_a": 0.31,
+        "max_power_w": 0.83,
+        "measured_max_current_a": 0.305911385,
+        "measured_max_power_w": 0.821924605868587,
+        "method": "Run 107 measured maxima rounded upward to two decimal places at the user request"
       },
       "excluded_csv_data_rows": [
         55
@@ -291,10 +293,10 @@
   "experiment_frequency": 0.5,
   "gain_schedule_filter_time_s": 10,
   "invalid_measurement_policy": "hold",
-  "max_current": 0.305911385,
+  "max_current": 0.31,
   "max_current_step_down": 0.001,
   "max_current_step_up": 0.001,
-  "max_power_w": 0.821924605868587,
+  "max_power_w": 0.83,
   "max_sample_voltage": 15,
   "max_temperature_c": 600.0,
   "measurement_current_floor": 0.01,
