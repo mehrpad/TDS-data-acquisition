@@ -77,6 +77,25 @@ class IntegralTimeGuiTests(unittest.TestCase):
         self.addCleanup(self.ui.timer_error.stop)
         self.addCleanup(self.window.close)
 
+    def test_max_temperature_field_persists_loads_and_locks_during_run(self):
+        self.ui.max_temperature.setText("550")
+        self.assertTrue(self.ui.update_max_temperature())
+        self.assertEqual(config_io.load_config()["max_temperature_c"], 550)
+        self.ui.material_profile_combo.setCurrentText("Ni")
+        self.ui.save_material_profile()
+        self.assertEqual(material_profiles.load_profile("Ni")["max_temperature_c"], 550)
+        self.ui.config["max_temperature_c"] = 400
+        self.ui.load_material_profile()
+        self.assertEqual(float(self.ui.max_temperature.text()), 550)
+        for invalid in ("nan", "inf", "-10", "0", "abc"):
+            self.ui.max_temperature.setText(invalid)
+            self.assertFalse(self.ui.update_max_temperature())
+            self.assertEqual(float(self.ui.max_temperature.text()), 550)
+        self.ui._set_operation_running(True)
+        self.assertFalse(self.ui.max_temperature.isEnabled())
+        self.ui._set_operation_running(False)
+        self.assertTrue(self.ui.max_temperature.isEnabled())
+
     def test_editing_time_changes_ki_and_persists_json_and_config(self):
         self.assertEqual(self.ui.pid_ti_edit.text(),"100")
         self.ui.pid_ti_edit.setText("200")

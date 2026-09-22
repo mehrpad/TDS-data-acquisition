@@ -161,6 +161,16 @@ class Ui_TDS(object):
                                              "                                            ")
         self.calib_temperature.setObjectName("calib_temperature")
         self.gridLayout.addWidget(self.calib_temperature, 2, 1, 1, 1)
+        self.label_max_temperature = QtWidgets.QLabel("Maximum Temperature (°C)", parent=self.centralwidget)
+        self.max_temperature = QtWidgets.QLineEdit(parent=self.centralwidget)
+        self.max_temperature.setObjectName("max_temperature")
+        self.max_temperature.setMinimumSize(QtCore.QSize(100, 20))
+        self.max_temperature.setStyleSheet("QLineEdit{background: rgb(223,223,233)}")
+        self.max_temperature.setToolTip(
+            "Stops heating when indicated temperature exceeds this limit. Applies to temperature and current runs; "
+            "depends on valid R(T) conversion. Changes apply before starting a run.")
+        self.gridLayout.addWidget(self.label_max_temperature, 3, 0, 1, 1)
+        self.gridLayout.addWidget(self.max_temperature, 3, 1, 1, 1)
         self.label_177 = QtWidgets.QLabel(parent=self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Minimum)
         sizePolicy.setHorizontalStretch(0)
@@ -168,7 +178,7 @@ class Ui_TDS(object):
         sizePolicy.setHeightForWidth(self.label_177.sizePolicy().hasHeightForWidth())
         self.label_177.setSizePolicy(sizePolicy)
         self.label_177.setObjectName("label_177")
-        self.gridLayout.addWidget(self.label_177, 3, 0, 1, 1)
+        self.gridLayout.addWidget(self.label_177, 4, 0, 1, 1)
         self.max_power = QtWidgets.QLineEdit(parent=self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Minimum)
         sizePolicy.setHorizontalStretch(0)
@@ -181,7 +191,7 @@ class Ui_TDS(object):
                                        "                                                }\n"
                                        "                                            ")
         self.max_power.setObjectName("max_power")
-        self.gridLayout.addWidget(self.max_power, 3, 1, 1, 1)
+        self.gridLayout.addWidget(self.max_power, 4, 1, 1, 1)
         self.label_178 = QtWidgets.QLabel(parent=self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Minimum)
         sizePolicy.setHorizontalStretch(0)
@@ -189,7 +199,7 @@ class Ui_TDS(object):
         sizePolicy.setHeightForWidth(self.label_178.sizePolicy().hasHeightForWidth())
         self.label_178.setSizePolicy(sizePolicy)
         self.label_178.setObjectName("label_178")
-        self.gridLayout.addWidget(self.label_178, 4, 0, 1, 1)
+        self.gridLayout.addWidget(self.label_178, 5, 0, 1, 1)
         self.max_current = QtWidgets.QLineEdit(parent=self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Minimum)
         sizePolicy.setHorizontalStretch(0)
@@ -202,7 +212,7 @@ class Ui_TDS(object):
                                        "                                                }\n"
                                        "                                            ")
         self.max_current.setObjectName("max_current")
-        self.gridLayout.addWidget(self.max_current, 4, 1, 1, 1)
+        self.gridLayout.addWidget(self.max_current, 5, 1, 1, 1)
         self.label_calibration_start_current = QtWidgets.QLabel(parent=self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Minimum)
         sizePolicy.setHorizontalStretch(0)
@@ -210,7 +220,7 @@ class Ui_TDS(object):
         sizePolicy.setHeightForWidth(self.label_calibration_start_current.sizePolicy().hasHeightForWidth())
         self.label_calibration_start_current.setSizePolicy(sizePolicy)
         self.label_calibration_start_current.setObjectName("label_calibration_start_current")
-        self.gridLayout.addWidget(self.label_calibration_start_current, 5, 0, 1, 1)
+        self.gridLayout.addWidget(self.label_calibration_start_current, 6, 0, 1, 1)
         self.calibration_start_current = QtWidgets.QLineEdit(parent=self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Minimum)
         sizePolicy.setHorizontalStretch(0)
@@ -223,7 +233,7 @@ class Ui_TDS(object):
                                                 "                                                }\n"
                                                 "                                            ")
         self.calibration_start_current.setObjectName("calibration_start_current")
-        self.gridLayout.addWidget(self.calibration_start_current, 5, 1, 1, 1)
+        self.gridLayout.addWidget(self.calibration_start_current, 6, 1, 1, 1)
         self.label_179 = QtWidgets.QLabel(parent=self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Minimum)
         sizePolicy.setHorizontalStretch(0)
@@ -231,7 +241,7 @@ class Ui_TDS(object):
         sizePolicy.setHeightForWidth(self.label_179.sizePolicy().hasHeightForWidth())
         self.label_179.setSizePolicy(sizePolicy)
         self.label_179.setObjectName("label_179")
-        self.gridLayout.addWidget(self.label_179, 6, 0, 1, 1)
+        self.gridLayout.addWidget(self.label_179, 7, 0, 1, 1)
         self.measurement_conversion_mode = QtWidgets.QComboBox(parent=self.centralwidget)
         self.measurement_conversion_mode.setMinimumSize(QtCore.QSize(100, 20))
         self.measurement_conversion_mode.setStyleSheet("QComboBox{\n"
@@ -241,7 +251,7 @@ class Ui_TDS(object):
         self.measurement_conversion_mode.setObjectName("measurement_conversion_mode")
         self.measurement_conversion_mode.addItem("")
         self.measurement_conversion_mode.addItem("")
-        self.gridLayout.addWidget(self.measurement_conversion_mode, 6, 1, 1, 1)
+        self.gridLayout.addWidget(self.measurement_conversion_mode, 7, 1, 1, 1)
         self.label_resistivity_mode = QtWidgets.QLabel(parent=self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Minimum)
         sizePolicy.setHorizontalStretch(0)
@@ -249,14 +259,14 @@ class Ui_TDS(object):
         sizePolicy.setHeightForWidth(self.label_resistivity_mode.sizePolicy().hasHeightForWidth())
         self.label_resistivity_mode.setSizePolicy(sizePolicy)
         self.label_resistivity_mode.setObjectName("label_resistivity_mode")
-        self.gridLayout.addWidget(self.label_resistivity_mode, 7, 0, 1, 1)
+        self.gridLayout.addWidget(self.label_resistivity_mode, 8, 0, 1, 1)
         self.resistivity_measurement_mode = QtWidgets.QComboBox(parent=self.centralwidget)
         self.resistivity_measurement_mode.setMinimumSize(QtCore.QSize(100, 20))
         self.resistivity_measurement_mode.setStyleSheet("QComboBox{ background: rgb(223,223,233) }")
         self.resistivity_measurement_mode.setObjectName("resistivity_measurement_mode")
         for _ in tds_experiment.RESISTIVITY_MODES:
             self.resistivity_measurement_mode.addItem("")
-        self.gridLayout.addWidget(self.resistivity_measurement_mode, 7, 1, 1, 1)
+        self.gridLayout.addWidget(self.resistivity_measurement_mode, 8, 1, 1, 1)
         self.label_material_profile = QtWidgets.QLabel(parent=self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Minimum)
         sizePolicy.setHorizontalStretch(0)
@@ -264,7 +274,7 @@ class Ui_TDS(object):
         sizePolicy.setHeightForWidth(self.label_material_profile.sizePolicy().hasHeightForWidth())
         self.label_material_profile.setSizePolicy(sizePolicy)
         self.label_material_profile.setObjectName("label_material_profile")
-        self.gridLayout.addWidget(self.label_material_profile, 8, 0, 1, 1)
+        self.gridLayout.addWidget(self.label_material_profile, 9, 0, 1, 1)
         self.material_profile_row = QtWidgets.QWidget(parent=self.centralwidget)
         self.material_profile_row.setObjectName("material_profile_row")
         self.material_profile_layout = QtWidgets.QHBoxLayout(self.material_profile_row)
@@ -286,7 +296,7 @@ class Ui_TDS(object):
         self.material_profile_save_button.setStyleSheet("QPushButton{background: rgb(193, 193, 193)}")
         self.material_profile_save_button.setObjectName("material_profile_save_button")
         self.material_profile_layout.addWidget(self.material_profile_save_button)
-        self.gridLayout.addWidget(self.material_profile_row, 8, 1, 1, 1)
+        self.gridLayout.addWidget(self.material_profile_row, 9, 1, 1, 1)
         self.gridLayout_5.addLayout(self.gridLayout, 0, 0, 1, 1)
         self.gridLayout_4 = QtWidgets.QGridLayout()
         self.gridLayout_4.setObjectName("gridLayout_4")
@@ -667,7 +677,8 @@ class Ui_TDS(object):
         QtCore.QMetaObject.connectSlotsByName(TDS)
         TDS.setTabOrder(self.ex_number, self.ex_name)
         TDS.setTabOrder(self.ex_name, self.calib_temperature)
-        TDS.setTabOrder(self.calib_temperature, self.max_power)
+        TDS.setTabOrder(self.calib_temperature, self.max_temperature)
+        TDS.setTabOrder(self.max_temperature, self.max_power)
         TDS.setTabOrder(self.max_power, self.max_current)
         TDS.setTabOrder(self.max_current, self.calibration_start_current)
         TDS.setTabOrder(self.calibration_start_current, self.measurement_conversion_mode)
@@ -752,6 +763,7 @@ class Ui_TDS(object):
         self.ex_number.setEnabled(False)
         self.ex_number.setText(str(self.ex_counter))
 
+        self.max_temperature.editingFinished.connect(self.update_max_temperature)
         self.max_power.editingFinished.connect(self.update_max_power)
         self.max_current.editingFinished.connect(self.update_max_current)
         self.calibration_start_current.editingFinished.connect(self.update_calibration_start_current)
@@ -768,6 +780,7 @@ class Ui_TDS(object):
         self.calib_temperature.textEdited.connect(self.invalidate_t_zero_calibration)
 
         # Populate inputs from configuration.
+        self.max_temperature.setText(str(self.config['max_temperature_c']))
         self.max_power.setText(str(self.config['max_power_w']))
         self.max_current.setText(str(self.config['max_current']))
         self.calibration_start_current.setText(str(self.config['t0_current_search_start']))
@@ -843,6 +856,20 @@ class Ui_TDS(object):
         self.menuHelp.setTitle(_translate("TDS", "Help"))
         self.actionExit.setText(_translate("TDS", "Exit"))
 
+    def update_max_temperature(self):
+        """Validate and persist the independent software temperature cutoff."""
+        previous = self.config['max_temperature_c']
+        try:
+            limit = tds_experiment._maximum_temperature({'max_temperature_c': float(self.max_temperature.text())})
+        except ValueError as exc:
+            self.max_temperature.setText(str(previous))
+            self.error_message(str(exc), color='red')
+            return False
+        self.config['max_temperature_c'] = limit
+        self.max_temperature.setText(str(limit))
+        self.save_config()
+        return True
+
     def update_max_power(self):
         """Validate and save the maximum measured sample power."""
         previous_value = float(self.config['max_power_w'])
@@ -856,7 +883,7 @@ class Ui_TDS(object):
             return False
 
         self.config['max_power_w'] = max_power_w
-        self.max_power.setText(f'{max_power_w:g}')
+        self.max_power.setText(str(max_power_w))
         self.emitter.max_power_signal.emit(max_power_w)
         self.save_config()
         return True
@@ -1104,8 +1131,9 @@ class Ui_TDS(object):
         self.save_config()
         self.refresh_pid_status_label()
         self.resistivity_measurement_mode.setCurrentText(tds_experiment.get_resistivity_mode(self.config))
-        self.max_current.setText(f"{float(self.config['max_current']):g}")
-        self.max_power.setText(f"{float(self.config['max_power_w']):g}")
+        self.max_current.setText(str(float(self.config['max_current'])))
+        self.max_power.setText(str(float(self.config['max_power_w'])))
+        self.max_temperature.setText(str(float(self.config['max_temperature_c'])))
         self.calibration_start_current.setText(f"{float(self.config['startup_current']):g}")
         # Do not silently retain the previous material's calibration when switching wire.
         self.t_zero_calibrated = False
@@ -1148,6 +1176,7 @@ class Ui_TDS(object):
             self.ex_name,
             self.calib_temperature,
             self.max_power,
+            self.max_temperature,
             self.max_current,
             self.calibration_start_current,
             self.measurement_conversion_mode,
@@ -1644,7 +1673,7 @@ class Ui_TDS(object):
 
     def calibrate_base_temperature(self):
         """Anchor the loaded R-vs-T curve to the current wire at T0."""
-        if not self.update_max_power():
+        if not self.update_max_temperature() or not self.update_max_power():
             return
         if not self.require_loaded_curve('calibrating T. Zero'):
             return
@@ -1750,7 +1779,7 @@ class Ui_TDS(object):
         Calibrate the PID/PI gain schedule across the operating current range.
         """
         controller_mode = tds_experiment.get_controller_mode(self.config)
-        if not self.update_max_power() or not self.update_calibration_start_current():
+        if not self.update_max_temperature() or not self.update_max_power() or not self.update_calibration_start_current():
             return
         if not self.require_loaded_curve_and_t0(f'tuning {controller_mode}'):
             return
@@ -1782,7 +1811,7 @@ class Ui_TDS(object):
         """
         Starts a new thread to execute the main functionality (replace with your logic).
         """
-        if not self.update_max_power() or not self.update_calibration_start_current():
+        if not self.update_max_temperature() or not self.update_max_power() or not self.update_calibration_start_current():
             return
         experiment_mode = tds_experiment.get_experiment_mode(self.config)
         if experiment_mode == "CURRENT":

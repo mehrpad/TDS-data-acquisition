@@ -151,6 +151,7 @@
   "max_current_step_up": 0.001,
   "max_power_w": 0.25,
   "max_sample_voltage": 15,
+  "max_temperature_c": 600.0,
   "measurement_current_floor": 0.01,
   "measurement_fail_limit": 10,
   "measurement_filter_samples": 3,
