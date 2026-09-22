@@ -1,4 +1,6 @@
 import re
+import json
+import hashlib
 from pathlib import Path
 
 import numpy as np
@@ -122,6 +124,16 @@ def _extract_curve_from_frames(frames, max_header_rows=12):
 def load_resistance_temperature_file(file_path):
     path = Path(file_path)
     suffix = path.suffix.lower()
+    metadata_path = path.parent / "curve_metadata.json"
+    if path.name == "r_vs_t.csv" and metadata_path.exists():
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        original = path.parent / "r_vs_t_source.csv"
+        if (hashlib.sha256(path.read_bytes()).hexdigest() != metadata["export_sha256"]
+                or hashlib.sha256(original.read_bytes()).hexdigest() != metadata["source_sha256"]):
+            raise ValueError("Calibration export/source hashes do not match; cannot recover measured bounds.")
+        curve, source = load_resistance_temperature_file(original)
+        source["restored_source_bounds_c"] = metadata["source_temperature_bounds_c"]
+        return curve, source
     if suffix == ".csv":
         frames = {"CSV": pd.read_csv(path, header=None)}
     elif suffix == ".xlsx":

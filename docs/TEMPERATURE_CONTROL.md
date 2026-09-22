@@ -2,8 +2,9 @@
 
 Temperature mode commands absolute current:
 
-`I_requested = I_feedforward(T_set) + Kp*(T_set - T_predicted) + integral_correction_A`
+`I_requested = I_feedforward(T_set) + Kp*(T_set - T_measured) + integral_correction_A - prediction_correction_A`
 
+The integral error is always T_set minus T_measured, independent of prediction.
 The integral increases by `Ki*error*actual_elapsed_seconds` once per accepted
 measurement. The previous current is used for actuator slew limits, not added
 to the PI output. Current and power safety aborts remain active.
@@ -49,7 +50,7 @@ current_feedforward_table = [
 
 Current is interpolated between measured points and held at the endpoints
 outside the table. There is no feed-forward extrapolation. With an empty table,
-Initial Current is the bias and the integral supplies the rest of the heating
+the measurement-current floor is the bias and the integral supplies the rest of the heating
 current. P-only control needs an appropriate bias/map to reach elevated targets.
 Do not treat current measured during a ramp as equilibrium current.
 
@@ -79,8 +80,9 @@ so these maps and schedules survive GUI saves.
   actuator command after slew limits, quantization, and recovery overrides.
   Differences below half a programming step do not unwind the integral, allowing
   small corrections to accumulate into a real command.
-- Invalid/reused temperatures do not integrate error. Recovery overrides still
-  update actuator tracking and clear heating-rate history.
+- Invalid temperatures do not integrate error. The default hold policy freezes
+  current and the temperature program, clears rate history, and stops after
+  measurement_fail_limit failures. Legacy recovery is opt-in.
 - `temperature_rate_window_s` defaults to 8 s. Regression uses monotonic
   timestamps and at least three accepted measurements. Normal temperature
   median filtering is still controlled by `measurement_filter_samples`.
@@ -95,8 +97,7 @@ so these maps and schedules survive GUI saves.
 Existing gains from the accumulating-current implementation are not transferable
 to this absolute-current PI. Software tuning now permits small gains below the
 old 0.001 Kp / 1e-5 Ki floors and uses an integral time at least as long as its
-conservative response time (minimum 30 s). No new Ni/NiCr gains or feed-forward
-currents are automatically fabricated from the old ramp data.
+conservative response time (minimum 30 s). The September 2026 trial profiles below use explicitly provisional ramp-derived biases.
 
 Validate resistance-derived temperature against an independent thermometer
 before retuning. The reviewed NiCr runs reported T0 scatter equivalent to
@@ -112,3 +113,89 @@ points separately. Tune conservative PI for each wire geometry, save a Material
 Profile, and evaluate settled hold error separately from ramp tracking error.
 Keep derivative action disabled initially. Hardware tests are required to
 establish the resulting temperature tolerance.
+
+## September 2026 Ni / NiCr trial profiles
+
+The application profiles Ni_100_152 and NiCr_100_163 were rebuilt from
+runs 139 and 136 respectively. tools/build_ramp_profiles.py reproduces them.
+They contain **provisional 10 C/min ramp-derived current biases**, not measured
+equilibrium maps and not validated PI gains.
+
+| Setting | Ni | NiCr |
+| --- | ---: | ---: |
+| Kp (A/C) | 0.001 | 0.0001 |
+| Ki (A/(C s)) | 0.00001 | 0.000001 |
+| Ti (s) | 100 | 100 |
+| Current slew step per 2 s | 0.001 A | 0.001 A |
+| Prediction horizon | 0 s | 0 s |
+| Trial target ceiling | 110 C | 250 C |
+| Current ceiling | 0.1 A | 0.1 A |
+| Sample power cutoff | 0.05 W | 0.25 W |
+
+The reduced electrical limits bound this comparison; they are not wire ratings.
+Programs above the trial target ceiling or with ramp rates other than 10 C/min
+are rejected before instruments open. Extending Ni later requires reviewing new
+data and deliberately updating the trial limits.
+
+Table construction uses RMS commanded current in target-temperature bins,
+paired with mean logged temperature. This includes both phases of Ni's
+oscillation and approximately preserves average I-squared heating. Ni uses
+target bins 30-120 C (measured-temperature points about 32-111 C). NiCr uses
+100-260 C bins (points about 107-245 C), excluding noisy startup, the
+range-transition spike and the late collapse. Source run names, hashes, bins,
+counts and limitations are saved in current_feedforward_provenance.
+Both maps include a 23 C / 10 mA startup-command anchor, which is not an
+equilibrium measurement. Interpolation below the first derived point is
+particularly uncertain for NiCr. Endpoint values are held, never extrapolated.
+
+Use the same wire geometry/mounting as the source runs. Restart the application,
+load the matching material profile and R(T) reference, then recalibrate T. Zero.
+Loading a profile invalidates the previous material's T0 calibration. If NiCr
+still reports large calibration scatter, the temperature uncertainty remains;
+the software cannot correct an unreliable sensor by tuning.
+
+Suggested next comparison programs, in the GUI's actual input syntax:
+
+Ni (continuous ramp followed by a five-minute final hold):
+    {start_T=23; step_T=0; target_T=110; ramp_speed_min=10; hold_step_time_min=5}
+
+NiCr (continuous ramp followed by a five-minute final hold):
+    {start_T=23; step_T=0; target_T=250; ramp_speed_min=10; hold_step_time_min=5}
+
+The final hold now honors hold_step_time_min for both simple and stepped ramps.
+The ramp-derived bias can initially overheat a hold; the integral corrects its
+residual. Settled hold data should replace these provisional currents.
+
+Both profiles use a 2 V voltage range, a 20 mA initial current range with staged
+increases, 10 PLC integration, 0.5 s post-command/range settling, and three
+discarded pairs after a range change. Complete V/I pairs are retried together.
+Resistance retries remain enabled even though the legacy dynamic jump/probe
+guard is off. Retry checks include equivalent temperature spread, so low-TCR
+errors cannot hide behind a large ohmic threshold. Only the latest two agreeing
+fresh retries can establish a new resistance state.
+
+The sustained resistance/power guard compares medians at each end of a 30 s
+window. It stops heating when indicated T falls at least 15 C while resistance
+falls, current rises at least 3 mA, power rises at least 20%, and the target
+does not fall. It operates above 20 mA and resets on invalid measurements. This
+is a diagnostic abort for inconsistent feedback, not a temperature estimator.
+
+## New diagnostics and calibration exports
+
+control_diagnostics.jsonl records raw/filtered T, first-candidate readings,
+paired-acquisition timestamps, meter ranges and range-change count, setpoint,
+requested/applied/accepted current, integral/P/prediction/feed-forward terms,
+output limiting and invalid-hold/abort status. Invalid numeric values are JSON
+null. Existing CSV, XLSX and HDF5 measurement columns remain compatible.
+
+Run metadata includes the full temperature program and SHA-256 hashes of the
+controller source files. New exports also include r_vs_t_source.csv and
+curve_metadata.json. Reloading r_vs_t.csv verifies both hashes and restores
+the unextended source curve, rather than treating extrapolation endpoints as
+measured calibration. Old exports lacking this sidecar cannot recover their
+original measured bounds automatically.
+
+Flat R(T) sections now use a deterministic midpoint temperature (except the
+source endpoint used to anchor extrapolation), expose their ambiguity intervals,
+and print the maximum ambiguity. This removes arbitrary duplicate selection;
+it does not make a flat calibration physically invertible.

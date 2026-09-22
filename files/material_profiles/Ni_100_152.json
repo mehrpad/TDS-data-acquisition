@@ -1,0 +1,189 @@
+{
+  "DMM_speed": 10,
+  "compliance_voltage": 30,
+  "controller_mode": "PI",
+  "current_feedforward_provenance": {
+    "bins": [
+      {
+        "mean_tracking_error_c": -2.727,
+        "samples": 30,
+        "target_bin_c": [
+          30.0,
+          40.0
+        ]
+      },
+      {
+        "mean_tracking_error_c": -3.222,
+        "samples": 30,
+        "target_bin_c": [
+          40.0,
+          50.0
+        ]
+      },
+      {
+        "mean_tracking_error_c": -3.79,
+        "samples": 30,
+        "target_bin_c": [
+          50.0,
+          60.0
+        ]
+      },
+      {
+        "mean_tracking_error_c": -3.988,
+        "samples": 30,
+        "target_bin_c": [
+          60.0,
+          70.0
+        ]
+      },
+      {
+        "mean_tracking_error_c": -3.691,
+        "samples": 30,
+        "target_bin_c": [
+          70.0,
+          80.0
+        ]
+      },
+      {
+        "mean_tracking_error_c": -3.736,
+        "samples": 30,
+        "target_bin_c": [
+          80.0,
+          90.0
+        ]
+      },
+      {
+        "mean_tracking_error_c": -3.486,
+        "samples": 29,
+        "target_bin_c": [
+          90.0,
+          100.0
+        ]
+      },
+      {
+        "mean_tracking_error_c": -2.476,
+        "samples": 30,
+        "target_bin_c": [
+          100.0,
+          110.0
+        ]
+      },
+      {
+        "mean_tracking_error_c": -2.487,
+        "samples": 22,
+        "target_bin_c": [
+          110.0,
+          120.0
+        ]
+      }
+    ],
+    "data_sha256": "6ed2ca5bc6e3cad7cdd65cfa4ecca21ec5bdbe92dacfcb59c97e02e6e4ddd2f7",
+    "derived_temperature_range_c": [
+      32.162,
+      111.111
+    ],
+    "kind": "provisional_ramp",
+    "limitations": "Ramp-derived bias only; not equilibrium calibration or validated tuning. Endpoints clamp. Recalibrate for the actual wire and mounting.",
+    "method": "RMS commanded current per target-temperature bin, paired with mean filtered measured T",
+    "ramp_rate_c_min": 10.0,
+    "run": "139_Ni100_uncharged_test_1",
+    "startup_anchor": "23 C / 10 mA is the recorded startup command, not a measured equilibrium point"
+  },
+  "current_feedforward_table": [
+    {
+      "current_a": 0.01,
+      "temperature_c": 23.0
+    },
+    {
+      "current_a": 0.035856,
+      "temperature_c": 32.162
+    },
+    {
+      "current_a": 0.040685,
+      "temperature_c": 41.719
+    },
+    {
+      "current_a": 0.046548,
+      "temperature_c": 51.198
+    },
+    {
+      "current_a": 0.048327,
+      "temperature_c": 61.049
+    },
+    {
+      "current_a": 0.05079,
+      "temperature_c": 71.393
+    },
+    {
+      "current_a": 0.054475,
+      "temperature_c": 81.394
+    },
+    {
+      "current_a": 0.056696,
+      "temperature_c": 91.525
+    },
+    {
+      "current_a": 0.059053,
+      "temperature_c": 102.414
+    },
+    {
+      "current_a": 0.062327,
+      "temperature_c": 111.111
+    }
+  ],
+  "current_settle_time_s": 0.5,
+  "curve_extrapolation_enabled": false,
+  "dmm_current_range_a": 0.02,
+  "dmm_range_discard_readings": 3,
+  "dmm_range_settle_time_s": 0.5,
+  "dmm_resistance_range_ohm": 200,
+  "dmm_staged_ranging_enabled": true,
+  "dmm_synchronized_reading": true,
+  "dmm_voltage_range_v": 2.0,
+  "experiment_frequency": 0.5,
+  "gain_schedule_filter_time_s": 10,
+  "invalid_measurement_policy": "hold",
+  "max_current": 0.1,
+  "max_current_step_down": 0.001,
+  "max_current_step_up": 0.001,
+  "max_power_w": 0.05,
+  "max_sample_voltage": 15,
+  "measurement_current_floor": 0.01,
+  "measurement_fail_limit": 10,
+  "measurement_filter_samples": 3,
+  "measurement_resistance_retry_enabled": true,
+  "measurement_retry_attempts": 3,
+  "measurement_retry_consensus_ohm": 0.015,
+  "measurement_retry_delay_s": 0.2,
+  "measurement_retry_temperature_consensus_c": 5.0,
+  "measurement_retry_temperature_jump_c": 8.0,
+  "measurement_temperature_jump_guard_enabled": false,
+  "min_current": 0.0,
+  "minimum_current_change": 0.001,
+  "pid_gain_schedule": [],
+  "pid_integral_current_limit_a": 1,
+  "pid_integral_time_s": 100.0,
+  "pid_kd": 0.0,
+  "pid_ki": 1e-05,
+  "pid_kp": 0.001,
+  "pid_tracking_time_s": 30.0,
+  "profile_name": "Ni_100_152",
+  "resistance_glitch_jump_ohm": 0.03,
+  "resistance_glitch_jump_ratio": 0.015,
+  "resistance_power_guard_drop_c": 15.0,
+  "resistance_power_guard_enabled": true,
+  "resistance_power_guard_min_current_a": 0.02,
+  "resistance_power_guard_power_ratio": 1.2,
+  "resistance_power_guard_window_s": 30.0,
+  "resistivity_heat_time_s": 4,
+  "resistivity_measure_time_s": 1,
+  "resistivity_mode": "V_OVER_I",
+  "resistivity_output_settle_s": 0.3,
+  "startup_current": 0.01,
+  "startup_settle_time_s": 2.0,
+  "t0_current_search_start": 0.01,
+  "temperature_prediction_time_s": 0.0,
+  "temperature_rate_window_s": 8.0,
+  "trial_max_temperature_c": 110.0,
+  "tuning_start_current": 0.01
+}

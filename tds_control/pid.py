@@ -111,7 +111,7 @@ class PIDController:
             self.integral = _clamp(self.integral + weight * difference, self.integral_limits)
         self.output = applied_output
 
-    def compute(self, current_temperature, dt=1.0, setpoint=None, bias=0.0, integrate=True):
+    def compute(self, current_temperature, dt=1.0, setpoint=None, bias=0.0, integrate=True, output_correction=0.0):
         """
         Compute the control output for the current measurement.
 
@@ -145,7 +145,12 @@ class PIDController:
             else:
                 derivative_term = raw_derivative
 
-        unclamped_output = bias + proportional + integral_term + derivative_term
+        # Prediction is an actuator correction, never a fictitious measurement.
+        # Include it in saturation and tracking, but integrate the actual error.
+        self.proportional_term = proportional
+        self.derivative_term = derivative_term
+        self.output_correction = output_correction
+        unclamped_output = bias + proportional + integral_term + derivative_term + output_correction
         output = _clamp(unclamped_output, self.output_limits)
 
         at_upper_limit = self.output_limits[1] is not None and output >= self.output_limits[1]
