@@ -1,5 +1,9 @@
 # Ni run 108 and NiCr run 109: September 23 update
 
+> Subsequent run-110 update: the user requested four times the electrical limits
+> quoted in this historical analysis. Current settings are Ni 1.24 A / 3.32 W
+> and NiCr 0.40 A / 1.00 W; Maximum Temperature remains 600 C.
+
 The actual folders identify 108 as Ni and 109 as NiCr. The metadata confirms
 the corresponding profile lineage. Original measurement files were not changed.
 

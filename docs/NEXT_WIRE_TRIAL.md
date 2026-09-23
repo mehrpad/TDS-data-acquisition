@@ -17,14 +17,16 @@ Existing network profiles are backed up before replacement.
 | Ti | 100 s | 100 s |
 | Current steps up/down | 1 mA | 1 mA |
 | Prediction | Off | Off |
-| Maximum current | 0.31 A | 0.100 A |
-| Maximum sample power | 0.83 W | 0.250 W |
+| Maximum current | 1.24 A | 0.40 A |
+| Maximum sample power | 3.32 W | 1.00 W |
 | Maximum Temperature (GUI cutoff) | 600 C | 600 C |
 | Trial target ceiling | 600 C | 600 C |
 
-Ni's current and power ceilings are the measured maxima from run 107, rounded upward
-to two decimal places as explicitly requested by the user. They are observed values, not verified wire ratings.
-NiCr's electrical limits are unchanged and may prevent reaching the target.
+After run 110 hit the NiCr current guard, the user explicitly requested four
+times the previous current and power ceilings for both profiles. The limits
+above implement that request; they are not experimentally validated wire ratings.
+The 95% measured-current increase guard remains active (Ni 1.178 A, NiCr 0.380 A).
+Higher ceilings do not correct calibration error or guarantee reaching the target.
 Both use 0.5 Hz control, 10 PLC integration and the existing measurement guards.
 
 Maximum Temperature is an independent software cutoff. A raw indicated

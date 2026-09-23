@@ -238,7 +238,7 @@ class ExportAndProfileTests(unittest.TestCase):
 class ExtendedTrialProfileTests(unittest.TestCase):
     def test_600_degree_program_and_placeholder_preserve_limits(self):
         root = Path(__file__).resolve().parents[1]
-        for name, power in (("Ni_100_152", .83), ("NiCr_100_163", .25)):
+        for name, power in (("Ni_100_152", 3.32), ("NiCr_100_163", 1.00)):
             profile = json.loads((root / "files/material_profiles" / (name + ".json")).read_text())
             config = ctl.build_control_config(profile)
             program = [dict(start_T=40, step_T=200, target_T=600,
@@ -252,7 +252,7 @@ class ExtendedTrialProfileTests(unittest.TestCase):
             self.assertEqual(table[-1]["temperature_c"], 600)
             self.assertGreaterEqual(table[-1]["current_a"], table[-2]["current_a"])
             self.assertLessEqual(ctl.current_feedforward_for_temperature(config, 600), profile["max_current"])
-            self.assertEqual(profile["max_current"], .31 if name == "Ni_100_152" else .1)
+            self.assertEqual(profile["max_current"], 1.24 if name == "Ni_100_152" else .40)
             self.assertEqual(profile["max_power_w"], power)
             if "unmeasured_extension" in profile["current_feedforward_provenance"]:
                 self.assertFalse(profile["current_feedforward_provenance"]["unmeasured_extension"]["measured"])

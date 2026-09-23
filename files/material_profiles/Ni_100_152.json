@@ -332,11 +332,16 @@
       598.32024
     ],
     "electrical_limits": {
-      "max_current_a": 0.31,
-      "max_power_w": 0.83,
+      "max_current_a": 1.24,
+      "max_power_w": 3.32,
       "measured_max_current_a": 0.305911385,
       "measured_max_power_w": 0.821924605868587,
-      "method": "Run 107 measured maxima rounded upward to two decimal places at the user request"
+      "method": "User explicitly requested four times the previous profile current and power limits after run 110 reached its current guard",
+      "multiplier": 4,
+      "previous_limits": {
+        "max_current_a": 0.31,
+        "max_power_w": 0.83
+      }
     },
     "kind": "provisional_ramp",
     "late_hold": {
@@ -529,10 +534,10 @@
   "experiment_frequency": 0.5,
   "gain_schedule_filter_time_s": 10,
   "invalid_measurement_policy": "hold",
-  "max_current": 0.31,
+  "max_current": 1.24,
   "max_current_step_down": 0.001,
   "max_current_step_up": 0.001,
-  "max_power_w": 0.83,
+  "max_power_w": 3.32,
   "max_sample_voltage": 15,
   "max_temperature_c": 600.0,
   "measurement_current_floor": 0.01,

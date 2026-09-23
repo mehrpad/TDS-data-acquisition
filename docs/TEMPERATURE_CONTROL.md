@@ -2,7 +2,8 @@
 
 > Latest table update: [Ni 108 and NiCr 109](WIRE_RUNS_108_109.md). Both current
 > tables now use the latest closed-loop ramps. The historical table descriptions
-> below are superseded; gains and electrical limits remain unchanged.
+> below are superseded. After run 110, the user requested four times the previous
+> current/power ceilings; see NEXT_WIRE_TRIAL.md for the current values. Gains are unchanged.
 
 
 Temperature mode commands absolute current:
@@ -137,8 +138,8 @@ equilibrium maps and not validated PI gains.
 | Current slew step per 2 s | 0.001 A | 0.001 A |
 | Prediction horizon | 0 s | 0 s |
 | Trial target ceiling | 600 C | 600 C |
-| Current ceiling | 0.31 A | 0.1 A |
-| Sample power cutoff | 0.83 W | 0.25 W |
+| Current ceiling | 1.24 A | 0.40 A |
+| Sample power cutoff | 3.32 W | 1.00 W |
 
 The reduced electrical limits bound this comparison; they are not wire ratings.
 Programs above the trial target ceiling or with ramp rates other than 10 C/min
