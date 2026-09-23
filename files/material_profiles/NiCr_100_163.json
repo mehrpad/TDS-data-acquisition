@@ -222,7 +222,14 @@
       499.67251
     ],
     "electrical_limits": {
-      "method": "Retained existing profile electrical limits"
+      "max_current_a": 0.4,
+      "max_power_w": 1.0,
+      "method": "User explicitly requested four times the previous profile current and power limits after run 110 reached its current guard",
+      "multiplier": 4,
+      "previous_limits": {
+        "max_current_a": 0.1,
+        "max_power_w": 0.25
+      }
     },
     "kind": "provisional_ramp",
     "late_hold": {
@@ -371,10 +378,10 @@
   "experiment_frequency": 0.5,
   "gain_schedule_filter_time_s": 10,
   "invalid_measurement_policy": "hold",
-  "max_current": 0.1,
+  "max_current": 0.4,
   "max_current_step_down": 0.001,
   "max_current_step_up": 0.001,
-  "max_power_w": 0.25,
+  "max_power_w": 1.0,
   "max_sample_voltage": 15,
   "max_temperature_c": 600.0,
   "measurement_current_floor": 0.01,
