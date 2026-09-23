@@ -5,90 +5,259 @@
   "current_feedforward_provenance": {
     "bins": [
       {
-        "mean_tracking_error_c": -2.955,
-        "samples": 60,
-        "target_bin_c": [
+        "mean_indicated_temperature_c": 71.926687,
+        "mean_tracking_error_c": 12.4606,
+        "rms_command_current_a": 0.01270741,
+        "samples": 69,
+        "temperature_bin_c": [
+          60.0,
+          80.0
+        ]
+      },
+      {
+        "mean_indicated_temperature_c": 90.263618,
+        "mean_tracking_error_c": 6.244229,
+        "rms_command_current_a": 0.015416026,
+        "samples": 78,
+        "temperature_bin_c": [
+          80.0,
+          100.0
+        ]
+      },
+      {
+        "mean_indicated_temperature_c": 107.788305,
+        "mean_tracking_error_c": -0.099285,
+        "rms_command_current_a": 0.019688248,
+        "samples": 59,
+        "temperature_bin_c": [
           100.0,
           120.0
         ]
       },
       {
-        "mean_tracking_error_c": -4.87,
-        "samples": 60,
-        "target_bin_c": [
+        "mean_indicated_temperature_c": 131.150515,
+        "mean_tracking_error_c": 4.497905,
+        "rms_command_current_a": 0.025637163,
+        "samples": 53,
+        "temperature_bin_c": [
           120.0,
           140.0
         ]
       },
       {
-        "mean_tracking_error_c": -6.013,
-        "samples": 60,
-        "target_bin_c": [
+        "mean_indicated_temperature_c": 150.708022,
+        "mean_tracking_error_c": 12.025355,
+        "rms_command_current_a": 0.029583068,
+        "samples": 19,
+        "temperature_bin_c": [
           140.0,
           160.0
         ]
       },
       {
-        "mean_tracking_error_c": -4.681,
-        "samples": 59,
-        "target_bin_c": [
+        "mean_indicated_temperature_c": 172.03882,
+        "mean_tracking_error_c": 21.594644,
+        "rms_command_current_a": 0.030884034,
+        "samples": 51,
+        "temperature_bin_c": [
           160.0,
           180.0
         ]
       },
       {
-        "mean_tracking_error_c": -4.581,
-        "samples": 60,
-        "target_bin_c": [
+        "mean_indicated_temperature_c": 189.421769,
+        "mean_tracking_error_c": 21.170948,
+        "rms_command_current_a": 0.032213121,
+        "samples": 54,
+        "temperature_bin_c": [
           180.0,
           200.0
         ]
       },
       {
-        "mean_tracking_error_c": -4.588,
-        "samples": 60,
-        "target_bin_c": [
+        "mean_indicated_temperature_c": 209.886896,
+        "mean_tracking_error_c": 22.499066,
+        "rms_command_current_a": 0.033958658,
+        "samples": 63,
+        "temperature_bin_c": [
           200.0,
           220.0
         ]
       },
       {
-        "mean_tracking_error_c": -3.573,
-        "samples": 60,
-        "target_bin_c": [
+        "mean_indicated_temperature_c": 231.089205,
+        "mean_tracking_error_c": 18.912092,
+        "rms_command_current_a": 0.036183601,
+        "samples": 83,
+        "temperature_bin_c": [
           220.0,
           240.0
         ]
       },
       {
-        "mean_tracking_error_c": -4.752,
-        "samples": 59,
-        "target_bin_c": [
+        "mean_indicated_temperature_c": 250.356478,
+        "mean_tracking_error_c": 15.126061,
+        "rms_command_current_a": 0.040040827,
+        "samples": 56,
+        "temperature_bin_c": [
           240.0,
           260.0
         ]
+      },
+      {
+        "mean_indicated_temperature_c": 272.622413,
+        "mean_tracking_error_c": 1.121179,
+        "rms_command_current_a": 0.042750292,
+        "samples": 160,
+        "temperature_bin_c": [
+          260.0,
+          280.0
+        ]
+      },
+      {
+        "mean_indicated_temperature_c": 288.107826,
+        "mean_tracking_error_c": -28.616745,
+        "rms_command_current_a": 0.049288483,
+        "samples": 110,
+        "temperature_bin_c": [
+          280.0,
+          300.0
+        ]
+      },
+      {
+        "mean_indicated_temperature_c": 309.504673,
+        "mean_tracking_error_c": -31.000874,
+        "rms_command_current_a": 0.054157467,
+        "samples": 32,
+        "temperature_bin_c": [
+          300.0,
+          320.0
+        ]
+      },
+      {
+        "mean_indicated_temperature_c": 330.521403,
+        "mean_tracking_error_c": -22.548821,
+        "rms_command_current_a": 0.055350889,
+        "samples": 43,
+        "temperature_bin_c": [
+          320.0,
+          340.0
+        ]
+      },
+      {
+        "mean_indicated_temperature_c": 349.80673,
+        "mean_tracking_error_c": -19.009339,
+        "rms_command_current_a": 0.05686551,
+        "samples": 51,
+        "temperature_bin_c": [
+          340.0,
+          360.0
+        ]
+      },
+      {
+        "mean_indicated_temperature_c": 370.599112,
+        "mean_tracking_error_c": -16.809882,
+        "rms_command_current_a": 0.058619252,
+        "samples": 60,
+        "temperature_bin_c": [
+          360.0,
+          380.0
+        ]
+      },
+      {
+        "mean_indicated_temperature_c": 391.123126,
+        "mean_tracking_error_c": -16.729452,
+        "rms_command_current_a": 0.060649176,
+        "samples": 62,
+        "temperature_bin_c": [
+          380.0,
+          400.0
+        ]
+      },
+      {
+        "mean_indicated_temperature_c": 410.64369,
+        "mean_tracking_error_c": -17.482206,
+        "rms_command_current_a": 0.062783189,
+        "samples": 59,
+        "temperature_bin_c": [
+          400.0,
+          420.0
+        ]
+      },
+      {
+        "mean_indicated_temperature_c": 429.394932,
+        "mean_tracking_error_c": -19.664783,
+        "rms_command_current_a": 0.065293858,
+        "samples": 66,
+        "temperature_bin_c": [
+          420.0,
+          440.0
+        ]
+      },
+      {
+        "mean_indicated_temperature_c": 449.394217,
+        "mean_tracking_error_c": -21.035733,
+        "rms_command_current_a": 0.067988847,
+        "samples": 60,
+        "temperature_bin_c": [
+          440.0,
+          460.0
+        ]
+      },
+      {
+        "mean_indicated_temperature_c": 468.63848,
+        "mean_tracking_error_c": -21.956162,
+        "rms_command_current_a": 0.070843263,
+        "samples": 56,
+        "temperature_bin_c": [
+          460.0,
+          480.0
+        ]
       }
     ],
-    "data_sha256": "f7afb92c97f3dc2a538ebdfbc35cade195aef9ee18e62987a96872e2426b150e",
+    "control_diagnostics_jsonl_sha256": "734b281dedd970fe4ee021275b6f015cb2b400a91fe9cc99f7dde68109551a96",
+    "data_csv_sha256": "c8af399d2d8cd2131e7a629c324adf49fb48db567e522eddad26422a4a70d1b0",
     "derived_temperature_range_c": [
-      106.935,
-      245.244
+      71.926687,
+      499.67251
     ],
+    "electrical_limits": {
+      "method": "Retained existing profile electrical limits"
+    },
     "kind": "provisional_ramp",
-    "limitations": "Ramp-derived bias only; not equilibrium calibration or validated tuning. Endpoints clamp. Recalibrate for the actual wire and mounting.",
-    "method": "RMS commanded current per target-temperature bin, paired with mean filtered measured T",
+    "late_hold": {
+      "mean_temperature_c": 499.67251,
+      "note": "Observed last-minute bias, not proven equilibrium",
+      "rms_current_a": 0.072,
+      "samples": 30,
+      "temperature_rate_c_min": 2.843143
+    },
+    "limitations": "Closed-loop ramp bias, not independently calibrated equilibrium current. Displayed T above source R(T) bounds is extrapolated. NiCr startup calibration scatter remains unresolved.",
+    "method": "RMS applied command per indicated-temperature bin in the accepted closed-loop ramp",
+    "monotonic_current_correction_a": 0.0,
+    "r_vs_t_source_csv_sha256": "76b1da2f4fee3129a33ecc46926a2c0a04223a999c3999e2d8767094fec9920d",
     "ramp_rate_c_min": 10.0,
-    "run": "136_NiCr_100_hydrogen_cur_3_10k_min",
-    "startup_anchor": "23 C / 10 mA is the recorded startup command, not a measured equilibrium point",
-    "temperature_estimation": "R(T) extrapolation enabled through 600 C; temperatures beyond the source curve are estimates requiring independent validation.",
+    "run": "109_NiCr_uncharged_test",
+    "run_metadata_json_sha256": "b793feb1edd73aa6f4be3d1c907b3db6f552835c88c9615f82f8f906fe466e70",
+    "selection": "Accepted finite positive samples; exclude first startup interval and range-change cycle plus next two cycles; ramp bins exclude final-target dwell",
+    "source_curve_temperature_bounds_c": [
+      23.0,
+      293.4011055
+    ],
+    "startup_anchor": "23 C / 10 mA retained as startup command, not a measured equilibrium point",
+    "startup_exclusion_s": 180,
     "unmeasured_extension": {
-      "limitations": "Placeholder bias, not calibrated heating current. Electrical limits may prevent reaching the target.",
+      "fit_range_c": [
+        410.64369,
+        468.63848
+      ],
       "measured": false,
-      "method": "Constant last data-derived current; PI supplies the remaining correction",
+      "method": "Linear I squared versus indicated T fitted to last four ramp bins, anchored at late-hold mean",
       "range_c": [
-        245.244,
+        499.67251,
         600.0
-      ]
+      ],
+      "slope_a2_per_c": 1.8510678673131935e-05
     }
   },
   "current_feedforward_table": [
@@ -97,39 +266,95 @@
       "temperature_c": 23.0
     },
     {
-      "current_a": 0.021533,
-      "temperature_c": 106.935
+      "current_a": 0.01270741,
+      "temperature_c": 71.926687
     },
     {
-      "current_a": 0.028254,
-      "temperature_c": 125.106
+      "current_a": 0.015416026,
+      "temperature_c": 90.263618
     },
     {
-      "current_a": 0.036428,
-      "temperature_c": 144.054
+      "current_a": 0.019688248,
+      "temperature_c": 107.788305
     },
     {
-      "current_a": 0.040613,
-      "temperature_c": 165.3
+      "current_a": 0.025637163,
+      "temperature_c": 131.150515
     },
     {
-      "current_a": 0.045419,
-      "temperature_c": 185.318
+      "current_a": 0.029583068,
+      "temperature_c": 150.708022
     },
     {
-      "current_a": 0.049468,
-      "temperature_c": 205.404
+      "current_a": 0.030884034,
+      "temperature_c": 172.03882
     },
     {
-      "current_a": 0.053662,
-      "temperature_c": 226.5
+      "current_a": 0.032213121,
+      "temperature_c": 189.421769
     },
     {
-      "current_a": 0.05981,
-      "temperature_c": 245.244
+      "current_a": 0.033958658,
+      "temperature_c": 209.886896
     },
     {
-      "current_a": 0.05981,
+      "current_a": 0.036183601,
+      "temperature_c": 231.089205
+    },
+    {
+      "current_a": 0.040040827,
+      "temperature_c": 250.356478
+    },
+    {
+      "current_a": 0.042750292,
+      "temperature_c": 272.622413
+    },
+    {
+      "current_a": 0.049288483,
+      "temperature_c": 288.107826
+    },
+    {
+      "current_a": 0.054157467,
+      "temperature_c": 309.504673
+    },
+    {
+      "current_a": 0.055350889,
+      "temperature_c": 330.521403
+    },
+    {
+      "current_a": 0.05686551,
+      "temperature_c": 349.80673
+    },
+    {
+      "current_a": 0.058619252,
+      "temperature_c": 370.599112
+    },
+    {
+      "current_a": 0.060649176,
+      "temperature_c": 391.123126
+    },
+    {
+      "current_a": 0.062783189,
+      "temperature_c": 410.64369
+    },
+    {
+      "current_a": 0.065293858,
+      "temperature_c": 429.394932
+    },
+    {
+      "current_a": 0.067988847,
+      "temperature_c": 449.394217
+    },
+    {
+      "current_a": 0.070843263,
+      "temperature_c": 468.63848
+    },
+    {
+      "current_a": 0.072,
+      "temperature_c": 499.67251
+    },
+    {
+      "current_a": 0.083911441,
       "temperature_c": 600.0
     }
   ],
