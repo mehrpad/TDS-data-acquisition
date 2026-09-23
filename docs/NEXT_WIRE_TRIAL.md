@@ -34,22 +34,19 @@ R(T) conversion and cannot guarantee absence of physical overshoot. If target
 and cutoff are both 600 C, any indicated overshoot stops the run, including a
 final hold. The field is locked during a run and saved with the material profile.
 
-## Table sources
+## Table sources (updated September 23)
 
-Ni retains the previous table/interpolation through 100 C. Above 100 C it uses
-19 reviewed finite readings from current ramp 107, excluding a spike and missing
-temperatures. The 100-150 C transition is blended. Gaps from about 136-415 C and
-484-575 C are interpolated. The 600 C point holds the last binned current.
+Ni now uses run 108; NiCr uses run 109. Both were 10 C/min temperature-controlled
+ramps. The tables exclude invalid readings and range-change transients and use
+RMS applied current paired with indicated temperature. PI gains remain unchanged.
+See [the latest findings and plot](WIRE_RUNS_108_109.md).
 
-The 0.1 A/min current sweep heated much faster than a 10 C/min temperature
-program. Its bias may overestimate the required current; it is provisional,
-not an equilibrium map. PI gains are unchanged because run 100 was stable
-before reaching its old current ceiling. See [analysis and plot](NI_RUNS_100_107.md).
-
-NiCr retains the earlier provisional run 136 table. Its 600 C endpoint holds
-its last data-derived current, 0.059810 A. Neither new run supplies NiCr data.
-R(T) extrapolation through 600 C remains enabled; temperatures beyond the
-source reference are estimates that need independent validation.
+Ni's observed table reaches about 598 C; its 600 C estimated bias is 0.202568 A.
+NiCr was tested only to 500 C; its 500-600 C extension is explicitly estimated,
+ending at 0.083911 A. Neither table guarantees smooth tracking on the next run.
+NiCr's T0 calibration warning (20.24 C-equivalent scatter) remains unresolved.
+R(T) extrapolation above the source reference remains enabled; high-temperature
+readings need independent validation.
 
 ## Example temperature program for either installed wire
 

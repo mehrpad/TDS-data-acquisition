@@ -250,13 +250,13 @@ class ExtendedTrialProfileTests(unittest.TestCase):
                 ctl._validate_trial_program([dict(program[0], target_T=601)], config)
             table = profile["current_feedforward_table"]
             self.assertEqual(table[-1]["temperature_c"], 600)
-            self.assertEqual(table[-1]["current_a"], table[-2]["current_a"])
+            self.assertGreaterEqual(table[-1]["current_a"], table[-2]["current_a"])
             self.assertLessEqual(ctl.current_feedforward_for_temperature(config, 600), profile["max_current"])
             self.assertEqual(profile["max_current"], .31 if name == "Ni_100_152" else .1)
             self.assertEqual(profile["max_power_w"], power)
             if "unmeasured_extension" in profile["current_feedforward_provenance"]:
                 self.assertFalse(profile["current_feedforward_provenance"]["unmeasured_extension"]["measured"])
-            self.assertLess(profile["current_feedforward_provenance"]["derived_temperature_range_c"][1], 300)
+            self.assertLess(profile["current_feedforward_provenance"]["derived_temperature_range_c"][1], 600)
 
 
 class CurrentRampUpdateTests(unittest.TestCase):

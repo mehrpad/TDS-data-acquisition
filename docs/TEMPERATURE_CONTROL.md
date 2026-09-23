@@ -1,9 +1,9 @@
 # Temperature control
 
-> Latest Ni update: see [runs 100 and 107](NI_RUNS_100_107.md). The Ni table above 100 C
-> now uses provisional current-ramp estimates. The older Ni table description below
-> is superseded. Ni current/power ceilings now use run 107 maxima rounded upward: 0.31 A /
-> 0.83 W. Both profiles have a 600 C software temperature cutoff.
+> Latest table update: [Ni 108 and NiCr 109](WIRE_RUNS_108_109.md). Both current
+> tables now use the latest closed-loop ramps. The historical table descriptions
+> below are superseded; gains and electrical limits remain unchanged.
+
 
 Temperature mode commands absolute current:
 
