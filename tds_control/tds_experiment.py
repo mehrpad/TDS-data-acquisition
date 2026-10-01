@@ -101,6 +101,7 @@ CONTROL_DEFAULTS = {
     "measurement_retry_attempts": 2,
     "measurement_retry_delay_s": 0.15,
     "measurement_retry_consensus_ohm": 0.015,
+    "measurement_retry_consensus_ratio": 0.005,
     "stable_current_invalid_advance_count": 5,
     # Optional legacy dynamic jump/probe policy. Acquisition retries are independent.
     "measurement_temperature_jump_guard_enabled": False,
@@ -559,13 +560,16 @@ def build_control_config(config):
     merged = migrate_legacy_config(config)
     for key, value in CONTROL_DEFAULTS.items():
         merged.setdefault(key, value)
-    if merged.get("invalid_measurement_policy") not in ("hold", "legacy"):
-        raise ValueError("invalid_measurement_policy must be hold or legacy.")
+    if merged.get("invalid_measurement_policy") not in ("hold", "backoff", "legacy"):
+        raise ValueError("invalid_measurement_policy must be hold, backoff or legacy.")
     for name in ("current_settle_time_s", "measurement_retry_temperature_jump_c",
                  "measurement_retry_temperature_consensus_c"):
         if not np.isfinite(float(merged[name])) or float(merged[name]) < 0:
             raise ValueError(f"{name} must be finite and nonnegative.")
     _maximum_temperature(merged)
+    ratio = float(merged["measurement_retry_consensus_ratio"])
+    if not np.isfinite(ratio) or not 0 <= ratio <= 0.05:
+        raise ValueError("measurement_retry_consensus_ratio must be finite and between 0 and 0.05.")
     merged["controller_mode"] = get_controller_mode(merged)
     merged["experiment_mode"] = get_experiment_mode(merged)
     merged["resistivity_mode"] = get_resistivity_mode(merged)
@@ -1174,6 +1178,7 @@ def _record_control_diagnostics(saver, config, controller, raw_temperature, filt
         "range_change_count": config.get("_range_change_count", 0),
         "acquisition": config.get("_last_acquisition", {}),
         "first_candidate": config.get("_first_candidate", {}),
+        "measurement_retry": config.get("_measurement_retry", {}),
     })
 
 
@@ -1429,11 +1434,14 @@ def _measure_with_retry(
     config["_first_candidate"] = {"temperature_c": temperature, "resistance_ohm": resistance,
                                   "voltage": measured_voltage, "current": measured_current,
                                   "acquisition": dict(config.get("_last_acquisition", {}))}
+    retry_info = {"decision": "not_needed", "candidates": []}
+    config["_measurement_retry"] = retry_info
     if not bool(config.get("measurement_resistance_retry_enabled", True)):
         return measured_voltage, measured_current, temperature, resistance, np.isfinite(resistance)
 
     jump_limit = _resistance_jump_limit(previous_resistance, config)
     consensus_limit = float(config.get("measurement_retry_consensus_ohm", 0.015))
+    consensus_ratio = float(config.get("measurement_retry_consensus_ratio", 0.005))
     temperature_jump = float(config.get("measurement_retry_temperature_jump_c", 8.0))
     temperature_consensus = float(config.get("measurement_retry_temperature_consensus_c", 5.0))
 
@@ -1460,6 +1468,8 @@ def _measure_with_retry(
     best = (measured_voltage, measured_current, temperature, resistance)
     best_distance = abs(resistance - previous_resistance)
     candidates = [best]
+    retry_info["decision"] = "retrying"
+    retry_info["jump_limit_ohm"] = jump_limit
 
     for _ in range(int(config.get("measurement_retry_attempts", 2))):
         time.sleep(float(config.get("measurement_retry_delay_s", 0.15)))
@@ -1472,12 +1482,15 @@ def _measure_with_retry(
             power_supply=power_supply,
         )
         candidates.append((retry_voltage, retry_current, retry_temperature, retry_resistance))
+        retry_info["candidates"].append({"temperature_c": retry_temperature,
+                                         "resistance_ohm": retry_resistance})
         if np.isfinite(retry_resistance):
             retry_distance = abs(retry_resistance - previous_resistance)
             if retry_distance < best_distance:
                 best = (retry_voltage, retry_current, retry_temperature, retry_resistance)
                 best_distance = retry_distance
             if near_previous(retry_resistance):
+                retry_info["decision"] = "near_previous"
                 return retry_voltage, retry_current, retry_temperature, retry_resistance, True
 
     if np.isfinite(best[3]) and near_previous(best[3]):
@@ -1489,13 +1502,20 @@ def _measure_with_retry(
         valid_candidates = []
     if len(valid_candidates) >= 2:
         resistances = np.array([candidate[3] for candidate in valid_candidates], dtype=float)
-        if (float(np.ptp(resistances)) <= consensus_limit
+        # A fixed 15 mOhm allowance falsely rejects a warming higher-resistance
+        # wire. Require two fresh pairs to agree both relatively and in degrees;
+        # the temperature bound still protects low-TCR wires such as NiCr.
+        effective_consensus = max(consensus_limit, float(np.median(np.abs(resistances))) * consensus_ratio)
+        retry_info["consensus_limit_ohm"] = effective_consensus
+        if (float(np.ptp(resistances)) <= effective_consensus
                 and temperatures_agree(float(resistances.min()), float(resistances.max()), temperature_consensus)):
             # Return one coherent V/I/T/R tuple, not medians from different pairs.
             accepted = valid_candidates[-1]
+            retry_info["decision"] = "fresh_consensus"
             print(f"Accepting fresh retry consensus at {accepted[3]:.6f} Ohm.")
             return *accepted, True
 
+    retry_info["decision"] = "rejected"
     print(
         f"Rejecting measurement after retries; best resistance {best[3]:.4f} Ohm "
         f"is still too far from previous {previous_resistance:.4f} Ohm."
@@ -1515,9 +1535,10 @@ def _quantized_current(current, lower, upper):
     return min(max(tick, lower_tick), upper_tick) / 1000.0
 
 
-def _set_current_if_needed(power_supply, current, previous_current, config):
+def _set_current_if_needed(power_supply, current, previous_current, config, *, force=False):
+    """Transmit a grid-aligned command; force bypasses only the user deadband."""
     current = _quantized_current(current, float(config["min_current"]), float(config["max_current"]))
-    threshold = max(float(config["minimum_current_change"]), 0.001)
+    threshold = 0.001 if force else max(float(config["minimum_current_change"]), 0.001)
     if previous_current is None or abs(current - previous_current) >= threshold - 1e-12:
         siglent.set_current(power_supply, current=current)
         config["_current_command_time"] = time.monotonic()
@@ -1530,6 +1551,14 @@ def _apply_control_current(power_supply, current, previous_current, config, cont
     accepted = _set_current_if_needed(power_supply, current, previous_current, config)
     controller.track_output(accepted, dt, config.get("pid_tracking_time_s", 30.0), deadband=0.0005)
     return accepted
+
+
+def _invalid_feedback_current(applied_current, config, dt):
+    """Back off on missing feedback without ever raising the existing command."""
+    floor = min(_measurement_current_floor(config), applied_current)
+    requested = _limit_current_slew(floor, applied_current, floor,
+                                   float(config["max_current"]), config, dt=dt)
+    return min(applied_current, _quantized_current(requested, floor, float(config["max_current"])))
 
 
 def _curve_ordered_temperature_profile(r_vs_t):
@@ -2743,15 +2772,25 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                     pending_cooldown_jump_count = 0
                     pending_heatup_jump_count = 0
                 if (not _is_valid_measurement(measured_voltage, measured_current, temperature, config)
-                        and config.get("invalid_measurement_policy", "hold") == "hold"):
+                        and config.get("invalid_measurement_policy", "hold") in ("hold", "backoff")):
                     invalid_measurements += 1
                     rate_estimator.samples.clear()
                     resistance_power_guard.reset()
                     # Freeze integral and program progression; never probe upward without feedback.
                     setpoint = float(program.scheduled_target)
+                    status = "invalid_hold"
+                    if config["invalid_measurement_policy"] == "backoff":
+                        next_current = _invalid_feedback_current(applied_current, config, control_dt)
+                        # Keep the integral frozen: normal actuator tracking would
+                        # otherwise change it using the last valid request.
+                        previous_current = _set_current_if_needed(power_supply, next_current, previous_current, config, force=True)
+                        pid_current = previous_current
+                        pid_controller.output = pid_current
+                        status = "invalid_backoff"
+                        print(f"Invalid temperature feedback: reducing current {applied_current:.4f} -> {pid_current:.4f} A; target paused.")
                     _record_control_diagnostics(data_saver, config, pid_controller,
-                        raw_temperature, np.nan, setpoint, applied_current, applied_current,
-                        control_dt, "invalid_hold")
+                        raw_temperature, np.nan, setpoint, applied_current, pid_current,
+                        control_dt, status)
                     _persist_measurement(data_saver, setpoint, np.nan, measured_voltage,
                         measured_current, applied_current, measured_resistance)
                     _emit_measurement(emitter, setpoint, np.nan, measured_voltage,

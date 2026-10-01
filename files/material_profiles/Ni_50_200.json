@@ -1,0 +1,331 @@
+{
+  "DMM_speed": 10,
+  "compliance_voltage": 30.0,
+  "controller_mode": "PI",
+  "current_feedforward_provenance": {
+    "bins": [
+      {
+        "mean_tracking_error_c": 8.521,
+        "samples": 25,
+        "target_bin_c": [
+          40.0,
+          50.0
+        ]
+      },
+      {
+        "mean_tracking_error_c": 6.283,
+        "samples": 30,
+        "target_bin_c": [
+          50.0,
+          60.0
+        ]
+      },
+      {
+        "mean_tracking_error_c": 4.752,
+        "samples": 30,
+        "target_bin_c": [
+          60.0,
+          70.0
+        ]
+      },
+      {
+        "mean_tracking_error_c": 4.426,
+        "samples": 30,
+        "target_bin_c": [
+          70.0,
+          80.0
+        ]
+      },
+      {
+        "mean_tracking_error_c": 3.974,
+        "samples": 30,
+        "target_bin_c": [
+          80.0,
+          90.0
+        ]
+      },
+      {
+        "mean_tracking_error_c": 3.648,
+        "samples": 29,
+        "target_bin_c": [
+          90.0,
+          100.0
+        ]
+      },
+      {
+        "mean_tracking_error_c": 3.818,
+        "samples": 30,
+        "target_bin_c": [
+          100.0,
+          110.0
+        ]
+      },
+      {
+        "mean_tracking_error_c": 3.611,
+        "samples": 30,
+        "target_bin_c": [
+          110.0,
+          120.0
+        ]
+      },
+      {
+        "mean_tracking_error_c": 3.363,
+        "samples": 30,
+        "target_bin_c": [
+          120.0,
+          130.0
+        ]
+      },
+      {
+        "mean_tracking_error_c": 2.941,
+        "samples": 30,
+        "target_bin_c": [
+          130.0,
+          140.0
+        ]
+      },
+      {
+        "mean_tracking_error_c": 2.45,
+        "samples": 30,
+        "target_bin_c": [
+          140.0,
+          150.0
+        ]
+      },
+      {
+        "mean_tracking_error_c": 2.754,
+        "samples": 30,
+        "target_bin_c": [
+          150.0,
+          160.0
+        ]
+      },
+      {
+        "mean_tracking_error_c": 1.59,
+        "samples": 29,
+        "target_bin_c": [
+          160.0,
+          170.0
+        ]
+      },
+      {
+        "mean_tracking_error_c": 1.655,
+        "samples": 30,
+        "target_bin_c": [
+          170.0,
+          180.0
+        ]
+      },
+      {
+        "mean_tracking_error_c": -0.493,
+        "samples": 30,
+        "target_bin_c": [
+          180.0,
+          190.0
+        ]
+      }
+    ],
+    "control_diagnostics_jsonl_sha256": "ba2ada5e6cb242037462b127cc5ecad475549daba5c1ede1a9d6531af479801c",
+    "data_csv_sha256": "a05ee3cacdffeccd9bdb2f0b6751637c291c5361776303e915cc73001f456260",
+    "derived_temperature_range_c": [
+      54.297,
+      184.434
+    ],
+    "electrical_limits": {
+      "compliance_voltage_v": 30.0,
+      "max_current_a": 5.0,
+      "max_power_w": 20.0,
+      "max_sample_voltage_v": 20.0,
+      "method": "Retain run 117 current/power ceilings and add sample voltage headroom at user request; not validated wire ratings"
+    },
+    "kind": "provisional_ramp",
+    "limitations": "Ramp-derived bias, not equilibrium calibration. Run stopped around 190 C; higher current biases are estimates. Source R(T) ends at 283.66 C; higher indicated temperatures are extrapolated. Lower PI gains are initial trial settings, not validated tuning. No guarantee of smooth tracking or reaching 600 C.",
+    "method": "RMS applied command per complete target bin, paired with mean accepted indicated T",
+    "monotonic_current_correction_a": 0.0,
+    "r_vs_t_source_csv_sha256": "9a670a58923637d66f877ee4b0d1a0c32e2f271e4959f7b6443e97c2924a945e",
+    "ramp_rate_c_min": 10.0,
+    "reference_curve_file": "Ni_50_200_R_vs_T.csv",
+    "run": "117_Ni200_50_uncharged_cur_1",
+    "run_metadata_json_sha256": "dfc161e492810cb7fda1e4c80bf937de22fcf4071cf821588c03cf4d47d70802",
+    "selection": "Accepted finite positive samples; exclude first 120 s, invalid feedback and range-change cycle plus next two cycles",
+    "source_curve_temperature_bounds_c": [
+      23.0,
+      283.6599112
+    ],
+    "startup_anchor": "23 C / 5 mA chosen as a reduced startup command; not measured equilibrium. Interpolation below first derived bin is provisional.",
+    "unmeasured_extension": {
+      "fit_range_c": [
+        118.546,
+        184.434
+      ],
+      "measured": false,
+      "method": "Linear I squared versus indicated T over last eight ramp bins, anchored at last derived point",
+      "range_c": [
+        184.434,
+        600.0
+      ],
+      "slope_a2_per_c": 3.168381189317869e-06
+    },
+    "wire_diameter_um": 50.0
+  },
+  "current_feedforward_table": [
+    {
+      "current_a": 0.005,
+      "temperature_c": 23.0
+    },
+    {
+      "current_a": 0.014009,
+      "temperature_c": 54.297
+    },
+    {
+      "current_a": 0.014674,
+      "temperature_c": 61.269
+    },
+    {
+      "current_a": 0.015343,
+      "temperature_c": 69.785
+    },
+    {
+      "current_a": 0.01634,
+      "temperature_c": 79.506
+    },
+    {
+      "current_a": 0.017072,
+      "temperature_c": 89.101
+    },
+    {
+      "current_a": 0.017907,
+      "temperature_c": 98.656
+    },
+    {
+      "current_a": 0.018573,
+      "temperature_c": 108.704
+    },
+    {
+      "current_a": 0.019011,
+      "temperature_c": 118.546
+    },
+    {
+      "current_a": 0.020016,
+      "temperature_c": 128.347
+    },
+    {
+      "current_a": 0.020616,
+      "temperature_c": 137.969
+    },
+    {
+      "current_a": 0.021368,
+      "temperature_c": 147.526
+    },
+    {
+      "current_a": 0.022002,
+      "temperature_c": 157.876
+    },
+    {
+      "current_a": 0.022879,
+      "temperature_c": 166.591
+    },
+    {
+      "current_a": 0.023053,
+      "temperature_c": 176.534
+    },
+    {
+      "current_a": 0.024165,
+      "temperature_c": 184.434
+    },
+    {
+      "current_a": 0.025165,
+      "temperature_c": 200.0
+    },
+    {
+      "current_a": 0.028137,
+      "temperature_c": 250.0
+    },
+    {
+      "current_a": 0.030824,
+      "temperature_c": 300.0
+    },
+    {
+      "current_a": 0.033294,
+      "temperature_c": 350.0
+    },
+    {
+      "current_a": 0.035594,
+      "temperature_c": 400.0
+    },
+    {
+      "current_a": 0.037754,
+      "temperature_c": 450.0
+    },
+    {
+      "current_a": 0.039797,
+      "temperature_c": 500.0
+    },
+    {
+      "current_a": 0.04174,
+      "temperature_c": 550.0
+    },
+    {
+      "current_a": 0.043596,
+      "temperature_c": 600.0
+    }
+  ],
+  "current_settle_time_s": 0.5,
+  "curve_extrapolation_enabled": true,
+  "curve_extrapolation_max_temperature_c": 600.0,
+  "dmm_current_range_a": 0.02,
+  "dmm_range_discard_readings": 3,
+  "dmm_range_settle_time_s": 0.5,
+  "dmm_resistance_range_ohm": 200,
+  "dmm_staged_ranging_enabled": true,
+  "dmm_synchronized_reading": true,
+  "dmm_voltage_range_v": 2.0,
+  "experiment_frequency": 0.5,
+  "gain_schedule_filter_time_s": 10,
+  "invalid_measurement_policy": "backoff",
+  "max_current": 5.0,
+  "max_current_step_down": 0.001,
+  "max_current_step_up": 0.001,
+  "max_power_w": 20.0,
+  "max_sample_voltage": 20.0,
+  "max_temperature_c": 600.0,
+  "measurement_current_floor": 0.005,
+  "measurement_fail_limit": 10,
+  "measurement_filter_samples": 1,
+  "measurement_resistance_retry_enabled": true,
+  "measurement_retry_attempts": 3,
+  "measurement_retry_consensus_ohm": 0.015,
+  "measurement_retry_consensus_ratio": 0.005,
+  "measurement_retry_delay_s": 0.2,
+  "measurement_retry_temperature_consensus_c": 5.0,
+  "measurement_retry_temperature_jump_c": 8.0,
+  "measurement_temperature_jump_guard_enabled": false,
+  "min_current": 0.0,
+  "minimum_current_change": 0.001,
+  "pid_gain_schedule": [],
+  "pid_integral_current_limit_a": 0.02,
+  "pid_integral_time_s": 100.0,
+  "pid_kd": 0.0,
+  "pid_ki": 2e-06,
+  "pid_kp": 0.0002,
+  "pid_tracking_time_s": 30.0,
+  "profile_name": "Ni_50_200",
+  "resistance_glitch_jump_ohm": 0.03,
+  "resistance_glitch_jump_ratio": 0.015,
+  "resistance_power_guard_drop_c": 15.0,
+  "resistance_power_guard_enabled": true,
+  "resistance_power_guard_min_current_a": 0.02,
+  "resistance_power_guard_power_ratio": 1.2,
+  "resistance_power_guard_window_s": 30.0,
+  "resistivity_heat_time_s": 4,
+  "resistivity_measure_time_s": 1,
+  "resistivity_mode": "V_OVER_I",
+  "resistivity_output_settle_s": 0.3,
+  "startup_current": 0.005,
+  "startup_settle_time_s": 2.0,
+  "t0_current_search_start": 0.005,
+  "temperature_prediction_time_s": 2.0,
+  "temperature_rate_window_s": 8.0,
+  "trial_max_temperature_c": 600.0,
+  "tuning_start_current": 0.005
+}

@@ -37,6 +37,7 @@ PROFILE_FIELDS = (
     "measurement_retry_attempts",
     "measurement_retry_delay_s",
     "measurement_retry_consensus_ohm",
+    "measurement_retry_consensus_ratio",
     "resistance_glitch_jump_ohm",
     "resistance_glitch_jump_ratio",
     "invalid_measurement_policy",

@@ -312,6 +312,11 @@ Saved files:
 
 Saved per-material tuning results (gain schedule, step limits, and related settings) live separately under `files/material_profiles/<name>.json`, loadable from the GUI's Material Profile field - see `docs/MEASUREMENT_SETUP.md`.
 
+For the 50 um Ni wire from run 117, load `Ni_50_200` and its companion
+`Ni_50_200_R_vs_T.csv`, then recalibrate T. Zero. This profile supplies a separate
+current table, smaller PI gains and current backoff on invalid feedback. Its
+extension to 600 C is provisional; see [settings and next-run instructions](docs/NI50_RUN_117.md).
+
 Autosave runs in a background thread so disk writing does not block experiment control.
 The `P` / `sample_power` column records `|Vsample x I|` in watts.
 The `R_ohm` / `calculated_resistance` value records the corrected Kelvin resistance
