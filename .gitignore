@@ -27,3 +27,10 @@ build/
 files/__pycache__/
 tds_control/__pycache__/
 data/_autosave_test/
+
+# Local vendor downloads and obsolete support files
+/files/manuals/
+/files/*.zip
+/files/*.exe
+/files/diagram.png
+/files/hdf5_to_pandas.py
