@@ -317,6 +317,10 @@ For the 50 um Ni wire from run 117, load `Ni_50_200` and its companion
 current table, smaller PI gains and current backoff on invalid feedback. Its
 extension to 600 C is provisional; see [settings and next-run instructions](docs/NI50_RUN_117.md).
 
+For an unmeasured 50 um NiCr wire, `NiCr_50_provisional` provides an explicitly
+estimated table through 600 C and a matching estimated R(T) reference, based on
+diameter scaling of the existing NiCr profile. See [first measurement instructions](docs/NICR50_FIRST_TRIAL.md).
+
 Autosave runs in a background thread so disk writing does not block experiment control.
 The `P` / `sample_power` column records `|Vsample x I|` in watts.
 The `R_ohm` / `calculated_resistance` value records the corrected Kelvin resistance

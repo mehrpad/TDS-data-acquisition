@@ -1,0 +1,208 @@
+{
+  "DMM_speed": 10,
+  "compliance_voltage": 30.0,
+  "controller_mode": "PI",
+  "current_feedforward_provenance": {
+    "assumptions": "Same NiCr alloy, similar surroundings and mounting. Exact active length is unknown. The R(T) scale initially assumes the same 163 mm length; T0 calibration must rescale to the actual cold resistance.",
+    "current_scale_factor": 0.3,
+    "design_reference": "https://prodshop.kanthal.com/en/knowledge-hub/heating-material-knowledge/design-calculations-and-standard-tolerances/design-calculations/",
+    "electrical_limits": {
+      "compliance_voltage_v": 30.0,
+      "max_current_a": 0.1,
+      "max_power_w": 0.5,
+      "max_sample_voltage_v": 20.0,
+      "method": "Initial trial headroom above the estimated 25 mA bias; software limits, not verified wire ratings"
+    },
+    "estimate_type": "diameter_scaling",
+    "estimated_temperature_range_c": [
+      23.0,
+      600.0
+    ],
+    "kind": "provisional_ramp",
+    "limitations": "No 50 um NiCr heating measurements or validated PI tuning. Assumed matching alloy is essential; cold-resistance calibration cannot fix a different TCR. The donor R(T) ends at 293.4 C; higher indicated temperatures are extrapolated. Earlier NiCr calibration scatter and resistance drift remain unresolved. No guarantee of physical temperature accuracy or smooth tracking to 600 C. Replace these estimates after measurement.",
+    "measured_on_this_wire": false,
+    "measured_temperature_range_c": [],
+    "method": "0.30 times the 100 um NiCr ramp bias at each temperature, with a lower 2 mA startup anchor",
+    "ramp_rate_c_min": 10.0,
+    "reference_curve_file": "NiCr_50_provisional_R_vs_T_estimated.csv",
+    "reference_wire_diameter_um": 100.0,
+    "reference_wire_length_mm": 163.0,
+    "resistance_scale_factor": 4.0,
+    "scaling_rationale": "For a halved diameter, R scales by 4 at fixed length. Surface-loss-dominated heating gives I proportional to d^1.5 (factor 0.354); end-conduction or ramp thermal mass can give factor 0.25. Factor 0.30 is an engineering starting choice within these simplified estimates, not a measured scaling law for this apparatus.",
+    "source_curve_temperature_bounds_c": [
+      23.0,
+      293.4011055
+    ],
+    "source_profile": "NiCr_100_163",
+    "source_profile_sha256": "3aee3d0643376092bec4844a593055b423018160dee4692f2005fc3789ed7f6c",
+    "source_reference_curve_sha256": "76b1da2f4fee3129a33ecc46926a2c0a04223a999c3999e2d8767094fec9920d",
+    "source_run": "109_NiCr_uncharged_test",
+    "startup_anchor": "23 C / 2 mA chosen for startup and measurement; not measured equilibrium",
+    "unmeasured_extension": {
+      "measured": false,
+      "method": "All points estimated by diameter scaling; donor itself extrapolates above about 500 C",
+      "range_c": [
+        23.0,
+        600.0
+      ]
+    },
+    "wire_diameter_um": 50.0,
+    "wire_length_known": false
+  },
+  "current_feedforward_table": [
+    {
+      "current_a": 0.002,
+      "temperature_c": 23.0
+    },
+    {
+      "current_a": 0.003812223,
+      "temperature_c": 71.926687
+    },
+    {
+      "current_a": 0.004624808,
+      "temperature_c": 90.263618
+    },
+    {
+      "current_a": 0.005906474,
+      "temperature_c": 107.788305
+    },
+    {
+      "current_a": 0.007691149,
+      "temperature_c": 131.150515
+    },
+    {
+      "current_a": 0.00887492,
+      "temperature_c": 150.708022
+    },
+    {
+      "current_a": 0.00926521,
+      "temperature_c": 172.03882
+    },
+    {
+      "current_a": 0.009663936,
+      "temperature_c": 189.421769
+    },
+    {
+      "current_a": 0.010187597,
+      "temperature_c": 209.886896
+    },
+    {
+      "current_a": 0.01085508,
+      "temperature_c": 231.089205
+    },
+    {
+      "current_a": 0.012012248,
+      "temperature_c": 250.356478
+    },
+    {
+      "current_a": 0.012825088,
+      "temperature_c": 272.622413
+    },
+    {
+      "current_a": 0.014786545,
+      "temperature_c": 288.107826
+    },
+    {
+      "current_a": 0.01624724,
+      "temperature_c": 309.504673
+    },
+    {
+      "current_a": 0.016605267,
+      "temperature_c": 330.521403
+    },
+    {
+      "current_a": 0.017059653,
+      "temperature_c": 349.80673
+    },
+    {
+      "current_a": 0.017585776,
+      "temperature_c": 370.599112
+    },
+    {
+      "current_a": 0.018194753,
+      "temperature_c": 391.123126
+    },
+    {
+      "current_a": 0.018834957,
+      "temperature_c": 410.64369
+    },
+    {
+      "current_a": 0.019588157,
+      "temperature_c": 429.394932
+    },
+    {
+      "current_a": 0.020396654,
+      "temperature_c": 449.394217
+    },
+    {
+      "current_a": 0.021252979,
+      "temperature_c": 468.63848
+    },
+    {
+      "current_a": 0.0216,
+      "temperature_c": 499.67251
+    },
+    {
+      "current_a": 0.025173432,
+      "temperature_c": 600.0
+    }
+  ],
+  "current_settle_time_s": 0.5,
+  "curve_extrapolation_enabled": true,
+  "curve_extrapolation_max_temperature_c": 600.0,
+  "dmm_current_range_a": 0.02,
+  "dmm_range_discard_readings": 3,
+  "dmm_range_settle_time_s": 0.5,
+  "dmm_resistance_range_ohm": 200,
+  "dmm_staged_ranging_enabled": true,
+  "dmm_synchronized_reading": true,
+  "dmm_voltage_range_v": 2.0,
+  "experiment_frequency": 0.5,
+  "gain_schedule_filter_time_s": 10,
+  "invalid_measurement_policy": "backoff",
+  "max_current": 0.1,
+  "max_current_step_down": 0.001,
+  "max_current_step_up": 0.001,
+  "max_power_w": 0.5,
+  "max_sample_voltage": 20.0,
+  "max_temperature_c": 600.0,
+  "measurement_current_floor": 0.002,
+  "measurement_fail_limit": 10,
+  "measurement_filter_samples": 3,
+  "measurement_resistance_retry_enabled": true,
+  "measurement_retry_attempts": 3,
+  "measurement_retry_consensus_ohm": 0.015,
+  "measurement_retry_consensus_ratio": 0.005,
+  "measurement_retry_delay_s": 0.2,
+  "measurement_retry_temperature_consensus_c": 5.0,
+  "measurement_retry_temperature_jump_c": 8.0,
+  "measurement_temperature_jump_guard_enabled": false,
+  "min_current": 0.0,
+  "minimum_current_change": 0.001,
+  "pid_gain_schedule": [],
+  "pid_integral_current_limit_a": 0.01,
+  "pid_integral_time_s": 100.0,
+  "pid_kd": 0.0,
+  "pid_ki": 3e-07,
+  "pid_kp": 3e-05,
+  "pid_tracking_time_s": 30.0,
+  "profile_name": "NiCr_50_provisional",
+  "resistance_glitch_jump_ohm": 0.03,
+  "resistance_glitch_jump_ratio": 0.015,
+  "resistance_power_guard_drop_c": 15.0,
+  "resistance_power_guard_enabled": true,
+  "resistance_power_guard_min_current_a": 0.005,
+  "resistance_power_guard_power_ratio": 1.2,
+  "resistance_power_guard_window_s": 30.0,
+  "resistivity_heat_time_s": 4,
+  "resistivity_measure_time_s": 1,
+  "resistivity_mode": "V_OVER_I",
+  "resistivity_output_settle_s": 0.3,
+  "startup_current": 0.002,
+  "startup_settle_time_s": 2.0,
+  "t0_current_search_start": 0.002,
+  "temperature_prediction_time_s": 2.0,
+  "temperature_rate_window_s": 8.0,
+  "trial_max_temperature_c": 600.0,
+  "tuning_start_current": 0.002
+}
