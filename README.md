@@ -320,6 +320,8 @@ extension to 600 C is provisional; see [settings and next-run instructions](docs
 For an unmeasured 50 um NiCr wire, `NiCr_50_provisional` provides an explicitly
 estimated table through 600 C and a matching estimated R(T) reference, based on
 diameter scaling of the existing NiCr profile. See [first measurement instructions](docs/NICR50_FIRST_TRIAL.md).
+After run 121, this profile uses paired-reading averaging and lower gains to
+reduce low-TCR measurement noise; see [the findings and follow-up](docs/NICR50_RUN_121.md).
 
 All four wire profiles have independent T0 calibration settings: a 5 mA ceiling
 for 100 um wires and a 1 mA ceiling for 50 um wires. Initial Current controls

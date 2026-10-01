@@ -63,6 +63,8 @@ class NiCr50ProfileTests(unittest.TestCase):
             loaded = config_io.load_config()
         self.assertAlmostEqual(loaded["pid_integral_time_s"], original["pid_integral_time_s"])
         original["pid_integral_time_s"] = loaded["pid_integral_time_s"]
+        self.assertAlmostEqual(loaded["pid_ki"], original["pid_ki"], places=15)
+        original["pid_ki"] = loaded["pid_ki"]
         self.assertEqual(loaded, original)
 
     def test_builder_rejects_wrong_material_and_unmatched_reference(self):

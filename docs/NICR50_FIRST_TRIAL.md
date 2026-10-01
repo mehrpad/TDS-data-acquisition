@@ -1,7 +1,8 @@
 # Provisional 50 um NiCr profile
 
-There are no heating measurements for this wire. Every point in the new
-`NiCr_50_provisional` current table and reference curve is an **estimate**.
+Run 121 provided heating measurements, but excessive measurement scatter and
+limited temperature coverage prevent a reliable table update. Every point in
+the `NiCr_50_provisional` current table and reference curve remains an **estimate**.
 The profile permits targets through 600 C at 10 C/min so a comparison run can
 replace the estimates. It does not establish accurate physical temperature or
 stable control over that range.
@@ -45,10 +46,13 @@ not resolve those thermometry concerns.
 | Startup / measurement floor | 2 mA |
 | T0 start / calibration current ceiling | 1 mA / 1 mA |
 | T0 voltage / current DMM ranges | 0.2 V / 0.002 A |
-| Kp / Ki / Ti | 0.00003 / 0.0000003 / 100 s |
+| Kp / Ki / Ti | 0.000015 / 0.0000001 / 150 s |
 | Integral correction bound | 10 mA |
 | Current step up/down | 1 mA per nominal 2 s cycle |
-| Median filter / prediction horizon | 3 samples / 2 s |
+| Paired readings per measurement / T0 | 5 / 9 |
+| Median filter / prediction horizon | 3 samples / off |
+| Extra current-switching hysteresis | 0.2 mA beyond the half-step boundary |
+| Current settling time | 1 s |
 | Maximum current / sample power | 0.10 A / 0.50 W |
 | Maximum sample voltage / supply compliance | 20 V / 30 V |
 | Maximum indicated temperature / trial target | 600 C / 600 C |
@@ -78,6 +82,9 @@ temperature as reliable.
 
 T0 is independent of the Initial Current field and cannot increase above 1 mA.
 See [the four-wire T0 settings and calibration checks](T0_WIRE_CALIBRATION.md).
+T0 uses a 95% meter-range threshold and no experiment-step headroom, preventing
+the premature move from 2 mA to 20 mA seen in run 121. Genuine overload still
+increases the range. See [the run 121 findings and changes](NICR50_RUN_121.md).
 
 Start with a 100-150 C comparison before using the unmeasured higher range:
 

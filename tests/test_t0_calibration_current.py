@@ -66,6 +66,7 @@ class T0CurrentTests(unittest.TestCase):
     def calibrate(self, reading):
         config = config_for_test({"t0_current_search_start": .001, "t0_calibration_current": .001,
             "t0_dmm_voltage_range_v": .2, "t0_dmm_current_range_a": .002,
+            "t0_pair_samples": 9, "measurement_pair_samples": 5,
             "dmm_voltage_range_v": 2., "dmm_current_range_a": .02, "psu_keepalive_current": .01})
         instrument = Mock()
         with patch.object(calibration.pyvisa, "ResourceManager") as manager, \
@@ -83,12 +84,14 @@ class T0CurrentTests(unittest.TestCase):
         self.assertEqual(config["dmm_voltage_range_v"], 2.)
         self.assertEqual(config["dmm_current_range_a"], .02)
         self.assertEqual(config["psu_keepalive_current"], .01)
+        self.assertEqual(config["measurement_pair_samples"], 5)
         self.assertTrue(all(0 <= call.kwargs["current"] <= .001 for call in command.call_args_list))
         self.assertEqual(command.call_args_list[-1].kwargs["current"], 0.)
         self.assertEqual(output.call_args_list[-1].kwargs["state"], "OFF")
         for call in ranges.call_args_list:
             self.assertEqual(call.args[2]["dmm_voltage_range_v"], .2)
             self.assertEqual(call.args[2]["dmm_current_range_a"], .002)
+            self.assertEqual(call.args[2]["measurement_pair_samples"], 9)
         return result
 
     def test_complete_calibration_uses_low_ranges_and_current_without_changing_run_settings(self):

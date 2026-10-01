@@ -58,6 +58,7 @@ class ExperimentDataSaver:
         self.calibration_info_path = os.path.join(self.experiment_dir, "calibration_info.txt")
         self.metadata_path = os.path.join(self.experiment_dir, "run_metadata.json")
         self.diagnostics_path = os.path.join(self.experiment_dir, "control_diagnostics.jsonl")
+        self.outcome_path = os.path.join(self.experiment_dir, "run_outcome.json")
 
         self._queue = queue.Queue()
         self._stop_token = object()
@@ -121,6 +122,16 @@ class ExperimentDataSaver:
         if self._thread.is_alive():
             raise RuntimeError("Timed out while waiting for experiment data to finish saving.")
         self.raise_if_error()
+
+    def save_outcome(self, status, error=None):
+        """Save the terminal reason separately, preserving CSV/diagnostic row alignment."""
+        record = {"time": time.time(), "status": status,
+                  "error_type": type(error).__name__ if error is not None else None,
+                  "error": str(error) if error is not None else None}
+        temporary = self.outcome_path + ".tmp"
+        with open(temporary, "w", encoding="utf-8") as stream:
+            json.dump(record, stream, indent=2, allow_nan=False)
+        os.replace(temporary, self.outcome_path)
 
     def raise_if_error(self):
         if self._error is not None:

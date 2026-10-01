@@ -89,6 +89,10 @@ class Ni50RetryTests(unittest.TestCase):
         self.assertEqual([r["integral_a"] for r in records], [0., 0.])
         self.assertEqual([r["accepted_current_a"] for r in records], [.027, .026])
         shutdown.assert_called_once()
+        status, error = saver.save_outcome.call_args.args
+        self.assertEqual(status, "error")
+        self.assertIsInstance(error, ctl.ExperimentSafetyError)
+        self.assertIn("without increasing current", str(error))
         saver.finalize.assert_called_once()
 
 

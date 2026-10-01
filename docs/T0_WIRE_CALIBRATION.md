@@ -31,6 +31,14 @@ a reading overloads; changing a meter range does not raise supply current.
 Experiment DMM ranges are preserved. Settling, sample count and stability
 settings are now also explicitly included in all four JSON files.
 
+T0 range selection now reserves no heating-step margin and uses
+`t0_dmm_range_switch_fraction` (default 0.95). A 1.5 mA reading therefore stays
+on the sensitive 2 mA range; actual overloads still trigger range recovery.
+The thin NiCr profile uses `t0_pair_samples: 9` to average paired voltage and
+current readings before calculating each calibration resistance. The other
+profiles retain single-pair acquisition. Averaging cannot establish that a
+wire is cool or remove a systematic measurement offset.
+
 Restart the updated application, select the matching Material Profile, and
 click Load. Let the wire cool fully and stabilize, enter its actual room
 temperature, load the matching R(T) curve, then click Calibrate T. Zero. The

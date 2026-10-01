@@ -372,6 +372,8 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
     # stay unchanged because build_control_config returned a separate dictionary.
     config["dmm_voltage_range_v"] = config["t0_dmm_voltage_range_v"]
     config["dmm_current_range_a"] = config["t0_dmm_current_range_a"]
+    config["measurement_pair_samples"] = config["t0_pair_samples"]
+    config["dmm_range_switch_fraction"] = config["t0_dmm_range_switch_fraction"]
     config["psu_keepalive_current"] = tds_experiment._quantized_current(
         min(float(config["psu_keepalive_current"]), float(config["t0_calibration_current"])),
         .001, min(float(config["max_current"]), float(config["t0_calibration_current"])),

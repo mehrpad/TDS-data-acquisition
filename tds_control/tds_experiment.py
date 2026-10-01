@@ -76,6 +76,8 @@ CONTROL_DEFAULTS = {
     "minimum_current_change": 0.001,
     "measurement_current_floor": 0.01,
     "measurement_filter_samples": 3,
+    "measurement_pair_samples": 1,
+    "current_quantization_hysteresis_a": 0.0,
     "dmm_synchronized_reading": True,
     "resistance_outlier_mad_multiplier": 4.0,
     "resistance_outlier_min_ohm": 0.0005,
@@ -189,6 +191,8 @@ CONTROL_DEFAULTS = {
     "t0_current_step": 0.001,
     "t0_dmm_voltage_range_v": 0.2,
     "t0_dmm_current_range_a": 0.02,
+    "t0_dmm_range_switch_fraction": 0.95,
+    "t0_pair_samples": 1,
     "t0_settle_time_s": 3.0,
     "t0_calibration_samples": 5,
     "t0_warmup_samples": 1,
@@ -569,6 +573,17 @@ def build_control_config(config):
         if not np.isfinite(float(merged[name])) or float(merged[name]) < 0:
             raise ValueError(f"{name} must be finite and nonnegative.")
     _maximum_temperature(merged)
+    for name in ("measurement_pair_samples", "t0_pair_samples"):
+        value = float(merged[name])
+        if not np.isfinite(value) or not value.is_integer() or not 1 <= value <= 15:
+            raise ValueError(f"{name} must be an integer between 1 and 15.")
+        merged[name] = int(value)
+    hysteresis = float(merged["current_quantization_hysteresis_a"])
+    if not np.isfinite(hysteresis) or not 0 <= hysteresis <= .0005:
+        raise ValueError("current_quantization_hysteresis_a must be between 0 and 0.0005 A.")
+    fraction = float(merged["t0_dmm_range_switch_fraction"])
+    if not np.isfinite(fraction) or not 0 < fraction <= 1:
+        raise ValueError("t0_dmm_range_switch_fraction must be greater than 0 and at most 1.")
     for name in ("t0_current_search_start", "t0_calibration_current", "t0_current_step"):
         value = float(merged[name])
         if not np.isfinite(value) or value < .001:
@@ -1555,9 +1570,15 @@ def _set_current_if_needed(power_supply, current, previous_current, config, *, f
 
 
 def _apply_control_current(power_supply, current, previous_current, config, controller, dt):
-    current = _quantized_current(current, _measurement_current_floor(config), float(config["max_current"]))
+    floor, ceiling = _measurement_current_floor(config), float(config["max_current"])
+    hysteresis = float(config.get("current_quantization_hysteresis_a", 0.0))
+    requested = current
+    current = _quantized_current(current, floor, ceiling)
+    if (hysteresis > 0 and previous_current is not None and floor <= previous_current <= ceiling
+            and abs(requested - previous_current) <= .0005 + hysteresis):
+        current = previous_current
     accepted = _set_current_if_needed(power_supply, current, previous_current, config)
-    controller.track_output(accepted, dt, config.get("pid_tracking_time_s", 30.0), deadband=0.0005)
+    controller.track_output(accepted, dt, config.get("pid_tracking_time_s", 30.0), deadband=.0005 + hysteresis)
     return accepted
 
 
@@ -2330,6 +2351,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
     dmm_v = None
     dmm_i = None
     power_supply = None
+    termination_error = None
 
     try:
         resource_manager = pyvisa.ResourceManager()
@@ -3165,9 +3187,18 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                 print("Stop signal received.")
                 break
 
+    except Exception as exc:
+        termination_error = exc
+        raise
     finally:
         _shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager)
         if data_saver is not None:
+            if hasattr(data_saver, "save_outcome"):
+                try:
+                    status = "error" if termination_error is not None else ("stopped_by_user" if emitter.stopped else "completed")
+                    data_saver.save_outcome(status, termination_error)
+                except Exception as exc:
+                    print(f"Could not save experiment termination reason: {exc}")
             data_saver.finalize()
         print("TDS experiment thread finished.")
 
@@ -3180,6 +3211,49 @@ def measure_resistivity(
     calibration=False,
     config=None,
     power_supply=None,
+):
+    """Optionally average a batch of paired readings before converting R to T.
+
+    Every raw pair still passes the electrical and raw-temperature guards.
+    Default single-pair behavior is unchanged. Duty-cycled modes retain their
+    existing single heat/measure cycle rather than silently multiplying it.
+    """
+    count = int((config or {}).get("measurement_pair_samples", 1))
+    if count == 1 or get_resistivity_mode(config or {}) != "V_OVER_I":
+        return _measure_resistivity_once(dmm_v, dmm_i, siglent_module, temperature_interp,
+            calibration=calibration, config=config, power_supply=power_supply)
+    samples, acquisitions = [], []
+    for _ in range(count):
+        samples.append(_measure_resistivity_once(dmm_v, dmm_i, siglent_module, temperature_interp,
+            calibration=calibration, config=config, power_supply=power_supply))
+        acquisitions.append(dict(config.get("_last_acquisition", {})))
+    # A temperature outside the curve may be caused by cold-end ratio noise.
+    # Include its finite resistance in the batch; guard checks ran before masking.
+    valid_indices = [i for i, (v, current, _, r) in enumerate(samples)
+                     if all(np.isfinite(x) for x in (v, current, r))
+                     and current > float(config["minimum_current_a"]) and r > 0]
+    selected = []
+    if len(valid_indices) >= count//2 + 1:
+        mask = _robust_resistance_inlier_mask([samples[i][3] for i in valid_indices], config)
+        selected = [i for i, keep in zip(valid_indices, mask) if keep]
+    batch = {"requested_pairs": count, "retained_pairs": len(selected),
+             "samples": [{"voltage": v, "current": current, "temperature_c": t,
+                          "resistance_ohm": r, "retained": i in selected}
+                         for i, (v, current, t, r) in enumerate(samples)]}
+    config["_last_acquisition"] = {**acquisitions[-1],
+        "start_monotonic_s": acquisitions[0].get("start_monotonic_s"), "pair_batch": batch}
+    if len(selected) < count//2 + 1:
+        return np.nan, np.nan, np.nan, np.nan
+    # Average matched V and I from the same retained pairs, then form their ratio.
+    voltage, current = np.mean([[samples[i][0], samples[i][1]] for i in selected], axis=0)
+    _enforce_electrical_safety(voltage, current, config)
+    resistance = _calculate_resistance(voltage, current, config=config)
+    temperature = _temperature_from_resistance(resistance, temperature_interp, config, calibration)
+    return float(voltage), float(current), temperature, resistance
+
+
+def _measure_resistivity_once(
+    dmm_v, dmm_i, siglent_module, temperature_interp, calibration=False, config=None, power_supply=None,
 ):
     """Measure the sample and convert it to a temperature.
 
@@ -3332,7 +3406,9 @@ def measure_resistivity(
                 measured_current,
                 config,
                 force_next=current_overload,
-                step_margin=float(config.get("max_current_step_up", 0.01)) * current_step_scale(config),
+                # T0 has no experiment-sized step pending. Reserving a 1 mA
+                # heating step on a 2 mA T0 range needlessly loses sensitivity.
+                step_margin=0.0 if calibration else float(config.get("max_current_step_up", 0.01)) * current_step_scale(config),
             )
             if voltage_range_change is None and current_range_change is None:
                 if voltage_overload or current_overload:
@@ -3392,6 +3468,11 @@ def measure_resistivity(
     if not np.isfinite(resistance) or resistance <= 0:
         print(f"Invalid resistance calculated from V={measured_voltage}, I={measured_current}")
         return measured_voltage, measured_current, np.nan, np.nan
+    temperature = _temperature_from_resistance(resistance, temperature_interp, config, calibration)
+    return measured_voltage, measured_current, temperature, resistance
+
+
+def _temperature_from_resistance(resistance, temperature_interp, config, calibration=False):
     try:
         temperature = float(temperature_interp(resistance))
     except Exception as exc:
@@ -3411,7 +3492,7 @@ def measure_resistivity(
         )
         # The resistance itself is a good measurement; only the conversion is out
         # of range. T0 calibration relies on that to anchor an unscaled curve.
-        return measured_voltage, measured_current, np.nan, resistance
+        return np.nan
 
     temperature_bounds = getattr(temperature_interp, "temperature_bounds", None)
     if np.isfinite(temperature) and temperature_bounds is not None:
@@ -3427,4 +3508,4 @@ def measure_resistivity(
         print(f"Calculated temperature is {temperature}; treating it as invalid.")
         temperature = np.nan
 
-    return measured_voltage, measured_current, temperature, resistance
+    return temperature
