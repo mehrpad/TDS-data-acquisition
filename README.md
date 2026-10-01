@@ -309,6 +309,7 @@ Saved files:
 - `corrected_r_vs_t_curve.pdf`: plotted temperature-versus-corrected-resistance curve used for conversion
 - `calibration_info.txt`: written when T0 calibration detected a large raw curve-to-T0 mismatch
 - `run_metadata.json`: the full controller/measurement configuration used for the run, including the PID/PI gain schedule in effect at start
+- `tds_log.txt`: timestamped console output and errors, including preparation/T0 messages since the previous run, run settings and software hashes, stop messages and complete Python tracebacks. Written in the background while keeping the normal console output visible.
 
 Saved per-material tuning results (gain schedule, step limits, and related settings) live separately under `files/material_profiles/<name>.json`, loadable from the GUI's Material Profile field - see `docs/MEASUREMENT_SETUP.md`.
 

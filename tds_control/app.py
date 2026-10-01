@@ -17,6 +17,7 @@ from .pid import normalize_integral_time
 from . import tds_experiment
 from .curve_io import load_resistance_temperature_file
 from .data_saver import ExperimentDataSaver
+from .run_logging import RunConsoleCapture
 from .paths import DATA_DIR, EXPERIMENT_COUNTER_PATH, ensure_runtime_dirs
 
 RESISTIVITY_MODE_TOOLTIP = """How sample resistance is measured.
@@ -29,7 +30,8 @@ The two duty-cycled modes set the loop period from resistivity_heat_time_s + res
 
 
 class Ui_TDS(object):
-    def __init__(self, data):
+    def __init__(self, data, console_capture=None):
+        self.console_capture = console_capture
         self.target_temperature = 0
         self.index_plot = 0
         self.voltage = 0
@@ -1846,6 +1848,8 @@ class Ui_TDS(object):
         self.experiment_name = self.sanitize_experiment_name(self.ex_name.text().strip() or 'TDS_test')
         self.current_experiment_dir = self.build_experiment_dir()
         try:
+            if self.console_capture is not None:
+                self.console_capture.begin_run(self.current_experiment_dir, self.build_run_metadata())
             results_curve, _, _ = tds_experiment._extend_curve_for_configured_extrapolation(
                 self.r_vs_t,
                 tds_experiment.build_control_config(self.config),
@@ -1860,6 +1864,13 @@ class Ui_TDS(object):
                 run_metadata=self.build_run_metadata(),
             ).start()
         except Exception as exc:
+            print(f'Cannot start autosave: {exc}')
+            traceback.print_exc()
+            if self.console_capture is not None:
+                try:
+                    self.console_capture.end_run(f'Run failed to start: {exc}')
+                except Exception as log_error:
+                    print(f'Could not finish experiment log: {log_error}', file=sys.stderr)
             self.data_saver = None
             self.current_experiment_dir = None
             self.error_message(f'Cannot start autosave: {exc}', color='red')
@@ -1912,6 +1923,7 @@ class Ui_TDS(object):
         """
         Handles the thread completion.
         """
+        stopped_by_user = self.emitter.stopped
         self.update_timer.stop()
         self.voltage = 0
         self.current = 0
@@ -1954,6 +1966,15 @@ class Ui_TDS(object):
             self.error_message('Experiment finished without recorded data', color='red')
         else:
             self.error_message(f'Experiment finished. Data saved in {experiment_dir}', color='green')
+        if self.console_capture is not None:
+            try:
+                self.console_capture.end_run(
+                    f'Experiment stopped with error: {finished}' if finished is not None
+                    else f'Experiment {"stopped by user" if stopped_by_user else "completed"}. Results: {experiment_dir}'
+                )
+            except Exception as exc:
+                print(f'Could not finish experiment log: {exc}', file=sys.stderr)
+                self.error_message(f'Experiment log could not finish saving: {exc}', color='red')
         self.data_list = []
 
     def error_message(self, message, color='red'):
@@ -1966,6 +1987,8 @@ class Ui_TDS(object):
         Return:
             None
         """
+        if self.console_capture is not None:
+            self.console_capture.write('gui', str(message) + '\n')
         color_map = {
             'red': '#ff0000',
             'green': '#008000',
@@ -2082,6 +2105,11 @@ class TDSMainWindow(QtWidgets.QMainWindow):
 
 
 def main():
+    with RunConsoleCapture() as console_capture:
+        return _run_application(console_capture)
+
+
+def _run_application(console_capture):
     app = QtWidgets.QApplication(sys.argv)
     app.setStyle('Fusion')
     TDS = TDSMainWindow()
@@ -2093,7 +2121,7 @@ def main():
         print(e)
         return 1
 
-    ui = Ui_TDS(data)
+    ui = Ui_TDS(data, console_capture=console_capture)
     ui.setupUi(TDS)
     TDS.ui = ui
     TDS.show()

@@ -3486,7 +3486,16 @@ def _temperature_from_resistance(resistance, temperature_interp, config, calibra
     # hide an over-temperature value. Shared by temperature/current modes and tuning.
     # T0 calibration uses an unanchored curve, so its temperatures are not valid yet.
     if config is not None and not calibration:
-        _enforce_temperature_safety(temperature, config)
+        try:
+            _enforce_temperature_safety(temperature, config)
+        except ExperimentSafetyError:
+            # This pair can trip safety before a CSV/diagnostic row is queued.
+            # Preserve it in the run console log before instrument shutdown.
+            print(f'Temperature safety trip: raw T={temperature:.6f} C, R={resistance:.9f} Ohm; '
+                  f'acquisition={config.get("_last_acquisition", {})}; '
+                  f'voltage range={config.get("_active_dmm_volt_range")} V, '
+                  f'current range={config.get("_active_dmm_curr_range")} A.')
+            raise
 
     if config is not None and not _resistance_in_curve_bounds(resistance, temperature_interp, config):
         print(
