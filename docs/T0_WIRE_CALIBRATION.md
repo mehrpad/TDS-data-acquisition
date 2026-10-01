@@ -10,7 +10,7 @@ saved and loaded with each material profile.
 | Ni_100_152 | 0.005 A / 0.005 A | 0.2 V / 0.02 A | 0.010 A |
 | NiCr_100_163 | 0.005 A / 0.005 A | 0.2 V / 0.02 A | 0.010 A |
 | Ni_50_200 | 0.001 A / 0.001 A | 0.2 V / 0.002 A | 0.005 A |
-| NiCr_50_provisional | 0.001 A / 0.001 A | 0.2 V / 0.002 A | 0.002 A |
+| NiCr_50 | 0.001 A / 0.001 A | 0.2 V / 0.002 A | 0.001 A |
 
 The supply's programmable current increment is 1 mA. This is the lowest nonzero
 command available to the present controller. At equal resistance, moving from

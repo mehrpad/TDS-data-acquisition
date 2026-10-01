@@ -108,7 +108,7 @@ class T0CurrentTests(unittest.TestCase):
              patch.object(config_io, "CONFIG_PATH", Path(directory)/"config.toml"), \
              patch.object(config_io, "ensure_runtime_dirs"):
             for name, current in (("Ni_100_152", .005), ("NiCr_100_163", .005),
-                                  ("Ni_50_200", .001), ("NiCr_50_provisional", .001)):
+                                  ("Ni_50_200", .001), ("NiCr_50", .001)):
                 profile = json.loads((root/f"{name}.json").read_text())
                 material_profiles.save_profile(name, profile)
                 config_io.save_config(material_profiles.load_profile(name))
@@ -140,6 +140,12 @@ class T0GuiTests(unittest.TestCase):
                 ui.update_calibration_start_current()
                 self.assertEqual(ui.config["startup_current"], .01)
                 self.assertEqual(ui.config["t0_current_search_start"], .001)
+                ui.config['measurement_current_floor'] = .002
+                ui.calibration_start_current.setText('0.001')
+                self.assertTrue(ui.update_calibration_start_current())
+                self.assertEqual(ui.config['startup_current'], .001)
+                self.assertEqual(ui.config['measurement_current_floor'], .001)
+                self.assertEqual(ui.config['t0_calibration_current'], .001)
                 ui.r_vs_t = np.array([[10., 20.], [23., 100.]])
                 ui.calibrate_base_temperature()
                 self.assertEqual(worker.call_args.args[-1]["t0_current_search_start"], .001)

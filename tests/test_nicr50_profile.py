@@ -11,7 +11,7 @@ from tools.build_nicr50_profile import build_profile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PROFILE = ROOT/"files/material_profiles/NiCr_50_provisional.json"
+PROFILE = ROOT/"files/material_profiles/NiCr_50.json"
 
 
 class NiCr50ProfileTests(unittest.TestCase):
@@ -23,17 +23,23 @@ class NiCr50ProfileTests(unittest.TestCase):
         self.assertEqual(provenance["measured_temperature_range_c"], [])
         self.assertFalse(provenance["wire_length_known"])
         self.assertEqual(provenance["source_profile"], donor["profile_name"])
-        self.assertEqual(profile["current_feedforward_table"][0]["current_a"], .002)
+        self.assertEqual(profile["current_feedforward_table"][0]["current_a"], .001)
+        self.assertEqual(profile["profile_name"], "NiCr_50")
+        for key in ('startup_current', 'measurement_current_floor', 'tuning_start_current',
+                    't0_current_search_start', 't0_calibration_current'):
+            self.assertEqual(profile[key], .001)
+        self.assertFalse(provenance['run123_review']['table_recalibrated'])
+        self.assertEqual(provenance['run123_review']['rejected_cycles'], 42)
         for point, original in zip(profile["current_feedforward_table"][1:], donor["current_feedforward_table"][1:]):
             self.assertEqual(point["temperature_c"], original["temperature_c"])
             self.assertAlmostEqual(point["current_a"], original["current_a"]*.30, places=8)
-        for name in ("NiCr_50_provisional_current_table.csv", "NiCr_50_provisional_R_vs_T_estimated.csv"):
+        for name in ("NiCr_50_current_table.csv", "NiCr_50_R_vs_T_estimated.csv"):
             with (PROFILE.parent/name).open() as stream:
                 self.assertEqual({r["measured_on_this_wire"] for r in csv.DictReader(stream)}, {"False"})
 
     def test_profile_and_curve_allow_600_with_headroom_and_preserve_cutoff(self):
         config = ctl.build_control_config(json.loads(PROFILE.read_text()))
-        curve, _ = load_resistance_temperature_file(PROFILE.parent/"NiCr_50_provisional_R_vs_T_estimated.csv")
+        curve, _ = load_resistance_temperature_file(PROFILE.parent/"NiCr_50_R_vs_T_estimated.csv")
         model = ctl.build_temperature_interpolator(curve, config)
         program = [dict(start_T=23, target_T=600, ramp_speed_min=10)]
         ctl._validate_trial_program(program, config)

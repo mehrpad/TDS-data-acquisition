@@ -50,6 +50,26 @@ class LinearTemperatureModel:
 
 
 class LowVoltageStartupTests(unittest.TestCase):
+    @patch("tds_control.tds_experiment.time.sleep")
+    @patch("tds_control.tds_experiment.siglent.set_current")
+    def test_one_milliamp_initial_current_overrides_old_two_milliamp_floor(self, set_current, sleep):
+        config = _config(startup_current=.001, measurement_current_floor=.002)
+        self.assertEqual(_measurement_current_floor(config), .001)
+        current, previous = _start_control_at_initial_current(Mock(), config, None, 2.)
+        self.assertEqual((current, previous), (.001, .001))
+        set_current.assert_called_once_with(unittest.mock.ANY, current=.001)
+        # The operator-selected lower floor remains active after startup.
+        self.assertEqual(_current_ramp_command(.001, .001, 0., .001, config), .001)
+        self.assertEqual(config['measurement_current_floor'], .002)
+
+    @patch("tds_control.tds_experiment.time.sleep")
+    @patch("tds_control.tds_experiment.siglent.set_current")
+    def test_initial_current_below_hard_minimum_fails_before_command(self, set_current, sleep):
+        config = _config(startup_current=.001, min_current=.002)
+        with self.assertRaisesRegex(ValueError, "below the configured minimum"):
+            _start_control_at_initial_current(Mock(), config, None, 2.)
+        set_current.assert_not_called()
+
     def test_startup_and_calibration_current_do_not_raise_measurement_floor(self):
         config = _config(startup_current=0.04, t0_current_search_start=0.02)
         self.assertAlmostEqual(_measurement_current_floor(config), 0.01)

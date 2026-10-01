@@ -905,6 +905,8 @@ class Ui_TDS(object):
                 )
             if current > float(self.config['max_current']):
                 raise ValueError('Initial current exceeds Max Current.')
+            if current < float(self.config['min_current']):
+                raise ValueError('Initial current is below the configured minimum current.')
         except ValueError as exc:
             self.calibration_start_current.setText(f'{previous_value:g}')
             self.error_message(str(exc), color='red')
@@ -912,6 +914,9 @@ class Ui_TDS(object):
 
         self.config['tuning_start_current'] = current
         self.config['startup_current'] = current
+        self.config['measurement_current_floor'] = min(
+            float(self.config['measurement_current_floor']), current
+        )
         self.calibration_start_current.setText(f'{current:g}')
         self.save_config()
         return True
@@ -1210,7 +1215,8 @@ class Ui_TDS(object):
         )
         self.calibration_start_current.setToolTip(
             'Starting current for tuning and the experiment, in amperes.\n'
-            'T0 calibration current and the experiment measurement floor are configured separately in the material profile.'
+            'Lowering Initial Current also lowers the experiment measurement floor.\n'
+            'T0 calibration current is configured separately in the material profile.'
         )
         self.calibrate_botton_base_t.setToolTip(
             'Measure the cooled wire at the entered zero temperature and scale the loaded material curve.\n'

@@ -1,5 +1,9 @@
 # Thin NiCr run 121
 
+The profile was subsequently renamed to `NiCr_50` and its startup anchor
+lowered to 1 mA. Use [the run 123 instructions](NICR50_RUN_123.md) for the
+current files; the values below describe run 121 and its initial follow-up.
+
 The automatic stop was the raw-temperature cutoff. The supplied traceback
 reports `Measured temperature 773.86 C exceeded Maximum Temperature 600 C`.
 The preceding saved readings were about 70-90 C. This strongly suggests a

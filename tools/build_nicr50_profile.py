@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 
-PROFILE_NAME = "NiCr_50_provisional"
+PROFILE_NAME = "NiCr_50"
 CURRENT_SCALE = .30
 RESISTANCE_SCALE = 4.
 DESIGN_REFERENCE = "https://prodshop.kanthal.com/en/knowledge-hub/heating-material-knowledge/design-calculations-and-standard-tolerances/design-calculations/"
@@ -26,9 +26,9 @@ def build_profile(donor, source_curve):
         raise ValueError("Reference curve does not match the donor NiCr profile.")
     result = copy.deepcopy(donor)
     result.update(
-        profile_name=PROFILE_NAME, startup_current=.002, measurement_current_floor=.002,
+        profile_name=PROFILE_NAME, startup_current=.001, measurement_current_floor=.001,
         t0_current_search_start=.001, t0_calibration_current=.001,
-        t0_dmm_voltage_range_v=.2, t0_dmm_current_range_a=.002, tuning_start_current=.002,
+        t0_dmm_voltage_range_v=.2, t0_dmm_current_range_a=.002, tuning_start_current=.001,
         t0_dmm_range_switch_fraction=.95,
         pid_kp=.000015, pid_ki=.0000001, pid_integral_time_s=150., pid_kd=0.,
         pid_gain_schedule=[], pid_integral_current_limit_a=.01,
@@ -61,13 +61,17 @@ def build_profile(donor, source_curve):
         "wire_diameter_um": 50., "wire_length_known": False,
         "reference_wire_diameter_um": 100., "reference_wire_length_mm": 163.,
         "current_scale_factor": CURRENT_SCALE, "resistance_scale_factor": RESISTANCE_SCALE,
-        "method": "0.30 times the 100 um NiCr ramp bias at each temperature, with a lower 2 mA startup anchor",
+        "method": "0.30 times the 100 um NiCr ramp bias at each temperature, with a user-selected 1 mA startup anchor",
         "assumptions": "Same NiCr alloy, similar surroundings and mounting. Exact active length is unknown. The R(T) scale initially assumes the same 163 mm length; T0 calibration must rescale to the actual cold resistance.",
         "scaling_rationale": "For a halved diameter, R scales by 4 at fixed length. Surface-loss-dominated heating gives I proportional to d^1.5 (factor 0.354); end-conduction or ramp thermal mass can give factor 0.25. Factor 0.30 is an engineering starting choice within these simplified estimates, not a measured scaling law for this apparatus.",
         "design_reference": DESIGN_REFERENCE,
         "reference_curve_file": PROFILE_NAME + "_R_vs_T_estimated.csv",
         "source_curve_temperature_bounds_c": source["source_curve_temperature_bounds_c"],
-        "startup_anchor": "23 C / 2 mA chosen for startup and measurement; not measured equilibrium",
+        "startup_anchor": "23 C / 1 mA selected after run 123 exposed the 2 mA floor override; not measured equilibrium",
+        "run123_review": {"source_run": "123_test", "saved_cycles": 74,
+            "rejected_cycles": 42, "t0_temperature_spread_c": 44.15,
+            "measured_temperature_range_c": [], "table_recalibrated": False,
+            "reason": "Old software, large T0 scatter and repeated rejected feedback; target only reached 33.38 C. No reliable current-versus-temperature fit. Only the requested startup anchor changed."},
         "noise_control_update": {"source_run": "121_Ni20Cr_50_uncharged_cur_1",
             "method": "5 paired readings per experiment measurement, 9 per T0 measurement, lower PI gains, 0.2 mA extra current-switching hysteresis and 1 s settling; preserve all raw safety checks",
             "table_recalibrated": False,

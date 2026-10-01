@@ -41,7 +41,8 @@ class AbsoluteCurrentTests(unittest.TestCase):
         self.assertAlmostEqual(ctrl.compute(299, dt=3.5, bias=.1), .1055)
 
     def test_sub_resolution_integral_accumulates_until_a_real_command_is_sent(self):
-        settings = config(pid_kp=0, pid_ki=.0001, temperature_prediction_time_s=0)
+        settings = config(pid_kp=0, pid_ki=.0001, temperature_prediction_time_s=0,
+                          startup_current=.01)
         ctrl = controller(settings)
         supply = Mock()
         current = .01
@@ -212,7 +213,8 @@ class ConfigurationAndTuningTests(unittest.TestCase):
         self.assertTrue(np.isnan(samples[1][2]))
         for sample in samples:
             self.assertAlmostEqual(sample[5]*1000,round(sample[5]*1000))
-        self.assertGreaterEqual(samples[2][5],.01)
+        self.assertEqual(samples[0][5], settings['startup_current'])
+        self.assertGreaterEqual(samples[2][5], settings['startup_current'])
 
 
 class RateEstimatorTests(unittest.TestCase):

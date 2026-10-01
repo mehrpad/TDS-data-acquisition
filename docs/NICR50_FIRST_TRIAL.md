@@ -1,16 +1,21 @@
 # Provisional 50 um NiCr profile
 
-Run 121 provided heating measurements, but excessive measurement scatter and
+Runs 121 and 123 provided heating measurements, but excessive measurement scatter and
 limited temperature coverage prevent a reliable table update. Every point in
-the `NiCr_50_provisional` current table and reference curve remains an **estimate**.
+the `NiCr_50` current table and reference curve remains an **estimate**.
 The profile permits targets through 600 C at 10 C/min so a comparison run can
 replace the estimates. It does not establish accurate physical temperature or
 stable control over that range.
 
+The profile is now named `NiCr_50` (previously `NiCr_50_provisional`); its table
+remains provisional. After run 123, startup, tuning, the active measurement
+floor and the 23 C current-table anchor all use 0.001 A (1 mA). See
+[the run 123 startup correction and data review](NICR50_RUN_123.md).
+
 ## Basis
 
 The existing `NiCr_100_163` profile, based on run 109, is the donor. The estimated
-50 um current bias is 0.30 times the donor bias, except for a lower 2 mA startup
+50 um current bias is 0.30 times the donor bias, except for a lower 1 mA startup
 anchor. At 600 C this gives about 25.17 mA. The donor itself has an estimated
 500-600 C extension, so this part has two layers of uncertainty.
 
@@ -43,7 +48,7 @@ not resolve those thermometry concerns.
 
 | Parameter | Setting |
 | --- | ---: |
-| Startup / measurement floor | 2 mA |
+| Startup / measurement floor | 1 mA |
 | T0 start / calibration current ceiling | 1 mA / 1 mA |
 | T0 voltage / current DMM ranges | 0.2 V / 0.002 A |
 | Kp / Ki / Ti | 0.000015 / 0.0000001 / 150 s |
@@ -69,12 +74,12 @@ significant fraction of the low-temperature current and can limit smoothness.
 The JSON, current CSV, estimated R(T) CSV and these instructions are also installed
 in `T:/Monajem/tds_sofia`:
 
-- `NiCr_50_provisional.json`
-- `NiCr_50_provisional_current_table.csv`
-- `NiCr_50_provisional_R_vs_T_estimated.csv`
+- `NiCr_50.json`
+- `NiCr_50_current_table.csv`
+- `NiCr_50_R_vs_T_estimated.csv`
 - `NICR50_FIRST_TRIAL.md`
 
-Restart the updated application. Select **NiCr_50_provisional**, click **Load**,
+Restart the updated application. Select **NiCr_50**, click **Load**,
 select **TEMPERATURE** mode, and load the matching estimated R(T) CSV. Let the
 wire cool and stabilize, enter its actual room temperature, then Calibrate T.
 Zero. Review any calibration-scatter warning before treating the indicated

@@ -1,5 +1,5 @@
 temperature_c,current_a,measured_on_this_wire
-23.0,0.002,False
+23.0,0.001,False
 71.926687,0.003812223,False
 90.263618,0.004624808,False
 107.788305,0.005906474,False

@@ -79,7 +79,7 @@ CONFIG_GROUPS = [
             ("measurement_fail_limit", "How many consecutive invalid measurements are tolerated before stopping."),
             ("minimum_current_a", "Smallest current treated as a valid reading; the 2 mA DMM range supports a lower threshold."),
             ("minimum_current_change", "Smallest PSU change worth sending; the SPD1000X programs current in 1 mA steps."),
-            ("measurement_current_floor", "Minimum allowed PSU current during active control."),
+            ("measurement_current_floor", "Preferred active-control current floor. Initial Current can lower it; min_current remains a hard lower bound."),
             ("measurement_filter_samples", "Median filter window for accepted temperature readings."),
             ("measurement_pair_samples", "Number of paired V/I readings robustly averaged per V_OVER_I measurement before converting resistance to temperature (1..15). Electrical/raw-temperature guards apply to every pair."),
             ("current_quantization_hysteresis_a", "Extra band beyond the half-mA rounding boundary before changing a normal PI command; 0 disables it, maximum 0.0005 A. Safety backoff bypasses it."),

@@ -22,7 +22,7 @@
     "limitations": "No reliable 50 um NiCr current-table calibration or validated PI tuning. Run 121 showed large measurement scatter below 100 C and a raw-temperature cutoff spike. Assumed matching alloy is essential; cold-resistance calibration cannot fix a different TCR. The donor R(T) ends at 293.4 C; higher indicated temperatures are extrapolated. No guarantee of physical temperature accuracy or smooth tracking to 600 C. Replace these estimates after reliable measurement.",
     "measured_on_this_wire": false,
     "measured_temperature_range_c": [],
-    "method": "0.30 times the 100 um NiCr ramp bias at each temperature, with a lower 2 mA startup anchor",
+    "method": "0.30 times the 100 um NiCr ramp bias at each temperature, with a user-selected 1 mA startup anchor",
     "noise_control_update": {
       "limitations": "Run 121 was too noisy and covered too little temperature to replace the estimated table. Settings need a new hardware trial.",
       "method": "5 paired readings per experiment measurement, 9 per T0 measurement, lower PI gains, 0.2 mA extra current-switching hysteresis and 1 s settling; preserve all raw safety checks",
@@ -30,10 +30,19 @@
       "table_recalibrated": false
     },
     "ramp_rate_c_min": 10.0,
-    "reference_curve_file": "NiCr_50_provisional_R_vs_T_estimated.csv",
+    "reference_curve_file": "NiCr_50_R_vs_T_estimated.csv",
     "reference_wire_diameter_um": 100.0,
     "reference_wire_length_mm": 163.0,
     "resistance_scale_factor": 4.0,
+    "run123_review": {
+      "measured_temperature_range_c": [],
+      "reason": "Old software, large T0 scatter and repeated rejected feedback; target only reached 33.38 C. No reliable current-versus-temperature fit. Only the requested startup anchor changed.",
+      "rejected_cycles": 42,
+      "saved_cycles": 74,
+      "source_run": "123_test",
+      "t0_temperature_spread_c": 44.15,
+      "table_recalibrated": false
+    },
     "scaling_rationale": "For a halved diameter, R scales by 4 at fixed length. Surface-loss-dominated heating gives I proportional to d^1.5 (factor 0.354); end-conduction or ramp thermal mass can give factor 0.25. Factor 0.30 is an engineering starting choice within these simplified estimates, not a measured scaling law for this apparatus.",
     "source_curve_temperature_bounds_c": [
       23.0,
@@ -43,7 +52,7 @@
     "source_profile_sha256": "f6a532aea8d683778a92501c768fa54e9462943546b8a0a7923b0048a04b37bf",
     "source_reference_curve_sha256": "76b1da2f4fee3129a33ecc46926a2c0a04223a999c3999e2d8767094fec9920d",
     "source_run": "109_NiCr_uncharged_test",
-    "startup_anchor": "23 C / 2 mA chosen for startup and measurement; not measured equilibrium",
+    "startup_anchor": "23 C / 1 mA selected after run 123 exposed the 2 mA floor override; not measured equilibrium",
     "unmeasured_extension": {
       "measured": false,
       "method": "All points estimated by diameter scaling; donor itself extrapolates above about 500 C",
@@ -57,7 +66,7 @@
   },
   "current_feedforward_table": [
     {
-      "current_a": 0.002,
+      "current_a": 0.001,
       "temperature_c": 23.0
     },
     {
@@ -173,7 +182,7 @@
   "max_power_w": 0.5,
   "max_sample_voltage": 20.0,
   "max_temperature_c": 600.0,
-  "measurement_current_floor": 0.002,
+  "measurement_current_floor": 0.001,
   "measurement_fail_limit": 10,
   "measurement_filter_samples": 3,
   "measurement_pair_samples": 5,
@@ -194,7 +203,7 @@
   "pid_ki": 1e-07,
   "pid_kp": 1.5e-05,
   "pid_tracking_time_s": 30.0,
-  "profile_name": "NiCr_50_provisional",
+  "profile_name": "NiCr_50",
   "resistance_glitch_jump_ohm": 0.03,
   "resistance_glitch_jump_ratio": 0.015,
   "resistance_power_guard_drop_c": 15.0,
@@ -206,7 +215,7 @@
   "resistivity_measure_time_s": 1,
   "resistivity_mode": "V_OVER_I",
   "resistivity_output_settle_s": 0.3,
-  "startup_current": 0.002,
+  "startup_current": 0.001,
   "startup_settle_time_s": 2.0,
   "t0_calibration_current": 0.001,
   "t0_calibration_samples": 5,
@@ -225,5 +234,5 @@
   "temperature_prediction_time_s": 0.0,
   "temperature_rate_window_s": 8.0,
   "trial_max_temperature_c": 600.0,
-  "tuning_start_current": 0.002
+  "tuning_start_current": 0.001
 }

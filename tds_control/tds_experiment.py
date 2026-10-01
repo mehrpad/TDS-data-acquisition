@@ -326,12 +326,13 @@ def _enforce_electrical_safety(measured_voltage, measured_current, config):
 def _measurement_current_floor(config):
     minimum = float(config["min_current"])
     maximum = float(config["max_current"])
-    candidates = (
-        minimum,
-        float(config.get("measurement_current_floor", minimum)),
-    )
-    if not all(np.isfinite(value) for value in candidates) or not np.isfinite(maximum):
-        raise ValueError("Initial and minimum voltage settings must be finite.")
+    configured_floor = float(config.get("measurement_current_floor", minimum))
+    initial = float(config.get("startup_current", configured_floor))
+    if not all(np.isfinite(value) for value in (minimum, maximum, configured_floor, initial)):
+        raise ValueError("Initial and minimum current settings must be finite.")
+    # Initial Current is an operator-selected measurement command. A higher
+    # profile floor must not silently replace it or force heating back upward.
+    candidates = (minimum, min(configured_floor, initial))
     # Active measurement floors must also be reachable on the hardware grid.
     floor = _clamp(max(candidates), minimum, maximum)
     return _quantized_current(floor, floor, maximum)
@@ -1423,6 +1424,8 @@ def _start_control_at_initial_current(
     loop_time,
 ):
     floor = _measurement_current_floor(config)
+    if float(config.get("startup_current", floor)) < float(config["min_current"]):
+        raise ValueError("Initial Current is below the configured minimum current.")
     initial_current = _quantized_current(
         max(float(config.get("startup_current", floor)), floor), floor, float(config["max_current"])
     )
