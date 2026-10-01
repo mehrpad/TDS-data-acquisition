@@ -42,7 +42,9 @@ not resolve those thermometry concerns.
 
 | Parameter | Setting |
 | --- | ---: |
-| Startup / measurement floor / T0 search start | 2 mA |
+| Startup / measurement floor | 2 mA |
+| T0 start / calibration current ceiling | 1 mA / 1 mA |
+| T0 voltage / current DMM ranges | 0.2 V / 0.002 A |
 | Kp / Ki / Ti | 0.00003 / 0.0000003 / 100 s |
 | Integral correction bound | 10 mA |
 | Current step up/down | 1 mA per nominal 2 s cycle |
@@ -73,6 +75,9 @@ select **TEMPERATURE** mode, and load the matching estimated R(T) CSV. Let the
 wire cool and stabilize, enter its actual room temperature, then Calibrate T.
 Zero. Review any calibration-scatter warning before treating the indicated
 temperature as reliable.
+
+T0 is independent of the Initial Current field and cannot increase above 1 mA.
+See [the four-wire T0 settings and calibration checks](T0_WIRE_CALIBRATION.md).
 
 Start with a 100-150 C comparison before using the unmeasured higher range:
 

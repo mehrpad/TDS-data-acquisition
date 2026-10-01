@@ -27,7 +27,8 @@ def build_profile(donor, source_curve):
     result = copy.deepcopy(donor)
     result.update(
         profile_name=PROFILE_NAME, startup_current=.002, measurement_current_floor=.002,
-        t0_current_search_start=.002, tuning_start_current=.002,
+        t0_current_search_start=.001, t0_calibration_current=.001,
+        t0_dmm_voltage_range_v=.2, t0_dmm_current_range_a=.002, tuning_start_current=.002,
         pid_kp=.00003, pid_ki=.0000003, pid_integral_time_s=100., pid_kd=0.,
         pid_gain_schedule=[], pid_integral_current_limit_a=.01,
         measurement_filter_samples=3, temperature_prediction_time_s=2.,

@@ -783,7 +783,7 @@ class Ui_TDS(object):
         self.max_temperature.setText(str(self.config['max_temperature_c']))
         self.max_power.setText(str(self.config['max_power_w']))
         self.max_current.setText(str(self.config['max_current']))
-        self.calibration_start_current.setText(str(self.config['t0_current_search_start']))
+        self.calibration_start_current.setText(str(self.config['startup_current']))
         self.measurement_conversion_mode.setCurrentText(
             tds_experiment.get_experiment_mode(self.config)
         )
@@ -895,8 +895,8 @@ class Ui_TDS(object):
         self.save_config()
 
     def update_calibration_start_current(self):
-        """Validate and save the shared initial current used by all operations."""
-        previous_value = float(self.config['t0_current_search_start'])
+        """Save experiment/tuning startup without overwriting the separate T0 current."""
+        previous_value = float(self.config['startup_current'])
         try:
             current = float(self.calibration_start_current.text())
             if not np.isfinite(current) or current < 0.001:
@@ -910,7 +910,6 @@ class Ui_TDS(object):
             self.error_message(str(exc), color='red')
             return False
 
-        self.config['t0_current_search_start'] = current
         self.config['tuning_start_current'] = current
         self.config['startup_current'] = current
         self.calibration_start_current.setText(f'{current:g}')
@@ -1135,6 +1134,7 @@ class Ui_TDS(object):
         self.max_power.setText(str(float(self.config['max_power_w'])))
         self.max_temperature.setText(str(float(self.config['max_temperature_c'])))
         self.calibration_start_current.setText(f"{float(self.config['startup_current']):g}")
+        self._update_file_tooltips()
         # Do not silently retain the previous material's calibration when switching wire.
         self.t_zero_calibrated = False
         self.apply_experiment_mode_ui()
@@ -1143,7 +1143,9 @@ class Ui_TDS(object):
         if provenance.get("kind") == "provisional_ramp":
             note = (f" Provisional {provenance['ramp_rate_c_min']:g} C/min feed-forward; "
                     f"trial limit {self.config.get('trial_max_temperature_c', 0):g} C.")
-        self.error_message(f'Loaded material profile "{name}". Recalibrate T. Zero.{note}', color='black')
+        t0_note = (f" T0 starts at {self.config['t0_current_search_start']:g} A, "
+                   f"ceiling {self.config['t0_calibration_current']:g} A.")
+        self.error_message(f'Loaded material profile "{name}". Recalibrate T. Zero.{t0_note}{note}', color='black')
 
     def apply_experiment_mode_ui(self):
         """Enable or disable controls based on the selected experiment mode."""
@@ -1207,11 +1209,13 @@ class Ui_TDS(object):
             f'Selected file: {selected_file}'
         )
         self.calibration_start_current.setToolTip(
-            'Starting current for calibration, tuning and the experiment, in amperes.\n'
-            'The experiment measurement-current floor is configured separately.'
+            'Starting current for tuning and the experiment, in amperes.\n'
+            'T0 calibration current and the experiment measurement floor are configured separately in the material profile.'
         )
         self.calibrate_botton_base_t.setToolTip(
-            'Measure the current wire at the entered zero temperature and scale the loaded material curve.'
+            'Measure the cooled wire at the entered zero temperature and scale the loaded material curve.\n'
+            f"T0 current: {self.config['t0_current_search_start']:g} A; ceiling: {self.config['t0_calibration_current']:g} A.\n"
+            'The Initial Current field does not change these T0 settings.'
         )
         self.calibrate_botton_pid.setToolTip(
             'Tune the PI/PID controller after a successful T. Zero calibration.'
@@ -1682,9 +1686,6 @@ class Ui_TDS(object):
         except ValueError:
             self.error_message('Invalid base temperature', color='red')
             return
-        if not self.update_calibration_start_current():
-            return
-
         self.t0_calibration_warning = None
         self.emitter.last_calibration_warning = None
         self.emitter.reset_stop()
@@ -1698,7 +1699,8 @@ class Ui_TDS(object):
         )
         self.calibration_worker.finished.connect(self.calibration_finished)
         self.calibration_worker.start()
-        self.error_message('Running T. Zero calibration. Press Stop to cancel.', color='black')
+        self.error_message(f"Running T. Zero calibration at {self.config['t0_current_search_start']:g} A "
+                           f"(ceiling {self.config['t0_calibration_current']:g} A). Press Stop to cancel.", color='black')
 
     def calibration_finished(self, result):
         """

@@ -15,6 +15,7 @@ Existing network profiles are backed up before replacement.
 | Kp | 0.001 | 0.0001 |
 | Ki | 0.00001 | 0.000001 |
 | Ti | 100 s | 100 s |
+| T0 start / calibration current ceiling | 5 mA / 5 mA | 5 mA / 5 mA |
 | Current steps up/down | 1 mA | 1 mA |
 | Prediction | Off | Off |
 | Maximum current | 1.24 A | 0.40 A |
@@ -28,6 +29,10 @@ above implement that request; they are not experimentally validated wire ratings
 The 95% measured-current increase guard remains active (Ni 1.178 A, NiCr 0.380 A).
 Higher ceilings do not correct calibration error or guarantee reaching the target.
 Both use 0.5 Hz control, 10 PLC integration and the existing measurement guards.
+
+T0 has independent settings in each JSON and cannot search above 5 mA for these
+100 um profiles. The 50 um profiles use 1 mA. Initial Current no longer changes
+T0; see [the T0 calibration instructions](T0_WIRE_CALIBRATION.md).
 
 Maximum Temperature is an independent software cutoff. A raw indicated
 reading above it stops heating; a temperature program above it cannot start.

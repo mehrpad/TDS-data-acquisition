@@ -208,9 +208,17 @@ def _find_stable_current_setpoint(
     stop_on_high_temperature=False,
 ):
     sample_interval_s = _calibration_sample_interval_s(config)
-    setpoint_current = max(start_current, config["min_current"], 0.005)
     search_upper_bound = min(max_current, config["max_current"])
-    current_step = max(step_current, config["minimum_current_change"])
+    search_floor = max(float(config["min_current"]), .001)
+    if not all(np.isfinite(v) for v in (start_current, search_upper_bound, step_current, search_floor)):
+        raise ValueError(f"{label}: current search limits must be finite.")
+    if step_current <= 0 or start_current <= 0 or search_floor > search_upper_bound or start_current > search_upper_bound:
+        raise ValueError(f"{label}: current search start/floor exceeds the configured ceiling, or the step is invalid.")
+    initial_grid_current = float(np.ceil(max(start_current, search_floor)*1000-1e-9)/1000)
+    if initial_grid_current > search_upper_bound + 1e-12:
+        raise ValueError(f"{label}: no programmable 1 mA setting within the configured search limits.")
+    setpoint_current = tds_experiment._quantized_current(initial_grid_current, search_floor, search_upper_bound)
+    current_step = max(step_current, .001)
 
     while setpoint_current <= search_upper_bound + 1e-12:
         _check_stop(emitter)
@@ -300,7 +308,7 @@ def _find_stable_current_setpoint(
                 consecutive_invalid_samples = 0
                 samples.append(
                     {
-                        "setpoint_current": float(measured_voltage),
+                        "setpoint_current": float(setpoint_current),
                         "current": float(measured_current),
                         "temperature": float(temperature),
                         "resistance": float(resistance),
@@ -314,7 +322,7 @@ def _find_stable_current_setpoint(
                 if consecutive_invalid_samples >= invalid_advance_count:
                     print(
                         f"{label}: received {consecutive_invalid_samples} invalid samples at {setpoint_current:.4f} A, "
-                        "increasing search setpoint_current."
+                        "checking for another setting within the configured ceiling."
                     )
                     break
 
@@ -332,23 +340,25 @@ def _find_stable_current_setpoint(
         if len(samples) >= int(stable_samples) and _current_series_is_stable(currents, minimum_current):
             print(
                 f"{label}: current was stable at {setpoint_current:.4f} A, but resistance was too noisy; "
-                "increasing by a cautious low-setpoint_current step."
+                "checking for another setting within the configured ceiling."
             )
 
         next_current = tds_experiment._limit_current_slew(
             setpoint_current + current_step,
             setpoint_current,
-            max(float(config["min_current"]), 0.005),
+            search_floor,
             search_upper_bound,
             config,
         )
+        next_current = tds_experiment._quantized_current(next_current, search_floor, search_upper_bound)
         if next_current <= setpoint_current + 1e-12:
             break
         setpoint_current = next_current
 
     raise ValueError(
         f"{label}: could not find a stable positive current between {start_current:.4f} A "
-        f"and {search_upper_bound:.4f} V."
+        f"and {search_upper_bound:.4f} A. Current was not raised above that ceiling; "
+        "let the wire cool and improve the measurement signal before retrying."
     )
 
 
@@ -358,6 +368,14 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
     up with the loaded calibration table.
     """
     config = tds_experiment.build_control_config(config or {})
+    # T0 has its own low-current measurement ranges. The experiment settings
+    # stay unchanged because build_control_config returned a separate dictionary.
+    config["dmm_voltage_range_v"] = config["t0_dmm_voltage_range_v"]
+    config["dmm_current_range_a"] = config["t0_dmm_current_range_a"]
+    config["psu_keepalive_current"] = tds_experiment._quantized_current(
+        min(float(config["psu_keepalive_current"]), float(config["t0_calibration_current"])),
+        .001, min(float(config["max_current"]), float(config["t0_calibration_current"])),
+    )
     curve, resistivity_interp, temperature_interp = _prepare_curve_interpolators(r_vs_t, config=config)
 
     resource_manager = None
@@ -387,7 +405,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
             temperature_interp=temperature_interp,
             config=config,
             start_current=config["t0_current_search_start"],
-            max_current=max(config["t0_calibration_current"], config["t0_current_search_start"]),
+            max_current=config["t0_calibration_current"],
             step_current=config["t0_current_step"],
             settle_time_s=config["t0_settle_time_s"],
             stable_samples=config["t0_stable_current_samples"],
@@ -397,7 +415,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
             display_target_temperature=room_temp,
             allow_current_only_fallback=True,
         )
-        print(f"Using T0 calibration voltage: {calibration_current:.4f} A")
+        print(f"Using T0 calibration current: {calibration_current:.4f} A")
 
         sample_interval_s = _calibration_sample_interval_s(config)
 
@@ -512,7 +530,7 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
         if not _resistance_series_is_stable(final_resistances, config):
             raise ValueError(
                 "T0 resistance did not remain stable enough for a reliable low-TCR calibration. "
-                "Use smaller fixed DMM ranges, allow more settling time, or increase Initial Voltage carefully."
+                "Let the wire cool and use appropriate fixed T0 DMM ranges or improve the measurement contacts."
             )
 
         measured_current = float(
@@ -574,8 +592,8 @@ def calibrate_temperature_curve(r_vs_t, room_temp, config=None, emitter=None):
                     emitter,
                     f"T0 resistance scatter corresponds to {equivalent_spread:.2f} C, above the "
                     f"configured {warning_limit:.2f} C warning limit. The calibration anchor was saved, "
-                    "but temperature estimates for this low-TCR wire may fluctuate. Increase Initial "
-                    "Voltage carefully or improve the measurement signal before starting the experiment.",
+                    "but temperature estimates for this low-TCR wire may fluctuate. Let the wire cool "
+                    "and improve the measurement signal while keeping T0 current low before starting the experiment.",
                 )
         return calibrated
 

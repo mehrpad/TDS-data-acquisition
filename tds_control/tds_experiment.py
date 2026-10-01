@@ -187,6 +187,8 @@ CONTROL_DEFAULTS = {
     "t0_calibration_current": 0.05,
     "t0_current_search_start": 0.005,
     "t0_current_step": 0.001,
+    "t0_dmm_voltage_range_v": 0.2,
+    "t0_dmm_current_range_a": 0.02,
     "t0_settle_time_s": 3.0,
     "t0_calibration_samples": 5,
     "t0_warmup_samples": 1,
@@ -567,6 +569,12 @@ def build_control_config(config):
         if not np.isfinite(float(merged[name])) or float(merged[name]) < 0:
             raise ValueError(f"{name} must be finite and nonnegative.")
     _maximum_temperature(merged)
+    for name in ("t0_current_search_start", "t0_calibration_current", "t0_current_step"):
+        value = float(merged[name])
+        if not np.isfinite(value) or value < .001:
+            raise ValueError(f"{name} must be finite and at least 0.001 A (the PSU current resolution).")
+    if float(merged["t0_current_search_start"]) > float(merged["t0_calibration_current"]):
+        raise ValueError("T0 search start exceeds its calibration current ceiling; lower the start or review the ceiling explicitly.")
     ratio = float(merged["measurement_retry_consensus_ratio"])
     if not np.isfinite(ratio) or not 0 <= ratio <= 0.05:
         raise ValueError("measurement_retry_consensus_ratio must be finite and between 0 and 0.05.")

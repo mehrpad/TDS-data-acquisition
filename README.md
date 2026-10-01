@@ -321,6 +321,10 @@ For an unmeasured 50 um NiCr wire, `NiCr_50_provisional` provides an explicitly
 estimated table through 600 C and a matching estimated R(T) reference, based on
 diameter scaling of the existing NiCr profile. See [first measurement instructions](docs/NICR50_FIRST_TRIAL.md).
 
+All four wire profiles have independent T0 calibration settings: a 5 mA ceiling
+for 100 um wires and a 1 mA ceiling for 50 um wires. Initial Current controls
+experiment/tuning startup. See [low-current T0 calibration](docs/T0_WIRE_CALIBRATION.md).
+
 Autosave runs in a background thread so disk writing does not block experiment control.
 The `P` / `sample_power` column records `|Vsample x I|` in watts.
 The `R_ohm` / `calculated_resistance` value records the corrected Kelvin resistance

@@ -179,9 +179,11 @@ CONFIG_GROUPS = [
     (
         "T0 calibration",
         [
-            ("t0_calibration_current", "Highest voltage allowed during T0 calibration."),
-            ("t0_current_search_start", "Starting PSU voltage for the T0 stable-current search."),
-            ("t0_current_step", "Voltage increment used during the T0 stable-current search."),
+            ("t0_calibration_current", "Strict highest commanded current in amps during T0 calibration. Equal to search start disables upward searching."),
+            ("t0_current_search_start", "Starting PSU current in amps for T0 calibration, independent of experiment Initial Current; minimum programmable setting is 0.001 A."),
+            ("t0_current_step", "Current increment in amps during the bounded T0 search; minimum programmable increment is 0.001 A."),
+            ("t0_dmm_voltage_range_v", "Initial fixed voltage DMM range used only during T0 calibration; staged ranging can increase it if needed."),
+            ("t0_dmm_current_range_a", "Initial fixed current DMM range used only during T0 calibration; use 0.002 A for a 1 mA calibration."),
             ("t0_settle_time_s", "How long the sample is allowed to settle before T0 sampling."),
             ("t0_calibration_samples", "How many T0 samples are used for the final calibration point."),
             ("t0_warmup_samples", "How many initial T0 samples are discarded as warmup."),
