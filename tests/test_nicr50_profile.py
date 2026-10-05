@@ -32,7 +32,8 @@ class NiCr50ProfileTests(unittest.TestCase):
         self.assertEqual(provenance['run123_review']['rejected_cycles'], 42)
         for point, original in zip(profile["current_feedforward_table"][1:], donor["current_feedforward_table"][1:]):
             self.assertEqual(point["temperature_c"], original["temperature_c"])
-            self.assertAlmostEqual(point["current_a"], original["current_a"]*.30, places=8)
+            self.assertAlmostEqual(point["estimated_wire_current_a"], original["current_a"]*.30, places=8)
+            self.assertAlmostEqual(point["current_a"], point["estimated_wire_current_a"]*10, places=8)
         for name in ("NiCr_50_current_table.csv", "NiCr_50_R_vs_T_estimated.csv"):
             with (PROFILE.parent/name).open() as stream:
                 self.assertEqual({r["measured_on_this_wire"] for r in csv.DictReader(stream)}, {"False"})
@@ -48,8 +49,10 @@ class NiCr50ProfileTests(unittest.TestCase):
         self.assertEqual(float(model(model.x[-1])), 600.)
         current = ctl.current_feedforward_for_temperature(config, 600.)
         self.assertLess(current, .95*config["max_current"])
-        self.assertLess(current*model.x[-1], config["max_sample_voltage"])
-        self.assertLess(current**2*model.x[-1], config["max_power_w"])
+        wire_current = current / 10
+        self.assertLess(wire_current, config['max_wire_current_a'])
+        self.assertLess(wire_current*model.x[-1], config["max_sample_voltage"])
+        self.assertLess(wire_current**2*model.x[-1], config["max_power_w"])
         self.assertEqual(config["invalid_measurement_policy"], "backoff")
         with self.assertRaises(ctl.ExperimentSafetyError):
             ctl._enforce_temperature_safety(600.1, config)

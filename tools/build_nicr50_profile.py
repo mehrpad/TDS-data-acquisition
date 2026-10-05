@@ -17,6 +17,47 @@ RESISTANCE_SCALE = 4.
 DESIGN_REFERENCE = "https://prodshop.kanthal.com/en/knowledge-hub/heating-material-knowledge/design-calculations-and-standard-tolerances/design-calculations/"
 
 
+def add_parallel_divider(profile):
+    """Convert provisional wire currents to total PSU commands for a 10 Ohm shunt."""
+    result = copy.deepcopy(profile)
+    parallel, nominal_wire = 10.0, 90.0
+    factor = 1.0 + nominal_wire / parallel
+    for index, point in enumerate(result["current_feedforward_table"]):
+        # Preserve the lowest hardware command at the cold anchor: its wire
+        # current becomes ~100 uA instead of preserving the old 1 mA heating.
+        wire = float(point["current_a"]) if index else .001 / factor
+        point.update(current_a=round(wire * factor, 9), estimated_wire_current_a=wire)
+    result.update(
+        parallel_resistance_ohm=parallel, max_wire_current_a=.03,
+        max_current=.30, max_power_w=.10, max_sample_voltage=3.0, compliance_voltage=3.0,
+        minimum_current_a=.000001,
+        dmm_current_range_a=.0002, t0_dmm_current_range_a=.0002, dmm_voltage_range_v=.2,
+        t0_stable_current_a=.00001,
+        pid_kp=profile["pid_kp"] * factor, pid_ki=profile["pid_ki"] * factor,
+        pid_integral_current_limit_a=profile["pid_integral_current_limit_a"] * factor,
+    )
+    provenance = result["current_feedforward_provenance"]
+    provenance["parallel_divider"] = {
+        "parallel_resistance_ohm": parallel, "nominal_wire_resistance_ohm": nominal_wire,
+        "nominal_total_to_wire_current_ratio": factor,
+        "table_current_units": "total PSU amperes",
+        "estimated_wire_current_units": "wire-branch amperes",
+        "resistor_minimum_power_rating_w": 2.0,
+        "resistor_max_power_at_compliance_w": result["compliance_voltage"] ** 2 / parallel,
+        "method": "I_PSU = I_wire * (1 + 90 Ohm / 10 Ohm); first point remains the minimum 1 mA total command. PI gains and integral limit multiplied by 10; slew steps unchanged.",
+        "limitations": "Nominal conversion only: wire resistance changes with temperature and ammeter/lead burden adds branch resistance. Temperature feedback must correct the difference. No divider measurements or validated tuning yet.",
+        "required_wiring": "10 Ohm / at least 2 W resistor outside the chamber across PSU output terminals; ammeter only in wire branch, Kelvin voltmeter only across wire. PSU sense at PSU terminals.",
+    }
+    provenance["electrical_limits"] = {
+        "max_total_psu_current_a": .30, "max_wire_current_a": .03,
+        "max_power_w": .10, "max_sample_voltage_v": 3.0, "compliance_voltage_v": 3.0,
+        "method": "Total command headroom for the estimated divider table; reduced voltage compliance bounds parallel resistor dissipation to 0.9 W nominal. Separate raw wire-current cutoff.",
+    }
+    provenance["startup_anchor"] = "23 C / 1 mA total PSU command, approximately 0.1 mA wire current with the 10 Ohm parallel resistor; not measured equilibrium"
+    provenance["method"] += "; total PSU commands multiplied by nominal 10:1 divider ratio, with the cold anchor kept at 1 mA total"
+    return result
+
+
 def build_profile(donor, source_curve):
     if donor.get("profile_name") != "NiCr_100_163":
         raise ValueError("Expected the existing 100 um NiCr profile, not a Ni profile.")
@@ -83,14 +124,14 @@ def build_profile(donor, source_curve):
             "method": "Initial trial headroom above the estimated 25 mA bias; software limits, not verified wire ratings"},
         "limitations": "No reliable 50 um NiCr current-table calibration or validated PI tuning. Run 121 showed large measurement scatter below 100 C and a raw-temperature cutoff spike. Assumed matching alloy is essential; cold-resistance calibration cannot fix a different TCR. The donor R(T) ends at 293.4 C; higher indicated temperatures are extrapolated. No guarantee of physical temperature accuracy or smooth tracking to 600 C. Replace these estimates after reliable measurement.",
     }
-    return result
+    return add_parallel_divider(result)
 
 
 def write_outputs(profile, source_curve, output):
     output.mkdir(parents=True, exist_ok=True)
     (output/(PROFILE_NAME + ".json")).write_text(json.dumps(profile, indent=2, sort_keys=True)+"\n", encoding="utf-8")
     with (output/(PROFILE_NAME + "_current_table.csv")).open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.DictWriter(stream, fieldnames=["temperature_c", "current_a", "measured_on_this_wire"])
+        writer = csv.DictWriter(stream, fieldnames=["temperature_c", "current_a", "estimated_wire_current_a", "measured_on_this_wire"])
         writer.writeheader()
         writer.writerows({**point, "measured_on_this_wire": False} for point in profile["current_feedforward_table"])
     with source_curve.open(newline="", encoding="utf-8") as stream:

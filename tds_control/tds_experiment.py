@@ -16,6 +16,8 @@ CONTROL_DEFAULTS = {
     "experiment_mode": "TEMPERATURE",
     "compliance_voltage": 30.0,
     "max_current": 1.0,
+    "max_wire_current_a": 0.0,
+    "parallel_resistance_ohm": 0.0,
     "max_sample_voltage": 15.0,
     "max_power_w": 10.0,
     "max_temperature_c": 1000.0,
@@ -292,14 +294,38 @@ def _enforce_temperature_safety(temperature, config):
         )
 
 
+def _maximum_wire_current(config):
+    """Wire-branch cutoff; zero preserves the direct-connected current limit."""
+    wire_limit = float(config.get("max_wire_current_a", 0.0))
+    if not np.isfinite(wire_limit) or wire_limit < 0:
+        raise ValueError("max_wire_current_a must be finite and nonnegative.")
+    return min(wire_limit, float(config["max_current"])) if wire_limit else float(config["max_current"])
+
+
+def _enforce_wire_current_safety(measured_current, config):
+    limit = _maximum_wire_current(config)
+    if np.isfinite(measured_current) and abs(float(measured_current)) > limit:
+        raise ExperimentSafetyError(
+            f"Measured current {measured_current:.4e} A exceeded wire current limit {limit:.4e} A."
+        )
+
+
+def _wire_current_step_margin(measured_voltage, measured_current, config):
+    """Reserve DMM headroom for the wire's share of the next total PSU step."""
+    step = float(config.get("max_current_step_up", 0.01)) * current_step_scale(config)
+    parallel = float(config.get("parallel_resistance_ohm", 0.0))
+    if parallel > 0 and np.isfinite(measured_voltage) and np.isfinite(measured_current) and abs(measured_current) > 0:
+        # Kelvin resistance excludes ammeter/lead burden. Ignoring that burden
+        # overestimates the step reaching the wire, leaving conservative headroom.
+        resistance = abs(measured_voltage / measured_current)
+        step *= parallel / (parallel + resistance)
+    return step
+
+
 def _enforce_electrical_safety(measured_voltage, measured_current, config):
     if not np.isfinite(measured_voltage) or not np.isfinite(measured_current):
         return
-    if abs(float(measured_current)) > float(config["max_current"]):
-        raise ExperimentSafetyError(
-            f"Measured current {measured_current:.4e} A exceeded max_current "
-            f"{float(config['max_current']):.4e} A."
-        )
+    _enforce_wire_current_safety(measured_current, config)
     max_sample_voltage = float(config.get("max_sample_voltage", CONTROL_DEFAULTS["max_sample_voltage"]))
     if not np.isfinite(max_sample_voltage) or max_sample_voltage <= 0:
         raise ValueError("max_sample_voltage must be positive and finite.")
@@ -567,6 +593,12 @@ def build_control_config(config):
     merged = migrate_legacy_config(config)
     for key, value in CONTROL_DEFAULTS.items():
         merged.setdefault(key, value)
+    _maximum_wire_current(merged)
+    parallel = float(merged["parallel_resistance_ohm"])
+    if not np.isfinite(parallel) or parallel < 0:
+        raise ValueError("parallel_resistance_ohm must be finite and nonnegative.")
+    if parallel > 0 and float(merged["max_wire_current_a"]) <= 0:
+        raise ValueError("A parallel resistor requires an explicit max_wire_current_a cutoff.")
     if merged.get("invalid_measurement_policy") not in ("hold", "backoff", "legacy"):
         raise ValueError("invalid_measurement_policy must be hold, backoff or legacy.")
     for name in ("current_settle_time_s", "measurement_retry_temperature_jump_c",
@@ -1194,7 +1226,9 @@ def _record_control_diagnostics(saver, config, controller, raw_temperature, filt
         "output_limited": abs(controller.requested_output - accepted) > .0005 if status == "accepted" else None,
         "current_limit_active": bool(getattr(controller, "current_limit_active", False)) if status == "accepted" else None,
         "configured_max_current_a": config["max_current"],
-        "measured_current_increase_guard_a": .95 * config["max_current"],
+        "configured_max_wire_current_a": _maximum_wire_current(config),
+        "parallel_resistance_ohm": config.get("parallel_resistance_ohm", 0.0),
+        "measured_current_increase_guard_a": .95 * _maximum_wire_current(config),
         "configured_max_power_w": config["max_power_w"],
         "configured_max_temperature_c": _maximum_temperature(config),
         "voltage_range_v": config.get("_active_dmm_volt_range", config.get("dmm_voltage_range_v")),
@@ -1399,7 +1433,7 @@ def _advance_low_signal_current_recovery(
     if recovery.invalid_samples_since_step < observe_cycles:
         return float(applied_current), False
 
-    if not np.isfinite(measured_current) or abs(measured_current) >= 0.95 * float(config["max_current"]):
+    if not np.isfinite(measured_current) or abs(measured_current) >= 0.95 * _maximum_wire_current(config):
         return float(applied_current), False
 
     current_step = max(float(config.get("low_signal_recovery_current_step", 0.01)), 0.0)
@@ -1645,10 +1679,7 @@ def _compute_next_current(
     integrate=True,
 ):
     control_min_current = _measurement_current_floor(config)
-    if abs(measured_current) > config["max_current"]:
-        raise ExperimentSafetyError(
-            f"Measured current {measured_current:.4e} A exceeded max_current {config['max_current']:.4e} A."
-        )
+    _enforce_wire_current_safety(measured_current, config)
 
     _enforce_temperature_safety(temperature, config)
     if temperature > target_temperature + config["safety_temp_margin_c"]:
@@ -1684,13 +1715,13 @@ def _compute_next_current(
     if not np.isfinite(requested_current):
         raise ExperimentSafetyError("PI/PID requested a non-finite current.")
     was_current_limited = getattr(pid_controller, "current_limit_active", False)
-    guard_blocks_increase = (abs(measured_current) >= 0.95 * config["max_current"]
+    guard_blocks_increase = (abs(measured_current) >= 0.95 * _maximum_wire_current(config)
                              and requested_current > present_current)
     pid_controller.current_limit_active = bool(
         guard_blocks_increase or pid_controller.requested_output > config["max_current"])
     if pid_controller.current_limit_active and not was_current_limited:
         print(f"CURRENT LIMIT: measured {measured_current:.6f} A; "
-              f"increase guard {0.95 * config['max_current']:.6f} A; "
+              f"wire increase guard {0.95 * _maximum_wire_current(config):.6f} A; "
               f"configured ceiling {config['max_current']:.6f} A. "
               "Temperature may lag the target while current is limited.")
     if guard_blocks_increase:
@@ -1927,7 +1958,7 @@ def _temperature_jump_probe_voltage(direction, applied_current, measured_current
     if direction == "up":
         return _clamp(applied_current - step, lower_bound, float(config["max_current"]))
 
-    if not np.isfinite(measured_current) or abs(measured_current) >= 0.95 * float(config["max_current"]):
+    if not np.isfinite(measured_current) or abs(measured_current) >= 0.95 * _maximum_wire_current(config):
         return float(applied_current)
     return _clamp(applied_current + step, lower_bound, float(config["max_current"]))
 
@@ -2069,6 +2100,13 @@ def prepare_power_supply_output(power_supply, config):
         f"Power supply output enabled in constant-current mode at keep-alive current "
         f"{keepalive_current:.6f} A with {compliance_voltage:.3f} V compliance."
     )
+    if config.get("parallel_resistance_ohm", 0.0) > 0:
+        print(
+            f"Parallel divider: {config['parallel_resistance_ohm']:g} Ohm across PSU terminals. "
+            "All current commands/table entries are total PSU current; DMM current and power are wire-branch values. "
+            f"Wire cutoff={_maximum_wire_current(config):g} A. "
+            "Connect the ammeter in the wire branch and Kelvin voltage leads directly across the wire."
+        )
 
 
 def _shutdown_instruments(dmm_v, dmm_i, power_supply, resource_manager):
@@ -2164,10 +2202,7 @@ def curve_sweep(emitter, sweep_params, r_vs_t, config, data_saver=None):
                 previous_resistance=previous_resistance,
                 power_supply=power_supply,
             )
-            if abs(measured_current) > config["max_current"]:
-                raise ExperimentSafetyError(
-                    f"Measured current {measured_current:.4e} A exceeded max_current {config['max_current']:.4e} A."
-                )
+            _enforce_wire_current_safety(measured_current, config)
             if not np.isfinite(temperature):
                 raise ExperimentSafetyError(
                     "Curve sweep produced a temperature outside the configured R vs. T conversion range."
@@ -2846,7 +2881,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                         and np.isfinite(previous_temperature)
                         and np.isfinite(measured_voltage)
                         and np.isfinite(measured_current)
-                        and abs(measured_current) <= config["max_current"]
+                        and abs(measured_current) <= _maximum_wire_current(config)
                     )
                     if can_reuse_last_temperature:
                         invalid_reuse_streak += 1
@@ -2912,7 +2947,7 @@ def tds(emitter, experiment_params, r_vs_t, config, t_zero, data_saver=None):
                         )
                         recovery_current_limited = (
                             np.isfinite(measured_current)
-                            and abs(measured_current) >= 0.95 * config["max_current"]
+                            and abs(measured_current) >= 0.95 * _maximum_wire_current(config)
                         )
                         if invalid_hot_hint:
                             pid_current = min(
@@ -3411,7 +3446,7 @@ def _measure_resistivity_once(
                 force_next=current_overload,
                 # T0 has no experiment-sized step pending. Reserving a 1 mA
                 # heating step on a 2 mA T0 range needlessly loses sensitivity.
-                step_margin=0.0 if calibration else float(config.get("max_current_step_up", 0.01)) * current_step_scale(config),
+                step_margin=0.0 if calibration else _wire_current_step_margin(measured_voltage, measured_current, config),
             )
             if voltage_range_change is None and current_range_change is None:
                 if voltage_overload or current_overload:

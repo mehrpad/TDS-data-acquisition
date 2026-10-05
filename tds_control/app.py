@@ -945,6 +945,12 @@ class Ui_TDS(object):
         Reflects self.config, so it updates immediately after a tune (or a
         config/profile load) rather than only showing whatever was tuned last.
         """
+        divider = float(self.config.get('parallel_resistance_ohm', 0.0))
+        self.label_178.setText('Max PSU Current (A)' if divider else 'Max Current (A)')
+        self.max_current.setToolTip(
+            f'Total PSU current limit. Wire-branch cutoff: {tds_experiment._maximum_wire_current(self.config):g} A.'
+            if divider else 'Maximum commanded and measured current.'
+        )
         controller_mode = tds_experiment.get_controller_mode(self.config)
         schedule = self.config.get('pid_gain_schedule') or []
         kp = float(self.config.get('pid_kp', 0.0))
@@ -1152,6 +1158,10 @@ class Ui_TDS(object):
                     f"trial limit {self.config.get('trial_max_temperature_c', 0):g} C.")
         t0_note = (f" T0 starts at {self.config['t0_current_search_start']:g} A, "
                    f"ceiling {self.config['t0_calibration_current']:g} A.")
+        if self.config.get('parallel_resistance_ohm', 0.0) > 0:
+            note += (f" Requires {self.config['parallel_resistance_ohm']:g} Ohm / at least 2 W parallel resistor. "
+                     "Initial current, PI gains and table are total PSU current; displayed current/power are wire values. "
+                     f"Wire cutoff {tds_experiment._maximum_wire_current(self.config):g} A.")
         self.error_message(f'Loaded material profile "{name}". Recalibrate T. Zero.{t0_note}{note}', color='black')
 
     def apply_experiment_mode_ui(self):
