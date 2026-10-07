@@ -29,22 +29,22 @@ class ParallelDividerTests(unittest.TestCase):
         with self.assertRaisesRegex(ctl.ExperimentSafetyError, 'wire current limit'):
             ctl._enforce_electrical_safety(2.79, .031, self.config)
         self.assertEqual(ctl._maximum_wire_current(self.config), .03)
-        self.assertEqual(self.config['max_current'], .30)
+        self.assertEqual(self.config['max_current'], .18)
 
     def test_wire_current_guard_blocks_total_current_increase(self):
         controller = PIDController(.001, 0., 0., 300.)
         self.config.update(pid_kp=.001, pid_ki=0., pid_integral_time_s=0.,
                            max_current_step_up=.01)
-        command = ctl._compute_next_current(controller, 290., 300., .15, .029,
+        command = ctl._compute_next_current(controller, 290., 300., .08, .029,
                                             600., None, 10., self.config, 2.)
-        self.assertLessEqual(command, .15)
+        self.assertLessEqual(command, .08)
         self.assertTrue(controller.current_limit_active)
         with self.assertRaises(ctl.ExperimentSafetyError):
             ctl._compute_next_current(controller, 290., 300., .20, .031,
                                       600., None, 10., self.config, 2.)
 
     def test_headroom_uses_wire_fraction_of_total_psu_step(self):
-        self.assertAlmostEqual(ctl._wire_current_step_margin(.009, .0001, self.config), .0001)
+        self.assertAlmostEqual(ctl._wire_current_step_margin(.009, .0001, self.config), .001*20/110)
         direct = ctl.build_control_config({})
         self.assertEqual(ctl._wire_current_step_margin(.009, .0001, direct), direct['max_current_step_up'])
 
@@ -59,12 +59,12 @@ class ParallelDividerTests(unittest.TestCase):
 
     def test_cold_command_stays_at_one_ma_total_and_divider_rating_has_headroom(self):
         self.assertEqual(ctl.current_feedforward_for_temperature(self.config, 23.), .001)
-        self.assertAlmostEqual(self.config['current_feedforward_table'][0]['estimated_wire_current_a'], .0001)
+        self.assertNotIn('wire_current_a', self.config['current_feedforward_table'][0])
         info = self.config['current_feedforward_provenance']['parallel_divider']
         self.assertLess(self.config['compliance_voltage']**2 / self.config['parallel_resistance_ohm'],
                         info['resistor_minimum_power_rating_w'])
-        self.assertAlmostEqual(self.config['pid_kp'], .00015)
-        self.assertAlmostEqual(self.config['pid_ki'], .000001)
+        self.assertAlmostEqual(self.config['pid_kp'], .0000825)
+        self.assertAlmostEqual(self.config['pid_ki'], .00000055)
         self.assertEqual(self.config['t0_calibration_current'], .001)
 
 

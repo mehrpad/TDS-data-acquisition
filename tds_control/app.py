@@ -1159,7 +1159,8 @@ class Ui_TDS(object):
         t0_note = (f" T0 starts at {self.config['t0_current_search_start']:g} A, "
                    f"ceiling {self.config['t0_calibration_current']:g} A.")
         if self.config.get('parallel_resistance_ohm', 0.0) > 0:
-            note += (f" Requires {self.config['parallel_resistance_ohm']:g} Ohm / at least 2 W parallel resistor. "
+            rating = provenance.get('parallel_divider', {}).get('resistor_minimum_power_rating_w', 2.0)
+            note += (f" Requires {self.config['parallel_resistance_ohm']:g} Ohm / at least {rating:g} W parallel resistor bank. "
                      "Initial current, PI gains and table are total PSU current; displayed current/power are wire values. "
                      f"Wire cutoff {tds_experiment._maximum_wire_current(self.config):g} A.")
         self.error_message(f'Loaded material profile "{name}". Recalibrate T. Zero.{t0_note}{note}', color='black')

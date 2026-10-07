@@ -325,11 +325,14 @@ After run 121, this profile uses paired-reading averaging and lower gains to
 reduce low-TCR measurement noise; see [the findings and follow-up](docs/NICR50_RUN_121.md).
 After run 123, Initial Current can lower a profile's measurement floor and
 the thin NiCr profile starts at 1 mA. See [the data review and updated filenames](docs/NICR50_RUN_123.md).
-The current `NiCr_50` profile requires a **10 Ohm parallel resistor rated at least 2 W**
-outside the chamber. Its table, PI gains and current commands use total PSU current;
+The current `NiCr_50` profile requires a **20 Ohm parallel resistor bank rated at least 1.25 W**
+outside the chamber (five 100 Ohm / 0.25 W resistors in parallel). Run 127 supplies
+the updated ramp current table; its temperature axis remains inferred from the existing R(T) curve.
+Its table, PI gains and current commands use total PSU current;
 the ammeter remains in the wire branch and voltage sensing remains directly across the wire.
-T0/startup at 1 mA total supplies approximately 0.1 mA to a 90 Ohm wire.
+T0/startup at 1 mA total supplies approximately 0.19 mA to an 85.6 Ohm wire.
 See [divider wiring, limits and the next measurement](docs/NICR50_PARALLEL_DIVIDER.md).
+See [run 127 findings and table derivation](docs/NICR50_RUN_127.md) for the overshoot and temperature-limit shutdown.
 
 All four wire profiles have independent T0 calibration settings: a 5 mA ceiling
 for 100 um wires and a 1 mA ceiling for 50 um wires. Initial Current controls

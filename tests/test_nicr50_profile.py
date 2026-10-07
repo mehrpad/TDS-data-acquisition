@@ -15,28 +15,32 @@ PROFILE = ROOT/"files/material_profiles/NiCr_50.json"
 
 
 class NiCr50ProfileTests(unittest.TestCase):
-    def test_estimates_are_labelled_and_use_nicr_donor_not_ni(self):
+    def test_run127_table_is_labelled_separately_from_estimated_temperature_curve(self):
         profile = json.loads(PROFILE.read_text())
-        donor = json.loads((ROOT/"files/material_profiles/NiCr_100_163.json").read_text())
         provenance = profile["current_feedforward_provenance"]
-        self.assertFalse(provenance["measured_on_this_wire"])
-        self.assertEqual(provenance["measured_temperature_range_c"], [])
+        self.assertTrue(provenance["measured_on_this_wire"])
+        self.assertFalse(provenance['independent_temperature_calibration'])
+        self.assertFalse(provenance['measured_final_hold'])
         self.assertFalse(provenance["wire_length_known"])
-        self.assertEqual(provenance["source_profile"], donor["profile_name"])
+        self.assertEqual(provenance["source_run"], '127_test')
+        self.assertEqual(profile['parallel_resistance_ohm'], 20.)
         self.assertEqual(profile["current_feedforward_table"][0]["current_a"], .001)
         self.assertEqual(profile["profile_name"], "NiCr_50")
         for key in ('startup_current', 'measurement_current_floor', 'tuning_start_current',
                     't0_current_search_start', 't0_calibration_current'):
             self.assertEqual(profile[key], .001)
-        self.assertFalse(provenance['run123_review']['table_recalibrated'])
-        self.assertEqual(provenance['run123_review']['rejected_cycles'], 42)
-        for point, original in zip(profile["current_feedforward_table"][1:], donor["current_feedforward_table"][1:]):
-            self.assertEqual(point["temperature_c"], original["temperature_c"])
-            self.assertAlmostEqual(point["estimated_wire_current_a"], original["current_a"]*.30, places=8)
-            self.assertAlmostEqual(point["current_a"], point["estimated_wire_current_a"]*10, places=8)
-        for name in ("NiCr_50_current_table.csv", "NiCr_50_R_vs_T_estimated.csv"):
-            with (PROFILE.parent/name).open() as stream:
-                self.assertEqual({r["measured_on_this_wire"] for r in csv.DictReader(stream)}, {"False"})
+        points = profile['current_feedforward_table']
+        self.assertTrue(all(p['measured_on_this_wire'] for p in points[1:-1]))
+        self.assertFalse(points[-1]['measured_on_this_wire'])
+        self.assertTrue(all(b['temperature_c'] > a['temperature_c'] and b['current_a'] >= a['current_a']
+                            for a,b in zip(points,points[1:])))
+        self.assertLess(points[-1]['current_a'], .16)
+        with (PROFILE.parent/'NiCr_50_R_vs_T_estimated.csv').open() as stream:
+            self.assertEqual({r['measured_on_this_wire'] for r in csv.DictReader(stream)}, {'False'})
+        with (PROFILE.parent/'NiCr_50_current_table.csv').open() as stream:
+            rows = list(csv.DictReader(stream))
+        self.assertEqual(len(rows),len(points))
+        self.assertEqual({r['measured_on_this_wire'] for r in rows}, {'False','True'})
 
     def test_profile_and_curve_allow_600_with_headroom_and_preserve_cutoff(self):
         config = ctl.build_control_config(json.loads(PROFILE.read_text()))
@@ -49,7 +53,7 @@ class NiCr50ProfileTests(unittest.TestCase):
         self.assertEqual(float(model(model.x[-1])), 600.)
         current = ctl.current_feedforward_for_temperature(config, 600.)
         self.assertLess(current, .95*config["max_current"])
-        wire_current = current / 10
+        wire_current = config['current_feedforward_table'][-1]['wire_current_a']
         self.assertLess(wire_current, config['max_wire_current_a'])
         self.assertLess(wire_current*model.x[-1], config["max_sample_voltage"])
         self.assertLess(wire_current**2*model.x[-1], config["max_power_w"])

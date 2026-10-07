@@ -18,20 +18,23 @@ DESIGN_REFERENCE = "https://prodshop.kanthal.com/en/knowledge-hub/heating-materi
 
 
 def add_parallel_divider(profile):
-    """Convert provisional wire currents to total PSU commands for a 10 Ohm shunt."""
+    """Fallback estimates for five 100 Ohm / 0.25 W resistors in parallel.
+
+    For the measured run-127 update, use update_nicr50_run_profile.py instead.
+    """
     result = copy.deepcopy(profile)
-    parallel, nominal_wire = 10.0, 90.0
+    parallel, nominal_wire = 20.0, 90.0
     factor = 1.0 + nominal_wire / parallel
     for index, point in enumerate(result["current_feedforward_table"]):
         # Preserve the lowest hardware command at the cold anchor: its wire
-        # current becomes ~100 uA instead of preserving the old 1 mA heating.
+        # current becomes ~182 uA instead of preserving the old 1 mA heating.
         wire = float(point["current_a"]) if index else .001 / factor
         point.update(current_a=round(wire * factor, 9), estimated_wire_current_a=wire)
     result.update(
         parallel_resistance_ohm=parallel, max_wire_current_a=.03,
-        max_current=.30, max_power_w=.10, max_sample_voltage=3.0, compliance_voltage=3.0,
+        max_current=.18, max_power_w=.10, max_sample_voltage=3.0, compliance_voltage=3.0,
         minimum_current_a=.000001,
-        dmm_current_range_a=.0002, t0_dmm_current_range_a=.0002, dmm_voltage_range_v=.2,
+        dmm_current_range_a=.002, t0_dmm_current_range_a=.002, dmm_voltage_range_v=.2,
         t0_stable_current_a=.00001,
         pid_kp=profile["pid_kp"] * factor, pid_ki=profile["pid_ki"] * factor,
         pid_integral_current_limit_a=profile["pid_integral_current_limit_a"] * factor,
@@ -42,19 +45,19 @@ def add_parallel_divider(profile):
         "nominal_total_to_wire_current_ratio": factor,
         "table_current_units": "total PSU amperes",
         "estimated_wire_current_units": "wire-branch amperes",
-        "resistor_minimum_power_rating_w": 2.0,
+        "resistor_minimum_power_rating_w": 1.25,
         "resistor_max_power_at_compliance_w": result["compliance_voltage"] ** 2 / parallel,
-        "method": "I_PSU = I_wire * (1 + 90 Ohm / 10 Ohm); first point remains the minimum 1 mA total command. PI gains and integral limit multiplied by 10; slew steps unchanged.",
+        "method": "I_PSU = I_wire * (1 + 90 Ohm / 20 Ohm); first point remains the minimum 1 mA total command. PI gains and integral limit multiplied by 5.5; slew steps unchanged.",
         "limitations": "Nominal conversion only: wire resistance changes with temperature and ammeter/lead burden adds branch resistance. Temperature feedback must correct the difference. No divider measurements or validated tuning yet.",
-        "required_wiring": "10 Ohm / at least 2 W resistor outside the chamber across PSU output terminals; ammeter only in wire branch, Kelvin voltmeter only across wire. PSU sense at PSU terminals.",
+        "required_wiring": "Five 100 Ohm / 0.25 W resistors in parallel outside chamber (20 Ohm / 1.25 W); branch ammeter, Kelvin voltage across wire, PSU sense at PSU terminals.",
     }
     provenance["electrical_limits"] = {
-        "max_total_psu_current_a": .30, "max_wire_current_a": .03,
+        "max_total_psu_current_a": .18, "max_wire_current_a": .03,
         "max_power_w": .10, "max_sample_voltage_v": 3.0, "compliance_voltage_v": 3.0,
-        "method": "Total command headroom for the estimated divider table; reduced voltage compliance bounds parallel resistor dissipation to 0.9 W nominal. Separate raw wire-current cutoff.",
+        "method": "Total command headroom for the estimated divider table; 3 V compliance bounds parallel resistor dissipation to 0.45 W nominal. Separate raw wire-current cutoff.",
     }
-    provenance["startup_anchor"] = "23 C / 1 mA total PSU command, approximately 0.1 mA wire current with the 10 Ohm parallel resistor; not measured equilibrium"
-    provenance["method"] += "; total PSU commands multiplied by nominal 10:1 divider ratio, with the cold anchor kept at 1 mA total"
+    provenance["startup_anchor"] = "23 C / 1 mA total PSU command, approximately 0.182 mA wire current with the 20 Ohm parallel resistor; not measured equilibrium"
+    provenance["method"] += "; total PSU commands multiplied by nominal 5.5:1 divider ratio, with the cold anchor kept at 1 mA total"
     return result
 
 
