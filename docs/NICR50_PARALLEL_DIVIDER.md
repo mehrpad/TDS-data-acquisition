@@ -1,7 +1,8 @@
 # 50 µm NiCr with a 20 Ω parallel resistor bank
 
-Load the updated `NiCr_50.json` explicitly in the GUI. Its current table uses
-run 127 with five 100 Ω / 0.25 W resistors in parallel: **20 Ω / 1.25 W nominal**.
+Load the updated `NiCr_50.json` explicitly in the GUI. The profile now uses
+run 130's flat PI and a partial bias update, retaining information from run 127.
+The bank is five 100 Ω / 0.25 W resistors in parallel: **20 Ω / 1.25 W nominal**.
 Other material profiles are unchanged.
 
 ## Wiring
@@ -20,7 +21,8 @@ PSU + --------+                         +-------- PSU -
 ## Current table and limits
 
 Table `current_a`, GUI Initial/Max PSU Current, PI outputs and slew commands are
-**total PSU amperes**. The CSV separately records measured `wire_current_a`.
+**total PSU amperes**. The CSV separately records `wire_current_a`, measured for
+observed rows and estimated for adjusted higher-temperature rows.
 Applied commands are paired with the readings they produced; they are not
 independently measured total PSU currents.
 
@@ -30,45 +32,45 @@ affect this ratio. The new table uses observed commands rather than a fixed
 conversion. The cold anchor is **0.001 A total at 23 °C**, approximately **0.19 mA
 wire current**, and is not a measured equilibrium point.
 
-Run 127 supplies the observed ramp bins at approximately 74–590 °C indicated.
-After run 129, the near-flat 331–429 °C bias segment is replaced by engineering
-I² interpolation between unchanged observed anchors. Its interior current and
-wire-current estimates are labelled unmeasured; the original observations remain
-in JSON provenance. Run 129 is not used as thermal calibration because its T0
-scatter was 92.42 °C. The small extension
-to 600 °C estimates **0.15524 A total / 0.02656 A wire**. No final hold was measured.
+Run 130 supplies provisional ramp bins at approximately 131–198 °C indicated.
+Below 120 °C, the prior run-127 points are retained. Higher-temperature bias
+keeps the earlier shape plus an approximately 20 mA command offset and a rising
+I² join to 249 °C. All adjusted higher-temperature currents are labelled estimates;
+previous observations remain in JSON provenance. The 600 °C estimate is
+**0.17538 A total / 0.03000 A wire**. No final hold was measured.
 Temperature uses the existing R(T) curve, extrapolated above 293.4 °C; the table
 does not independently validate physical temperature.
 
 | Setting | Value |
 | --- | --- |
-| Total PSU command ceiling | 0.18 A |
-| Raw measured wire-current cutoff | 0.03 A |
-| PSU compliance / sample-voltage cutoff | 3 V / 3 V |
-| Wire power cutoff (wire V × branch I) | 0.10 W |
+| Total PSU command ceiling | 3 A |
+| Raw measured wire-current cutoff | 3 A |
+| PSU compliance / sample-voltage cutoff | 5 V / 5 V |
+| Wire power cutoff (wire V × branch I) | 15 W |
 | Indicated temperature cutoff / target ceiling | 600 °C / 600 °C |
-| Startup gains (table bias ≤40 mA): Kp / Ki / Ti | 0.0000825 A/°C / 0.00000055 A/(°C·s) / 150 s |
-| Higher-current gains (table bias ≥70 mA): Kp / Ki / Ti | 0.000165 A/°C / 0.00000165 A/(°C·s) / 100 s |
-| Gain transition | Linear interpolation from 40 to 70 mA table bias |
-| Integral correction limit | ±0.18 A total; tied to PSU command ceiling |
+| Flat Kp / Ki / Ti from run 130 | 0.001 A/°C / 0.000001666666667 A/(°C·s) / 600 s |
+| Gain schedule | None |
+| Integral correction limit | ±3 A total; tied to PSU command ceiling |
 | Temperature prediction | 5 s |
 | Current slew steps | 0.001 A total |
 | Current switching hysteresis | 0.0001 A total |
 | T0 / startup total current | 0.001 A |
 | T0 paired samples per measurement | 15 |
+| Final T0 calibration samples | 9 |
 | Startup/T0 current-DMM range | 2 mA |
 | Startup/T0 voltage-DMM range | 0.2 V |
 
-At 3 V, bank dissipation is at most **0.45 W nominal**, or **0.09 W per resistor**.
-The 1.25 W summed rating assumes suitable cooling and mounting for each resistor.
-Keep 3 V compliance; 30 V would permit 45 W in this bank. A missing bank is not
-detected before output enable. Raw wire-current, power and temperature guards
-remain active on every measurement pair.
+At 5 V, bank dissipation is **1.25 W nominal**, or **0.25 W per resistor**, the
+full nominal rating with no margin. Use an adequately cooled higher-rated bank
+for sustained operation near 5 V. A 3 A ceiling does not make 3 A attainable
+through this load at 5 V; voltage compliance may prevent further current increase.
+These are user-selected ceilings, not verified wire ratings. A missing bank is
+not detected before output enable. Raw electrical and temperature guards remain.
 
 ## Next measurement
 
-Cool the wire and recalibrate T0 with this wiring. Run 127's T0 spread was
-7.32 °C, above the 5 °C warning threshold; startup accuracy remains uncertain.
+Cool the wire and recalibrate T0 with this wiring. Run 130's T0 spread was
+82.37 °C, above the 5 °C warning threshold; startup accuracy remains uncertain.
 If scatter persists, check the measurement chain with a stable precision resistor
 near 85–90 Ω. Record the active wire length and measured bank resistance.
 
@@ -79,6 +81,6 @@ trial; smooth tracking is not yet verified.
 
 See [run 127 findings and derivation](NICR50_RUN_127.md). Per-run logs and
 diagnostics record the settings and branch measurements.
-See [run 129 diagnosis and stronger correction](NICR50_RUN_129.md) for the
+See [run 130's current profile](NICR50_RUN_130.md) for the
 latest table adjustment and settings. A stable cold calibration is needed before
 assessing the physical temperature or rebuilding the thermal table.

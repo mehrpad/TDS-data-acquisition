@@ -13,6 +13,10 @@ PROFILE = Path(__file__).resolve().parents[1] / 'files/material_profiles/NiCr_50
 class ParallelDividerTests(unittest.TestCase):
     def setUp(self):
         self.config = ctl.build_control_config(json.loads(PROFILE.read_text()))
+        # Exercise the divider's independent low wire guard at the original
+        # limits; the current profile now has explicitly user-selected ceilings.
+        self.config.update(max_current=.18,max_wire_current_a=.03,max_power_w=.1,
+                           max_sample_voltage=3.,compliance_voltage=3.)
 
     def test_resistance_and_power_use_wire_branch_not_total_psu_current(self):
         instrument = Mock()
@@ -64,8 +68,8 @@ class ParallelDividerTests(unittest.TestCase):
         self.assertLess(self.config['compliance_voltage']**2 / self.config['parallel_resistance_ohm'],
                         info['resistor_minimum_power_rating_w'])
         low_gains = ctl.pid_gains_for_current(self.config, .001)
-        self.assertAlmostEqual(low_gains[0], .0000825)
-        self.assertAlmostEqual(low_gains[1], .00000055)
+        self.assertAlmostEqual(low_gains[0], .001)
+        self.assertAlmostEqual(low_gains[1], .001/600)
         self.assertEqual(self.config['t0_calibration_current'], .001)
 
 

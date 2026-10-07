@@ -298,6 +298,9 @@ class Ui_TDS(object):
         self.material_profile_save_button.setStyleSheet("QPushButton{background: rgb(193, 193, 193)}")
         self.material_profile_save_button.setObjectName("material_profile_save_button")
         self.material_profile_layout.addWidget(self.material_profile_save_button)
+        self.voltage_limits_label = QtWidgets.QLabel(parent=self.centralwidget)
+        self.voltage_limits_label.setObjectName("voltage_limits_label")
+        self.gridLayout.addWidget(self.voltage_limits_label, 10, 0, 1, 2)
         self.gridLayout.addWidget(self.material_profile_row, 9, 1, 1, 1)
         self.gridLayout_5.addLayout(self.gridLayout, 0, 0, 1, 1)
         self.gridLayout_4 = QtWidgets.QGridLayout()
@@ -946,6 +949,10 @@ class Ui_TDS(object):
         config/profile load) rather than only showing whatever was tuned last.
         """
         divider = float(self.config.get('parallel_resistance_ohm', 0.0))
+        self.voltage_limits_label.setText(
+            f"Voltage limits: PSU {float(self.config['compliance_voltage']):g} V; "
+            f"sample {float(self.config['max_sample_voltage']):g} V")
+        self.max_power.setToolTip('Measured wire power limit (wire voltage × wire-branch current).')
         self.label_178.setText('Max PSU Current (A)' if divider else 'Max Current (A)')
         self.max_current.setToolTip(
             f'Total PSU current limit. Wire-branch cutoff: {tds_experiment._maximum_wire_current(self.config):g} A.'

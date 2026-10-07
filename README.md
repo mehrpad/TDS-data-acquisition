@@ -335,6 +335,10 @@ See [divider wiring, limits and the next measurement](docs/NICR50_PARALLEL_DIVID
 See [run 127 findings and table derivation](docs/NICR50_RUN_127.md) for the overshoot and temperature-limit shutdown.
 After run 129, a smoothed bias segment and stronger scheduled PI correction
 address sustained lag; see [the revised settings](docs/NICR50_RUN_129.md).
+The current revision uses run 130's manually improved flat PI values and a
+partial ramp-bias update around 130–200 C. Its user-selected ceilings are 5 V,
+3 A total/branch current and 15 W wire power; higher-temperature bias remains
+estimated. See [run 130 and the resistor-bank rating](docs/NICR50_RUN_130.md).
 
 All four wire profiles have independent T0 calibration settings: a 5 mA ceiling
 for 100 um wires and a 1 mA ceiling for 50 um wires. Initial Current controls

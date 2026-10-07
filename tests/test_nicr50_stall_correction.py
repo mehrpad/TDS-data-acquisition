@@ -13,6 +13,13 @@ PROFILE = Path(__file__).resolve().parents[1]/'files/material_profiles/NiCr_50.j
 class NiCr50StallCorrectionTests(unittest.TestCase):
     def setUp(self):
         self.profile = json.loads(PROFILE.read_text())
+        # Keep the original plateau regression reproducible after later profiles
+        # replace the trial gains; these tests cover the run-129 correction.
+        self.profile['current_feedforward_table'] = self.profile['current_feedforward_provenance']['run130_revision']['previous_table']
+        self.profile['current_feedforward_provenance']['source_run'] = '127_test'
+        self.profile.update(max_current=.18,max_wire_current_a=.03,max_power_w=.1,
+                            max_sample_voltage=3.,compliance_voltage=3.)
+        self.profile = retune_profile(self.profile)
         self.config = ctl.build_control_config(self.profile)
 
     def test_sustained_lag_continues_correction_beyond_twenty_ma_with_bounded_slew(self):

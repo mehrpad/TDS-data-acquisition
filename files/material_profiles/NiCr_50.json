@@ -1,314 +1,85 @@
 {
   "DMM_speed": 10,
-  "compliance_voltage": 3.0,
+  "compliance_voltage": 5.0,
   "controller_mode": "PI",
   "current_feedforward_provenance": {
     "bins": [
       {
-        "mean_tracking_error_c": 18.067168266299117,
-        "raw_rms_psu_command_a": 0.02207607168806241,
-        "rms_wire_current_a": 0.004072046575363465,
-        "samples": 17,
-        "temperature_bin_c": [
-          60,
-          80
-        ]
-      },
-      {
-        "mean_tracking_error_c": 24.857294867820734,
-        "raw_rms_psu_command_a": 0.027001388853168277,
-        "rms_wire_current_a": 0.004898503839565763,
-        "samples": 40,
-        "temperature_bin_c": [
-          80,
-          100
-        ]
-      },
-      {
-        "mean_tracking_error_c": 27.625978859210484,
-        "raw_rms_psu_command_a": 0.03375578654097694,
-        "rms_wire_current_a": 0.0061248367654106505,
-        "samples": 64,
-        "temperature_bin_c": [
-          100,
-          120
-        ]
-      },
-      {
-        "mean_tracking_error_c": 27.670987292248252,
-        "raw_rms_psu_command_a": 0.04301403139153227,
-        "rms_wire_current_a": 0.0077961300217389284,
-        "samples": 58,
+        "median_tracking_error_c": 6.969907875500908,
+        "samples": 84,
         "temperature_bin_c": [
           120,
           140
         ]
       },
       {
-        "mean_tracking_error_c": 33.17410757872263,
-        "raw_rms_psu_command_a": 0.050359095122315914,
-        "rms_wire_current_a": 0.009118070881367513,
-        "samples": 26,
+        "median_tracking_error_c": 3.154758668045929,
+        "samples": 57,
         "temperature_bin_c": [
           140,
           160
         ]
       },
       {
-        "mean_tracking_error_c": 41.59631352070225,
-        "raw_rms_psu_command_a": 0.05433257376039324,
-        "rms_wire_current_a": 0.00981764946707345,
-        "samples": 35,
+        "median_tracking_error_c": -0.14250056124302546,
+        "samples": 73,
         "temperature_bin_c": [
           160,
           180
         ]
       },
       {
-        "mean_tracking_error_c": 50.37011672507489,
-        "raw_rms_psu_command_a": 0.05805643805815165,
-        "rms_wire_current_a": 0.010441412630535277,
-        "samples": 40,
+        "median_tracking_error_c": -4.264406000896997,
+        "samples": 57,
         "temperature_bin_c": [
           180,
-          200
+          195
         ]
       },
       {
-        "mean_tracking_error_c": 54.27828126897862,
-        "raw_rms_psu_command_a": 0.059412996133750416,
-        "rms_wire_current_a": 0.01067491879561752,
-        "samples": 73,
+        "median_tracking_error_c": -7.4164755836407465,
+        "samples": 24,
         "temperature_bin_c": [
-          200,
-          220
-        ]
-      },
-      {
-        "mean_tracking_error_c": 38.08631242438715,
-        "raw_rms_psu_command_a": 0.06000989078368598,
-        "rms_wire_current_a": 0.010778182987112276,
-        "samples": 123,
-        "temperature_bin_c": [
-          220,
-          240
-        ]
-      },
-      {
-        "mean_tracking_error_c": 25.309537752966264,
-        "raw_rms_psu_command_a": 0.06476154061522274,
-        "rms_wire_current_a": 0.01158664630470774,
-        "samples": 70,
-        "temperature_bin_c": [
-          240,
-          260
-        ]
-      },
-      {
-        "mean_tracking_error_c": 26.318712668394607,
-        "raw_rms_psu_command_a": 0.07192044215659411,
-        "rms_wire_current_a": 0.012815755610313744,
-        "samples": 60,
-        "temperature_bin_c": [
-          260,
-          280
-        ]
-      },
-      {
-        "mean_tracking_error_c": 19.027456037837194,
-        "raw_rms_psu_command_a": 0.08061703707447121,
-        "rms_wire_current_a": 0.014310663204075612,
-        "samples": 75,
-        "temperature_bin_c": [
-          280,
-          300
-        ]
-      },
-      {
-        "mean_tracking_error_c": 26.791166626424914,
-        "raw_rms_psu_command_a": 0.0923883942095293,
-        "rms_wire_current_a": 0.01629438420196402,
-        "samples": 13,
-        "temperature_bin_c": [
-          300,
-          320
-        ]
-      },
-      {
-        "mean_tracking_error_c": 41.45780683433891,
-        "raw_rms_psu_command_a": 0.0947509894407441,
-        "rms_wire_current_a": 0.016707451495905096,
-        "samples": 16,
-        "temperature_bin_c": [
-          320,
-          340
-        ]
-      },
-      {
-        "mean_tracking_error_c": 53.6612731064489,
-        "raw_rms_psu_command_a": 0.09607849355124655,
-        "rms_wire_current_a": 0.016885669435822405,
-        "samples": 26,
-        "temperature_bin_c": [
-          340,
-          360
-        ]
-      },
-      {
-        "mean_tracking_error_c": 63.4270431115651,
-        "raw_rms_psu_command_a": 0.09795685506663357,
-        "rms_wire_current_a": 0.01715281195535053,
-        "samples": 44,
-        "temperature_bin_c": [
-          360,
-          380
-        ]
-      },
-      {
-        "mean_tracking_error_c": 52.661476810264396,
-        "raw_rms_psu_command_a": 0.09639268059443337,
-        "rms_wire_current_a": 0.01687107365914367,
-        "samples": 133,
-        "temperature_bin_c": [
-          380,
-          400
-        ]
-      },
-      {
-        "mean_tracking_error_c": 32.21698624804114,
-        "raw_rms_psu_command_a": 0.09918000437248797,
-        "rms_wire_current_a": 0.017335923536565993,
-        "samples": 101,
-        "temperature_bin_c": [
-          400,
-          420
-        ]
-      },
-      {
-        "mean_tracking_error_c": 22.481392119106147,
-        "raw_rms_psu_command_a": 0.10507087555021558,
-        "rms_wire_current_a": 0.01829974156729952,
-        "samples": 72,
-        "temperature_bin_c": [
-          420,
-          440
-        ]
-      },
-      {
-        "mean_tracking_error_c": 21.277560889991545,
-        "raw_rms_psu_command_a": 0.11089267983360294,
-        "rms_wire_current_a": 0.019307884090423978,
-        "samples": 59,
-        "temperature_bin_c": [
-          440,
-          460
-        ]
-      },
-      {
-        "mean_tracking_error_c": 21.483873741281613,
-        "raw_rms_psu_command_a": 0.1163392038172326,
-        "rms_wire_current_a": 0.02022925056091593,
-        "samples": 58,
-        "temperature_bin_c": [
-          460,
-          480
-        ]
-      },
-      {
-        "mean_tracking_error_c": 21.373882949509095,
-        "raw_rms_psu_command_a": 0.12202072093717593,
-        "rms_wire_current_a": 0.021146000645787897,
-        "samples": 71,
-        "temperature_bin_c": [
-          480,
-          500
-        ]
-      },
-      {
-        "mean_tracking_error_c": 12.425907395334571,
-        "raw_rms_psu_command_a": 0.12493211489978602,
-        "rms_wire_current_a": 0.021617508414132458,
-        "samples": 90,
-        "temperature_bin_c": [
-          500,
-          520
-        ]
-      },
-      {
-        "mean_tracking_error_c": 7.6467493452224575,
-        "raw_rms_psu_command_a": 0.13169617812728404,
-        "rms_wire_current_a": 0.022676936518170182,
-        "samples": 60,
-        "temperature_bin_c": [
-          520,
-          540
-        ]
-      },
-      {
-        "mean_tracking_error_c": 6.949609559739228,
-        "raw_rms_psu_command_a": 0.13823616782607256,
-        "rms_wire_current_a": 0.02376518609470602,
-        "samples": 63,
-        "temperature_bin_c": [
-          540,
-          560
-        ]
-      },
-      {
-        "mean_tracking_error_c": 5.872696479639153,
-        "raw_rms_psu_command_a": 0.14518657177921104,
-        "rms_wire_current_a": 0.024885255952200057,
-        "samples": 64,
-        "temperature_bin_c": [
-          560,
-          580
-        ]
-      },
-      {
-        "mean_tracking_error_c": 5.065498576812941,
-        "raw_rms_psu_command_a": 0.1521256378044784,
-        "rms_wire_current_a": 0.026044472510080054,
-        "samples": 62,
-        "temperature_bin_c": [
-          580,
-          600
+          195,
+          205
         ]
       }
     ],
     "control_diagnostics_jsonl_sha256": "d46ed34c0684b4c3baac7d2b3d8a6d051deb5c69a46fda4d907914c2408ae4f1",
     "data_csv_sha256": "56eeada710bffd5ada97736320534fe03c98939630446209b07173ee01c69853",
     "derived_temperature_range_c": [
-      73.929969,
-      590.05855
+      131.120337,
+      197.774428
     ],
     "electrical_limits": {
-      "compliance_voltage_v": 3.0,
-      "max_power_w": 0.1,
-      "max_sample_voltage_v": 3.0,
-      "max_total_psu_current_a": 0.18,
-      "max_wire_current_a": 0.03
+      "compliance_voltage_v": 5.0,
+      "max_power_w": 15.0,
+      "max_sample_voltage_v": 5.0,
+      "max_total_psu_current_a": 3.0,
+      "max_wire_current_a": 3.0
     },
     "independent_temperature_calibration": false,
     "kind": "provisional_ramp",
-    "limitations": "Observed ramp commands only, no measured equilibrium hold. Temperature is inferred from the existing donor R(T), extrapolated above 293.4 C. T0 scatter was 7.32 C. Correcting this current table does not independently validate physical temperature.",
+    "limitations": "Provisional indicated-temperature ramp bias, not independent physical thermometry. Run 130 T0 scatter was 82.37 C; only about 120..200 C is newly sampled. The extension above this is an engineering estimate; R(T) remains extrapolated above 293.4 C.",
     "maximum_monotonic_correction_a": 0.0011729791157924774,
     "measured_final_hold": false,
-    "measured_indicated_temperature_max_c": 599.7043577224231,
+    "measured_indicated_temperature_max_c": 202.71533807052407,
     "measured_on_this_wire": true,
-    "method": "RMS observed applied total PSU commands versus raw indicated-temperature bins from run 127, with a weighted monotonic power fit.",
+    "method": "Run-130 later-ramp RMS applied commands against raw indicated T; retain low-T points and estimated higher-T shape from run 127/129 with a constant command offset.",
     "parallel_divider": {
-      "limitations": "PSU commands are not independent measurements of total current; ammeter burden, resistor tolerance and mounting remain part of this calibration.",
+      "limitations": "5 V across this bank is 1.25 W, equal to its nominal rating with no margin. Use an adequately cooled higher-rated 20 Ohm bank for sustained operation near 5 V. A 3 A command ceiling does not make 3 A attainable through the present load at 5 V.",
       "method": "Table uses observed total commands for the actual user-reported 20 Ohm bank; no fixed divider ratio is applied to run data.",
       "nominal_total_to_wire_current_ratio": 5.279920175039225,
       "nominal_wire_resistance_ohm": 85.5984035007845,
       "parallel_resistance_ohm": 20.0,
       "required_wiring": "20 Ohm bank outside chamber across PSU output terminals; branch ammeter only, Kelvin voltage only across wire, PSU sense at PSU terminals.",
       "resistor_bank": "Five 100 Ohm / 0.25 W resistors in parallel; 20 Ohm / 1.25 W nominal.",
-      "resistor_max_power_at_compliance_w": 0.45,
+      "resistor_max_power_at_compliance_w": 1.25,
       "resistor_minimum_power_rating_w": 1.25,
       "table_current_units": "total PSU amperes",
-      "wire_current_units": "Wire-branch amperes; ramp observations except the estimated endpoint and smoothed bias points."
+      "wire_current_units": "Measured wire-branch amperes for retained/observed ramp points; adjusted higher-T entries are estimates."
     },
+    "previous_source_run": "127_test",
     "r_vs_t_source_csv_sha256": "44b2cd18cb9a919fab37bae642f3f7db36818b9ea16d636170c1b6c57c70f810",
     "ramp_rate_c_min": 10.0,
     "reference_curve_file": "NiCr_50_R_vs_T_estimated.csv",
@@ -363,27 +134,259 @@
       "source_run": "129_NiCr_50_hydrogen_curr_1",
       "t0_spread_c": 92.42
     },
+    "run130_revision": {
+      "bins": [
+        {
+          "median_tracking_error_c": 6.969907875500908,
+          "samples": 84,
+          "temperature_bin_c": [
+            120,
+            140
+          ]
+        },
+        {
+          "median_tracking_error_c": 3.154758668045929,
+          "samples": 57,
+          "temperature_bin_c": [
+            140,
+            160
+          ]
+        },
+        {
+          "median_tracking_error_c": -0.14250056124302546,
+          "samples": 73,
+          "temperature_bin_c": [
+            160,
+            180
+          ]
+        },
+        {
+          "median_tracking_error_c": -4.264406000896997,
+          "samples": 57,
+          "temperature_bin_c": [
+            180,
+            195
+          ]
+        },
+        {
+          "median_tracking_error_c": -7.4164755836407465,
+          "samples": 24,
+          "temperature_bin_c": [
+            195,
+            205
+          ]
+        }
+      ],
+      "extension": "Constant command offset above final run-130 bin, preserving previous shape and a rising I squared join to 249 C; all adjusted higher-T points are estimates.",
+      "hashes": {
+        "control_diagnostics.jsonl": "23a4abd489760b94cdcbb9f6e7053bb3be5c20e4a3653a02ee463bac3233eb8b",
+        "data.csv": "728ca25487dbfa0d57da249e34bbf13e4346e2fe3358ad86d7092be01eec0239",
+        "run_metadata.json": "8b721ccead8038edd8776b0c5b09ec8c833dc42e33dcad25523cb3bb22bdb1a1"
+      },
+      "high_temperature_command_offset_a": 0.02014812627771781,
+      "independent_temperature_calibration": false,
+      "limit_authorization": "User explicitly requested 5 V, 3 A and 15 W after run 130; both total and raw wire-current ceilings are 3 A, with no hidden old 30 mA wire cap. These settings are not verified wire ratings.",
+      "measured_indicated_range_c": [
+        131.120337,
+        197.774428
+      ],
+      "pi": "Use the exact flat Kp/Ki/Ti from run 130, no gain schedule; correct bias rather than guessing stronger gains.",
+      "previous_table": [
+        {
+          "current_a": 0.001,
+          "measured_on_this_wire": false,
+          "temperature_c": 23.0
+        },
+        {
+          "current_a": 0.022076072,
+          "measured_on_this_wire": true,
+          "temperature_c": 73.929969,
+          "wire_current_a": 0.004072047
+        },
+        {
+          "current_a": 0.027001389,
+          "measured_on_this_wire": true,
+          "temperature_c": 90.443964,
+          "wire_current_a": 0.004898504
+        },
+        {
+          "current_a": 0.033755787,
+          "measured_on_this_wire": true,
+          "temperature_c": 110.350379,
+          "wire_current_a": 0.006124837
+        },
+        {
+          "current_a": 0.043014031,
+          "measured_on_this_wire": true,
+          "temperature_c": 130.814919,
+          "wire_current_a": 0.00779613
+        },
+        {
+          "current_a": 0.050359095,
+          "measured_on_this_wire": true,
+          "temperature_c": 150.743551,
+          "wire_current_a": 0.009118071
+        },
+        {
+          "current_a": 0.054332574,
+          "measured_on_this_wire": true,
+          "temperature_c": 169.196708,
+          "wire_current_a": 0.009817649
+        },
+        {
+          "current_a": 0.058056438,
+          "measured_on_this_wire": true,
+          "temperature_c": 190.66079,
+          "wire_current_a": 0.010441413
+        },
+        {
+          "current_a": 0.059412996,
+          "measured_on_this_wire": true,
+          "temperature_c": 213.192676,
+          "wire_current_a": 0.010674919
+        },
+        {
+          "current_a": 0.060009891,
+          "measured_on_this_wire": true,
+          "temperature_c": 229.624368,
+          "wire_current_a": 0.010778183
+        },
+        {
+          "current_a": 0.064761541,
+          "measured_on_this_wire": true,
+          "temperature_c": 249.355541,
+          "wire_current_a": 0.011586646
+        },
+        {
+          "current_a": 0.071920442,
+          "measured_on_this_wire": true,
+          "temperature_c": 272.204458,
+          "wire_current_a": 0.012815756
+        },
+        {
+          "current_a": 0.080617037,
+          "measured_on_this_wire": true,
+          "temperature_c": 287.375531,
+          "wire_current_a": 0.014310663
+        },
+        {
+          "current_a": 0.092388394,
+          "measured_on_this_wire": true,
+          "temperature_c": 312.137257,
+          "wire_current_a": 0.016294384
+        },
+        {
+          "current_a": 0.094750989,
+          "measured_on_this_wire": true,
+          "temperature_c": 331.521033,
+          "wire_current_a": 0.016707451
+        },
+        {
+          "current_a": 0.096822892,
+          "measured_on_this_wire": false,
+          "temperature_c": 350.307395,
+          "wire_current_a": 0.017016496
+        },
+        {
+          "current_a": 0.099107403,
+          "measured_on_this_wire": false,
+          "temperature_c": 371.492549,
+          "wire_current_a": 0.017564606
+        },
+        {
+          "current_a": 0.101064738,
+          "measured_on_this_wire": false,
+          "temperature_c": 390.036646,
+          "wire_current_a": 0.017617301
+        },
+        {
+          "current_a": 0.103008286,
+          "measured_on_this_wire": false,
+          "temperature_c": 408.808963,
+          "wire_current_a": 0.018005079
+        },
+        {
+          "current_a": 0.105070876,
+          "measured_on_this_wire": true,
+          "temperature_c": 429.122163,
+          "wire_current_a": 0.018299742
+        },
+        {
+          "current_a": 0.11089268,
+          "measured_on_this_wire": true,
+          "temperature_c": 450.050692,
+          "wire_current_a": 0.019307884
+        },
+        {
+          "current_a": 0.116339204,
+          "measured_on_this_wire": true,
+          "temperature_c": 469.863321,
+          "wire_current_a": 0.020229251
+        },
+        {
+          "current_a": 0.122020721,
+          "measured_on_this_wire": true,
+          "temperature_c": 491.283064,
+          "wire_current_a": 0.021146001
+        },
+        {
+          "current_a": 0.124932115,
+          "measured_on_this_wire": true,
+          "temperature_c": 509.224697,
+          "wire_current_a": 0.021617508
+        },
+        {
+          "current_a": 0.131696178,
+          "measured_on_this_wire": true,
+          "temperature_c": 529.653488,
+          "wire_current_a": 0.022676937
+        },
+        {
+          "current_a": 0.138236168,
+          "measured_on_this_wire": true,
+          "temperature_c": 549.573151,
+          "wire_current_a": 0.023765186
+        },
+        {
+          "current_a": 0.145186572,
+          "measured_on_this_wire": true,
+          "temperature_c": 569.790581,
+          "wire_current_a": 0.024885256
+        },
+        {
+          "current_a": 0.152125638,
+          "measured_on_this_wire": true,
+          "temperature_c": 590.05855,
+          "wire_current_a": 0.026044473
+        },
+        {
+          "current_a": 0.155235488,
+          "measured_on_this_wire": false,
+          "temperature_c": 600.0,
+          "wire_current_a": 0.026557478
+        }
+      ],
+      "selection": "Accepted readings after 300 s, indicated error within 12 C, raw/filter difference within 8 C; omit range changes and next two cycles; minimum 20 per bin.",
+      "source_run": "130_test",
+      "source_temperature_max_c": 200.03753851023848,
+      "t0_spread_c": 82.37
+    },
     "run_metadata_json_sha256": "efa9befee643ebc6991b26cf61092d6330b63f7650d8af1b583a5818bc91f4be",
     "selection": "Accepted finite positive samples; omit first 180 s and range-change cycle plus next two cycles; bin raw indicated T, use RMS applied total command from diagnostics, not next accepted command.",
     "source_curve_temperature_bounds_c": [
       23.0,
       293.4011055
     ],
-    "source_run": "127_test",
+    "source_run": "130_test",
     "startup_anchor": "23 C / 1 mA total PSU retained; nominal wire current about 0.19 mA at 85.6 Ohm; not measured equilibrium.",
-    "startup_exclusion_s": 180,
+    "startup_exclusion_s": 300,
     "unmeasured_extension": {
-      "fit_range_c": [
-        529.653488,
-        590.05855
-      ],
       "measured": false,
-      "method": "Positive I squared versus indicated T fit to last four accepted ramp bins; anchored to final bin.",
+      "method": "Retained higher-temperature shape shifted by the run-130 terminal bias offset; rising I squared join to 249 C. No new higher-temperature measurement.",
       "range_c": [
-        590.05855,
+        197.774428,
         600.0
-      ],
-      "slope_a2_per_c": 9.614765567503843e-05
+      ]
     },
     "wire_diameter_um": 50.0,
     "wire_length_known": false
@@ -413,154 +416,160 @@
       "wire_current_a": 0.006124837
     },
     {
-      "current_a": 0.043014031,
+      "current_a": 0.045308992,
       "measured_on_this_wire": true,
-      "temperature_c": 130.814919,
-      "wire_current_a": 0.00779613
+      "temperature_c": 131.120337,
+      "wire_current_a": 0.007689936
     },
     {
-      "current_a": 0.050359095,
+      "current_a": 0.056730202,
       "measured_on_this_wire": true,
-      "temperature_c": 150.743551,
-      "wire_current_a": 0.009118071
+      "temperature_c": 151.342114,
+      "wire_current_a": 0.00956438
     },
     {
-      "current_a": 0.054332574,
+      "current_a": 0.065382541,
       "measured_on_this_wire": true,
-      "temperature_c": 169.196708,
-      "wire_current_a": 0.009817649
+      "temperature_c": 169.598337,
+      "wire_current_a": 0.01102073
     },
     {
-      "current_a": 0.058056438,
+      "current_a": 0.073754928,
       "measured_on_this_wire": true,
-      "temperature_c": 190.66079,
-      "wire_current_a": 0.010441413
+      "temperature_c": 187.115975,
+      "wire_current_a": 0.012404839
     },
     {
-      "current_a": 0.059412996,
+      "current_a": 0.078632849,
       "measured_on_this_wire": true,
+      "temperature_c": 197.774428,
+      "wire_current_a": 0.013219201
+    },
+    {
+      "current_a": 0.08056033,
+      "measured_on_this_wire": false,
       "temperature_c": 213.192676,
-      "wire_current_a": 0.010674919
+      "wire_current_a": 0.014474527
     },
     {
-      "current_a": 0.060009891,
-      "measured_on_this_wire": true,
+      "current_a": 0.082564988,
+      "measured_on_this_wire": false,
       "temperature_c": 229.624368,
-      "wire_current_a": 0.010778183
+      "wire_current_a": 0.014829231
     },
     {
-      "current_a": 0.064761541,
-      "measured_on_this_wire": true,
+      "current_a": 0.084909667,
+      "measured_on_this_wire": false,
       "temperature_c": 249.355541,
-      "wire_current_a": 0.011586646
+      "wire_current_a": 0.015191397
     },
     {
-      "current_a": 0.071920442,
-      "measured_on_this_wire": true,
+      "current_a": 0.092068568,
+      "measured_on_this_wire": false,
       "temperature_c": 272.204458,
-      "wire_current_a": 0.012815756
+      "wire_current_a": 0.016406021
     },
     {
-      "current_a": 0.080617037,
-      "measured_on_this_wire": true,
+      "current_a": 0.100765163,
+      "measured_on_this_wire": false,
       "temperature_c": 287.375531,
-      "wire_current_a": 0.014310663
+      "wire_current_a": 0.01788724
     },
     {
-      "current_a": 0.092388394,
-      "measured_on_this_wire": true,
+      "current_a": 0.11253652,
+      "measured_on_this_wire": false,
       "temperature_c": 312.137257,
-      "wire_current_a": 0.016294384
+      "wire_current_a": 0.019847875
     },
     {
-      "current_a": 0.094750989,
-      "measured_on_this_wire": true,
+      "current_a": 0.114899115,
+      "measured_on_this_wire": false,
       "temperature_c": 331.521033,
-      "wire_current_a": 0.016707451
+      "wire_current_a": 0.020260172
     },
     {
-      "current_a": 0.096822892,
+      "current_a": 0.116971018,
       "measured_on_this_wire": false,
       "temperature_c": 350.307395,
-      "wire_current_a": 0.017016496
+      "wire_current_a": 0.020557503
     },
     {
-      "current_a": 0.099107403,
+      "current_a": 0.119255529,
       "measured_on_this_wire": false,
       "temperature_c": 371.492549,
-      "wire_current_a": 0.017564606
+      "wire_current_a": 0.021135418
     },
     {
-      "current_a": 0.101064738,
+      "current_a": 0.121212864,
       "measured_on_this_wire": false,
       "temperature_c": 390.036646,
-      "wire_current_a": 0.017617301
+      "wire_current_a": 0.021129462
     },
     {
-      "current_a": 0.103008286,
+      "current_a": 0.123156412,
       "measured_on_this_wire": false,
       "temperature_c": 408.808963,
-      "wire_current_a": 0.018005079
+      "wire_current_a": 0.021526821
     },
     {
-      "current_a": 0.105070876,
-      "measured_on_this_wire": true,
+      "current_a": 0.125219002,
+      "measured_on_this_wire": false,
       "temperature_c": 429.122163,
-      "wire_current_a": 0.018299742
+      "wire_current_a": 0.021808854
     },
     {
-      "current_a": 0.11089268,
-      "measured_on_this_wire": true,
+      "current_a": 0.131040806,
+      "measured_on_this_wire": false,
       "temperature_c": 450.050692,
-      "wire_current_a": 0.019307884
+      "wire_current_a": 0.02281594
     },
     {
-      "current_a": 0.116339204,
-      "measured_on_this_wire": true,
+      "current_a": 0.13648733,
+      "measured_on_this_wire": false,
       "temperature_c": 469.863321,
-      "wire_current_a": 0.020229251
+      "wire_current_a": 0.02373264
     },
     {
-      "current_a": 0.122020721,
-      "measured_on_this_wire": true,
+      "current_a": 0.142168847,
+      "measured_on_this_wire": false,
       "temperature_c": 491.283064,
-      "wire_current_a": 0.021146001
+      "wire_current_a": 0.02463764
     },
     {
-      "current_a": 0.124932115,
-      "measured_on_this_wire": true,
+      "current_a": 0.145080241,
+      "measured_on_this_wire": false,
       "temperature_c": 509.224697,
-      "wire_current_a": 0.021617508
+      "wire_current_a": 0.02510382
     },
     {
-      "current_a": 0.131696178,
-      "measured_on_this_wire": true,
+      "current_a": 0.151844304,
+      "measured_on_this_wire": false,
       "temperature_c": 529.653488,
-      "wire_current_a": 0.022676937
+      "wire_current_a": 0.026146269
     },
     {
-      "current_a": 0.138236168,
-      "measured_on_this_wire": true,
+      "current_a": 0.158384294,
+      "measured_on_this_wire": false,
       "temperature_c": 549.573151,
-      "wire_current_a": 0.023765186
+      "wire_current_a": 0.027228997
     },
     {
-      "current_a": 0.145186572,
-      "measured_on_this_wire": true,
+      "current_a": 0.165334698,
+      "measured_on_this_wire": false,
       "temperature_c": 569.790581,
-      "wire_current_a": 0.024885256
+      "wire_current_a": 0.028338683
     },
     {
-      "current_a": 0.152125638,
-      "measured_on_this_wire": true,
+      "current_a": 0.172273764,
+      "measured_on_this_wire": false,
       "temperature_c": 590.05855,
-      "wire_current_a": 0.026044473
+      "wire_current_a": 0.029493907
     },
     {
-      "current_a": 0.155235488,
+      "current_a": 0.175383614,
       "measured_on_this_wire": false,
       "temperature_c": 600.0,
-      "wire_current_a": 0.026557478
+      "wire_current_a": 0.030004392
     }
   ],
   "current_quantization_hysteresis_a": 0.0001,
@@ -577,13 +586,13 @@
   "experiment_frequency": 0.5,
   "gain_schedule_filter_time_s": 10,
   "invalid_measurement_policy": "backoff",
-  "max_current": 0.18,
+  "max_current": 3.0,
   "max_current_step_down": 0.001,
   "max_current_step_up": 0.001,
-  "max_power_w": 0.1,
-  "max_sample_voltage": 3.0,
+  "max_power_w": 15.0,
+  "max_sample_voltage": 5.0,
   "max_temperature_c": 600.0,
-  "max_wire_current_a": 0.03,
+  "max_wire_current_a": 3.0,
   "measurement_current_floor": 0.001,
   "measurement_fail_limit": 10,
   "measurement_filter_samples": 3,
@@ -600,25 +609,12 @@
   "minimum_current_a": 1e-06,
   "minimum_current_change": 0.001,
   "parallel_resistance_ohm": 20.0,
-  "pid_gain_schedule": [
-    {
-      "current_a": 0.04,
-      "kd": 0.0,
-      "ki": 5.5e-07,
-      "kp": 8.25e-05
-    },
-    {
-      "current_a": 0.07,
-      "kd": 0.0,
-      "ki": 1.65e-06,
-      "kp": 0.000165
-    }
-  ],
-  "pid_integral_current_limit_a": 0.18,
-  "pid_integral_time_s": 100.0,
+  "pid_gain_schedule": [],
+  "pid_integral_current_limit_a": 3.0,
+  "pid_integral_time_s": 600.0,
   "pid_kd": 0.0,
-  "pid_ki": 1.65e-06,
-  "pid_kp": 0.000165,
+  "pid_ki": 1.6666666666666667e-06,
+  "pid_kp": 0.001,
   "pid_tracking_time_s": 30.0,
   "profile_name": "NiCr_50",
   "resistance_glitch_jump_ohm": 0.03,
@@ -635,7 +631,7 @@
   "startup_current": 0.001,
   "startup_settle_time_s": 2.0,
   "t0_calibration_current": 0.001,
-  "t0_calibration_samples": 5,
+  "t0_calibration_samples": 9,
   "t0_current_search_start": 0.001,
   "t0_current_step": 0.001,
   "t0_dmm_current_range_a": 0.002,

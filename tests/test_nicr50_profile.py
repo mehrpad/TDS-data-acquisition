@@ -22,7 +22,7 @@ class NiCr50ProfileTests(unittest.TestCase):
         self.assertFalse(provenance['independent_temperature_calibration'])
         self.assertFalse(provenance['measured_final_hold'])
         self.assertFalse(provenance["wire_length_known"])
-        self.assertEqual(provenance["source_run"], '127_test')
+        self.assertEqual(provenance["source_run"], '130_test')
         self.assertEqual(profile['parallel_resistance_ohm'], 20.)
         self.assertEqual(profile["current_feedforward_table"][0]["current_a"], .001)
         self.assertEqual(profile["profile_name"], "NiCr_50")
@@ -30,13 +30,13 @@ class NiCr50ProfileTests(unittest.TestCase):
                     't0_current_search_start', 't0_calibration_current'):
             self.assertEqual(profile[key], .001)
         points = profile['current_feedforward_table']
-        estimated = {p['temperature_c'] for p in provenance['run129_controller_revision']['original_points']}
-        self.assertTrue(all(p['measured_on_this_wire'] == (p['temperature_c'] not in estimated)
+        last_measured = provenance['run130_revision']['measured_indicated_range_c'][1]
+        self.assertTrue(all(p['measured_on_this_wire'] == (p['temperature_c'] <= last_measured)
                             for p in points[1:-1]))
         self.assertFalse(points[-1]['measured_on_this_wire'])
         self.assertTrue(all(b['temperature_c'] > a['temperature_c'] and b['current_a'] >= a['current_a']
                             for a,b in zip(points,points[1:])))
-        self.assertLess(points[-1]['current_a'], .16)
+        self.assertLess(points[-1]['current_a'], .2)
         with (PROFILE.parent/'NiCr_50_R_vs_T_estimated.csv').open() as stream:
             self.assertEqual({r['measured_on_this_wire'] for r in csv.DictReader(stream)}, {'False'})
         with (PROFILE.parent/'NiCr_50_current_table.csv').open() as stream:

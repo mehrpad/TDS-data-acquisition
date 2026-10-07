@@ -70,3 +70,7 @@ this run. The profile remains provisional and does not guarantee 600 °C trackin
 Validation includes a controller regression with sustained lag proving that
 correction continues beyond 20 mA, remains within slew/output limits, retains
 lower startup gains, and still trips raw electrical and temperature guards.
+
+These settings are historical. [Run 130's revision](NICR50_RUN_130.md) adopts
+the user's improved flat PI, partially updates the ramp bias, and applies the
+explicitly requested 5 V / 3 A / 15 W ceilings. It replaces the old 30 mA cutoff.
