@@ -30,7 +30,9 @@ class NiCr50ProfileTests(unittest.TestCase):
                     't0_current_search_start', 't0_calibration_current'):
             self.assertEqual(profile[key], .001)
         points = profile['current_feedforward_table']
-        self.assertTrue(all(p['measured_on_this_wire'] for p in points[1:-1]))
+        estimated = {p['temperature_c'] for p in provenance['run129_controller_revision']['original_points']}
+        self.assertTrue(all(p['measured_on_this_wire'] == (p['temperature_c'] not in estimated)
+                            for p in points[1:-1]))
         self.assertFalse(points[-1]['measured_on_this_wire'])
         self.assertTrue(all(b['temperature_c'] > a['temperature_c'] and b['current_a'] >= a['current_a']
                             for a,b in zip(points,points[1:])))

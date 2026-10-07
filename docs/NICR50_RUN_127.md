@@ -66,3 +66,7 @@ Load the profile, cool and recalibrate, then compare a **590 °C target at
 10 °C/min with the 600 °C cutoff**. These changes address the observed bias but
 do not guarantee smooth tracking or physical accuracy to 600 °C before another
 measurement.
+
+These were the run-127 settings. [The run-129 revision](NICR50_RUN_129.md)
+subsequently removed the separate 20 mA integral cap, smoothed the flat bias
+segment and added stronger PI gains above startup. Electrical guards remain.

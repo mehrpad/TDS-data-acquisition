@@ -30,7 +30,12 @@ affect this ratio. The new table uses observed commands rather than a fixed
 conversion. The cold anchor is **0.001 A total at 23 °C**, approximately **0.19 mA
 wire current**, and is not a measured equilibrium point.
 
-The fitted ramp bins cover approximately 74–590 °C indicated. The small extension
+Run 127 supplies the observed ramp bins at approximately 74–590 °C indicated.
+After run 129, the near-flat 331–429 °C bias segment is replaced by engineering
+I² interpolation between unchanged observed anchors. Its interior current and
+wire-current estimates are labelled unmeasured; the original observations remain
+in JSON provenance. Run 129 is not used as thermal calibration because its T0
+scatter was 92.42 °C. The small extension
 to 600 °C estimates **0.15524 A total / 0.02656 A wire**. No final hold was measured.
 Temperature uses the existing R(T) curve, extrapolated above 293.4 °C; the table
 does not independently validate physical temperature.
@@ -42,10 +47,13 @@ does not independently validate physical temperature.
 | PSU compliance / sample-voltage cutoff | 3 V / 3 V |
 | Wire power cutoff (wire V × branch I) | 0.10 W |
 | Indicated temperature cutoff / target ceiling | 600 °C / 600 °C |
-| Kp / Ki / Ti | 0.0000825 A/°C / 0.00000055 A/(°C·s) / 150 s |
-| Integral correction limit | ±0.02 A total |
+| Startup gains (table bias ≤40 mA): Kp / Ki / Ti | 0.0000825 A/°C / 0.00000055 A/(°C·s) / 150 s |
+| Higher-current gains (table bias ≥70 mA): Kp / Ki / Ti | 0.000165 A/°C / 0.00000165 A/(°C·s) / 100 s |
+| Gain transition | Linear interpolation from 40 to 70 mA table bias |
+| Integral correction limit | ±0.18 A total; tied to PSU command ceiling |
 | Temperature prediction | 5 s |
 | Current slew steps | 0.001 A total |
+| Current switching hysteresis | 0.0001 A total |
 | T0 / startup total current | 0.001 A |
 | T0 paired samples per measurement | 15 |
 | Startup/T0 current-DMM range | 2 mA |
@@ -71,3 +79,6 @@ trial; smooth tracking is not yet verified.
 
 See [run 127 findings and derivation](NICR50_RUN_127.md). Per-run logs and
 diagnostics record the settings and branch measurements.
+See [run 129 diagnosis and stronger correction](NICR50_RUN_129.md) for the
+latest table adjustment and settings. A stable cold calibration is needed before
+assessing the physical temperature or rebuilding the thermal table.

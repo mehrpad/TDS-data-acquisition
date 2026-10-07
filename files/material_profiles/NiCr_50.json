@@ -307,7 +307,7 @@
       "resistor_max_power_at_compliance_w": 0.45,
       "resistor_minimum_power_rating_w": 1.25,
       "table_current_units": "total PSU amperes",
-      "wire_current_units": "measured wire-branch amperes; endpoint is extrapolated"
+      "wire_current_units": "Wire-branch amperes; ramp observations except the estimated endpoint and smoothed bias points."
     },
     "r_vs_t_source_csv_sha256": "44b2cd18cb9a919fab37bae642f3f7db36818b9ea16d636170c1b6c57c70f810",
     "ramp_rate_c_min": 10.0,
@@ -320,6 +320,48 @@
       "saved_cycles": 1698,
       "shutdown": "Raw indicated T 600.023139 C exceeded the 600 C limit; V=2.43919092 V, wire I=0.0267111764 A, R=91.317240524 Ohm. No open-circuit signature in saved terminal measurement.",
       "t0_temperature_spread_c": 7.32
+    },
+    "run129_controller_revision": {
+      "current_hysteresis_a": 0.0001,
+      "gains": "Retain startup gains below 40 mA table bias, blend to twice Kp and three times Ki at 70 mA; higher-current Ti=100 s.",
+      "independent_temperature_calibration": false,
+      "integral_limit": "Correction state bounded by the configured total PSU current ceiling; removes the separate 20 mA correction cap. Output anti-windup and all electrical/temperature guards remain.",
+      "limitations": "Provisional engineering tuning, not a validated thermal model. Run 129 has 92.42 C T0 scatter; repeat cold calibration before judging physical temperature or fitting a new curve.",
+      "method": "Engineering I squared interpolation between unchanged run-127 anchors removes the near-flat bias segment; original observations retained below.",
+      "original_points": [
+        {
+          "current_a": 0.096078494,
+          "measured_on_this_wire": true,
+          "temperature_c": 350.307395,
+          "wire_current_a": 0.016885669
+        },
+        {
+          "current_a": 0.096783876,
+          "measured_on_this_wire": true,
+          "temperature_c": 371.492549,
+          "wire_current_a": 0.017152812
+        },
+        {
+          "current_a": 0.096783876,
+          "measured_on_this_wire": true,
+          "temperature_c": 390.036646,
+          "wire_current_a": 0.016871074
+        },
+        {
+          "current_a": 0.099180004,
+          "measured_on_this_wire": true,
+          "temperature_c": 408.808963,
+          "wire_current_a": 0.017335924
+        }
+      ],
+      "retained_limits": "180 mA total command, 30 mA measured wire, 0.10 W wire power, 3 V compliance and 600 C indicated temperature. Full PSU output is unsuitable for the 20 Ohm / 1.25 W bank.",
+      "run129_used_as_thermal_calibration": false,
+      "smoothing_range_c": [
+        331.521033,
+        429.122163
+      ],
+      "source_run": "129_NiCr_50_hydrogen_curr_1",
+      "t0_spread_c": 92.42
     },
     "run_metadata_json_sha256": "efa9befee643ebc6991b26cf61092d6330b63f7650d8af1b583a5818bc91f4be",
     "selection": "Accepted finite positive samples; omit first 180 s and range-change cycle plus next two cycles; bin raw indicated T, use RMS applied total command from diagnostics, not next accepted command.",
@@ -437,28 +479,28 @@
       "wire_current_a": 0.016707451
     },
     {
-      "current_a": 0.096078494,
-      "measured_on_this_wire": true,
+      "current_a": 0.096822892,
+      "measured_on_this_wire": false,
       "temperature_c": 350.307395,
-      "wire_current_a": 0.016885669
+      "wire_current_a": 0.017016496
     },
     {
-      "current_a": 0.096783876,
-      "measured_on_this_wire": true,
+      "current_a": 0.099107403,
+      "measured_on_this_wire": false,
       "temperature_c": 371.492549,
-      "wire_current_a": 0.017152812
+      "wire_current_a": 0.017564606
     },
     {
-      "current_a": 0.096783876,
-      "measured_on_this_wire": true,
+      "current_a": 0.101064738,
+      "measured_on_this_wire": false,
       "temperature_c": 390.036646,
-      "wire_current_a": 0.016871074
+      "wire_current_a": 0.017617301
     },
     {
-      "current_a": 0.099180004,
-      "measured_on_this_wire": true,
+      "current_a": 0.103008286,
+      "measured_on_this_wire": false,
       "temperature_c": 408.808963,
-      "wire_current_a": 0.017335924
+      "wire_current_a": 0.018005079
     },
     {
       "current_a": 0.105070876,
@@ -521,7 +563,7 @@
       "wire_current_a": 0.026557478
     }
   ],
-  "current_quantization_hysteresis_a": 0.0002,
+  "current_quantization_hysteresis_a": 0.0001,
   "current_settle_time_s": 1.0,
   "curve_extrapolation_enabled": true,
   "curve_extrapolation_max_temperature_c": 600.0,
@@ -558,12 +600,25 @@
   "minimum_current_a": 1e-06,
   "minimum_current_change": 0.001,
   "parallel_resistance_ohm": 20.0,
-  "pid_gain_schedule": [],
-  "pid_integral_current_limit_a": 0.02,
-  "pid_integral_time_s": 150.0,
+  "pid_gain_schedule": [
+    {
+      "current_a": 0.04,
+      "kd": 0.0,
+      "ki": 5.5e-07,
+      "kp": 8.25e-05
+    },
+    {
+      "current_a": 0.07,
+      "kd": 0.0,
+      "ki": 1.65e-06,
+      "kp": 0.000165
+    }
+  ],
+  "pid_integral_current_limit_a": 0.18,
+  "pid_integral_time_s": 100.0,
   "pid_kd": 0.0,
-  "pid_ki": 5.5e-07,
-  "pid_kp": 8.25e-05,
+  "pid_ki": 1.65e-06,
+  "pid_kp": 0.000165,
   "pid_tracking_time_s": 30.0,
   "profile_name": "NiCr_50",
   "resistance_glitch_jump_ohm": 0.03,

@@ -63,8 +63,9 @@ class ParallelDividerTests(unittest.TestCase):
         info = self.config['current_feedforward_provenance']['parallel_divider']
         self.assertLess(self.config['compliance_voltage']**2 / self.config['parallel_resistance_ohm'],
                         info['resistor_minimum_power_rating_w'])
-        self.assertAlmostEqual(self.config['pid_kp'], .0000825)
-        self.assertAlmostEqual(self.config['pid_ki'], .00000055)
+        low_gains = ctl.pid_gains_for_current(self.config, .001)
+        self.assertAlmostEqual(low_gains[0], .0000825)
+        self.assertAlmostEqual(low_gains[1], .00000055)
         self.assertEqual(self.config['t0_calibration_current'], .001)
 
 
